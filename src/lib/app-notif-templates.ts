@@ -25,6 +25,9 @@ export interface AppNotifTemplateSeed {
   priority?: "low" | "normal" | "high" | "urgent";
 }
 
+// Default icon — the PMS capsule. Same on every platform for consistency.
+const ICON = "/icon.png";
+
 export const DEFAULT_APP_NOTIF_TEMPLATES: AppNotifTemplateSeed[] = [
   // Stock Alert
   {

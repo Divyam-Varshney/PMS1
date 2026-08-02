@@ -7859,3 +7859,190 @@ In `src/lib/constants.ts`:
   - Preserve original `key`, `name`, `subject`, `variables`
 - ✅ The 4 new payment templates' subjects render correctly with emoji prefixes
   (`✅`, `❌`, `💸`) and the em-dash separator.
+
+---
+
+## Task P38-8 — OrdersView enterprise redesign
+
+- **Task ID**: P38-8
+- **Agent**: orders-view-redesign
+
+### What I did
+
+Completely replaced `src/components/admin/views/OrdersView.tsx` (was 943 lines,
+original PMS1 implementation) with a premium, enterprise-grade redesign
+inspired by Shopify Admin, Stripe Dashboard, and Amazon Seller Central.
+
+#### 1. Dashboard summary cards (14 cards, responsive grid)
+- `SummaryGrid` renders 14 cards in a `grid-cols-2 sm:grid-cols-3 md:grid-cols-4
+  lg:grid-cols-5 xl:grid-cols-7` layout.
+- Cards: Total Orders, Today's Orders, Pending, Confirmed, Packed, Out for
+  Delivery, Delivered, Cancelled, Returned, Refunded, Total Revenue (with
+  trend % chip), Average Order Value, Prescription Orders, Medicine Requests.
+- Each card has a gradient icon circle (`bg-gradient-to-br from-emerald-500
+  to-teal-600` etc.), large bold tabular-nums value, uppercase tracking-wider
+  label, soft `shadow-premium-sm`, `rounded-xl`, hover lift, dark-mode aware.
+- Status cards are clickable → toggle the matching status filter; an emerald
+  pulse dot + ring indicates the filter is active.
+- Revenue card shows a trend pill (`TrendingUp`/`TrendingDown` + `N%`) using
+  `stats.revenueTrend` and a "Today: Rs. …" subtitle.
+
+#### 2. Advanced search & filters
+- Debounced (300ms) search box placeholder advertises all supported fields:
+  order #, customer name, phone, email, product name, payment ID.
+- `FilterPanel` (shared by desktop card + mobile Sheet) contains:
+  - Payment Method select, From/To date inputs, Min/Max amount range inputs.
+  - Order status multi-select chips (each with its colored dot).
+  - Payment status multi-select chips (7 statuses, colored dots).
+  - Toggles: Prescription Orders, Manual Requests, Coupon Used.
+- Quick date presets: Today / Yesterday / Last 7 Days / Last 30 Days.
+- Active filter chips bar with one-click removal + Clear All, animated in/out
+  via Framer Motion `AnimatePresence`.
+- Mobile: filters in a right-side `Sheet` triggered by a Filters button that
+  shows the active-filter count as a badge.
+
+#### 3. Advanced order table (12 columns)
+- Columns: Checkbox · Order # · Customer · Date & Time · Payment Method ·
+  Payment Status · Order Status · Amount (bold, right-aligned, tabular-nums) ·
+  Coupon badge · Prescription badge · Delivery Partner · Quick Actions dropdown.
+- Sticky header row (`sticky top-0 z-10`), hover row highlight, clickable rows
+  → `navigate({ name: "order-detail", id })`.
+- Compact/Comfortable density toggle (Rows3 / Rows4 icons) adjusts row padding.
+- Column visibility dropdown — every column except checkbox/actions can be
+  toggled on/off via `DropdownMenuCheckboxItem`; state persists for the
+  session.
+- Search highlighting: matched substring of `orderNumber` is wrapped in a
+  `<mark>` (emerald tint, dark-mode aware).
+- Per-row "Quick Actions" `MoreHorizontal` dropdown: View detail + 7 status
+  shortcuts that call `inlineStatusChange`.
+- Mobile: cards (checkbox + button) with stacked badges + product thumbnails.
+
+#### 4. Bulk action bar (sticky bottom)
+- Fixed-position, centered bar appears only when rows are selected, animated
+  in/out (Framer Motion spring).
+- Buttons: Confirm (emerald), Pack (teal), Ship (cyan), Deliver (emerald),
+  Cancel (rose) → each calls `bulkUpdateStatus` → `POST /api/admin/orders/bulk`.
+- Print (icons `Printer`) sequentially fetches each invoice PDF via
+  `api.raw(...)` and prints via a hidden iframe.
+- Export CSV (selected) and Clear buttons. Loading spinner when `bulkBusy`.
+
+#### 5. Export & view controls
+- Export All (header) + Export CSV (toolbar) + Export CSV (bulk bar — selected).
+  All use `GET /api/admin/orders/export?...`.
+- Density toggle, Column visibility dropdown in the toolbar above the table.
+
+#### 6. Pagination
+- "Showing 1–20 of N orders" counter in the toolbar.
+- Bottom pagination: Prev / page-number range (with `…` ellipsis via
+  `getPageRange`) / Next, plus "Page X of Y · N total orders" label.
+- Active page uses emerald accent.
+
+#### Technical
+- `"use client"` directive.
+- `@tanstack/react-query` for `/api/admin/orders` list + `/stats` (60s poll).
+- shadcn/ui primitives: Card, Button, Input, Badge, Table, Select, Checkbox,
+  DropdownMenu, Sheet, plus PageHeader/TableSkeleton/EmptyState/CustomerName/
+  CustomerContact/ProductThumb from `../ui`.
+- `lucide-react` icons (~30 distinct icons).
+- `sonner` toast for feedback.
+- `api` + `run` from `../api`, `useAdminStore` from `../admin-store`.
+- Emerald / teal / cyan accent palette throughout (no indigo/blue).
+- `framer-motion` for card entrance, active-chip bar, and bulk-action bar.
+- Full dark-mode support on every badge, card, chip, and gradient.
+- Mobile-first responsive (filters in Sheet, table collapses to cards).
+
+### Verification result
+
+- ✅ `bun run lint` — clean (0 errors, 0 warnings).
+- ✅ `bunx tsc --noEmit` — zero errors in `OrdersView.tsx` or any file I
+  touched. (Pre-existing errors in `src/lib/app-notif-templates.ts`,
+  `src/lib/app-notifs.ts`, and `src/lib/storage/providers/s3.ts` are unrelated
+  to this change — confirmed by grepping the tsc output for `OrdersView`.)
+
+---
+
+## P38-9 — OrderDetailView enterprise redesign
+
+- **Task ID**: P38-9
+- **Agent**: order-detail-redesign
+- **File**: `src/components/admin/views/OrderDetailView.tsx` (completely
+  replaced; 2093 → 2546 lines)
+
+### What I did
+
+Completely rewrote the admin OrderDetailView with a premium, enterprise-grade
+design inspired by Shopify Order Detail + Stripe Payment Detail. The old
+tabbed PMS1 layout was replaced with a single-scroll, sectioned layout.
+
+**New sections (all spec requirements implemented):**
+
+1. **Premium Header Card** — back button, large bold order number, prominent
+   color-coded status badge (ring-2), order date/time, source badges
+   (prescription / manual_request / direct), voucher + Rx-item badges, and a
+   quick-action toolbar (Print Invoice, Download Invoice, Contact Customer,
+   Copy Order ID). Desktop shows a grand-total + payment-status summary block.
+2. **Smart Status Workflow Panel** — current status (large badge) + allowed
+   next statuses rendered as tinted action buttons driven by a client-side
+   `VALID_TRANSITIONS` map that mirrors the server
+   (`src/app/api/admin/orders/[id]/status/route.ts`). Terminal states
+   (cancelled / returned) show an info banner. Cancel opens a dialog that
+   requires a reason.
+3. **Payment Management Panel** — prominent payment status badge, editable
+   transaction ID field, payment gateway display, 7-status update dropdown
+   (pending / paid / partially_paid / failed / refunded / refund_initiated /
+   cancelled) with the exact color mapping from the spec (amber / emerald /
+   cyan / red / rose / orange / slate). A confirmation dialog captures an
+   optional note before calling `PATCH /api/admin/orders/[id]/payment`.
+   Unsaved-changes indicator + COD callout + payment screenshot thumbnail.
+4. **Information Cards Grid (2-col desktop)** — Customer (avatar with
+   initials, name, email, phone, ID, lifetime stats), Delivery Address
+   (formatted, district, instructions, copy + maps), Payment Info (method,
+   status, txn ID, gateway), Pricing Breakdown (subtotal, discounts, voucher,
+   loyalty, delivery, tax, round-off, grand total).
+5. **Ordered Products Table** — image, name, SKU, unit price, qty, line
+   total, Rx badge. Desktop = table; mobile = stacked cards.
+6. **Professional Order Timeline** — vertical timeline with color-coded
+   status icons, gradient connector line, "Current" / "Latest" badges,
+   timestamp, actor (System / Admin), notes. Framer Motion staggered entrance
+   (0.06s per item).
+7. **Internal Notes + Activity Log** — Notes: textarea + send button (Cmd/Ctrl
+   + Enter shortcut), animated list with author + timestamp + delete.
+   Activity Log: chronological feed merging status history, payment events,
+   and note additions into one timeline with kind-specific icons.
+8. **Prescription Card (conditional)** — image gallery with zoom / rotate /
+   download / pagination, thumbnail strip, customer notes, status banners
+   (approved / rejected), Approve / Reject buttons. Reject opens a dialog
+   requiring a reason.
+9. **Mobile Responsive** — cards stack vertically, table → cards, sticky
+   bottom action bar with primary next-status + overflow sheet (Sheet
+   component) for all actions. All touch targets ≥ 44px.
+
+**Technical:**
+- `"use client"` directive
+- `@tanstack/react-query` for data fetching + cache invalidation
+- shadcn/ui: Card, Button, Badge, Table, Dialog, Textarea, Input, Select,
+  Sheet, Label
+- lucide-react icons (no unused imports)
+- `sonner` toast
+- `api` / `run` from `../api`
+- `useAdminStore` for back navigation + customer-detail navigation
+- Emerald accent colors throughout (badges, buttons, timeline, headers)
+- Framer Motion (`motion` + `AnimatePresence`) for section entrance + notes
+- Dark-mode aware (uses `dark:` variants + existing `admin-badge-*` tokens
+  where applicable)
+- Premium design tokens from `globals.css` (`shadow-premium`,
+  `transition-premium`, `scrollbar-premium`, `skeleton-premium`)
+- Component signature: `export function OrderDetailView({ id }: { id: string })`
+
+### Verification result
+
+- ✅ `bun run lint` — clean (0 errors, 0 warnings)
+- ✅ `bunx tsc --noEmit` — no errors in `OrderDetailView.tsx` (pre-existing
+  errors in unrelated files `app-notif-templates.ts`, `app-notifs.ts`,
+  `storage/providers/s3.ts` are not affected by this change)
+- ✅ No duplicate component definitions (verified `grep -c` for
+  `OrderDetailView`, `OrderTimeline`, `PrescriptionCard` = 1 each)
+- ✅ All 9 spec sections implemented and wired to the correct API endpoints
+- ✅ VALID_TRANSITIONS map matches the server-side map exactly
+- ✅ Payment status colors match the spec (amber / emerald / cyan / red /
+  rose / orange / slate)

@@ -1,22 +1,28 @@
 // ============================================================================
 // File: src/components/admin/views/OrderDetailView.tsx
-// Purpose: Comprehensive admin order detail. Organized into clear sections
-//          with a tabbed layout:
-//            - Summary     (items, quantities, prices, totals, item thumbs)
-//            - Customer    (name/phone/email, address with copy + maps link,
-//                          customer's lifetime order stats)
-//            - Payment     (method, status, txn id, breakdown, verify actions)
-//            - Shipping    (address, tracking, carrier, ETA, status advance)
-//            - Prescription (image viewer + approve/reject when Rx linked)
-//            - Notes       (internal OrderNote CRUD + read-only customer notes)
-//            - Timeline    (visual vertical timeline of all status changes)
+// Purpose: Premium, enterprise-grade admin Order Detail view (PMS2 redesign).
+//          Inspired by Shopify Order Detail + Stripe Payment Detail.
 //
-//          Top-of-page always shows: back, order #, status badge, source,
-//          quick-action status buttons (Confirm / Pack / Ship / Deliver),
-//          invoice + shipping-label downloads.
+//          Layout (single scroll, no tabs):
+//            1. Premium Header Card        — order #, status, date, source,
+//                                             quick action toolbar
+//            2. Smart Status Workflow      — current status + allowed next
+//                                             transitions (VALID_TRANSITIONS)
+//            3. Payment Management Panel   — status badge, editable txn id,
+//                                             gateway, update dropdown w/ note
+//            4. Information Cards Grid      — Customer / Address / Payment /
+//                                             Pricing (2-col on desktop)
+//            5. Ordered Products Table     — image, name, qty, price, total,
+//                                             Rx badge; mobile = cards
+//            6. Order Timeline             — vertical, color-coded, staggered
+//            7. Notes + Activity Log       — internal notes CRUD + activity
+//                                             feed (status + payment events)
+//            8. Prescription Card          — image gallery + verify/reject
+//                                             (conditional)
+//            9. Mobile Sticky Action Bar   — primary next-status action +
+//                                             cancel/invoice shortcuts
 //
-//          Mobile: card sections stack vertically; quick actions collapse
-//          into a Sheet (bottom-sheet). Touch targets ≥ 44px.
+//          Mobile-first, dark-mode aware, emerald accent. Touch targets ≥44px.
 // ============================================================================
 
 "use client";
@@ -30,12 +36,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  Tabs,
-  TabsList,
-  TabsTrigger,
-  TabsContent,
-} from "@/components/ui/tabs";
-import {
   Select,
   SelectContent,
   SelectItem,
@@ -47,57 +47,9 @@ import {
   SheetContent,
   SheetHeader,
   SheetTitle,
-  SheetTrigger,
 } from "@/components/ui/sheet";
-import {
-  StatusBadge,
-  ProductThumb,
-  EmptyState,
-  CustomerName,
-} from "../ui";
+import { EmptyState, ProductThumb } from "../ui";
 import { Badge } from "@/components/ui/badge";
-import {
-  ArrowLeft,
-  Download,
-  CheckCircle2,
-  PackageCheck,
-  Truck,
-  PartyPopper,
-  XCircle,
-  Clock,
-  Plus,
-  Trash2,
-  Loader2,
-  Search,
-  User,
-  MapPin,
-  CreditCard,
-  FileImage,
-  ClipboardList,
-  Receipt,
-  Hash,
-  CalendarClock,
-  Copy,
-  ExternalLink,
-  Phone,
-  Mail,
-  StickyNote,
-  Pencil,
-  ShieldCheck,
-  ShieldX,
-  RotateCw,
-  ZoomIn,
-  ZoomOut,
-  Package,
-  ChevronRight,
-  History,
-  Wallet,
-  Banknote,
-  QrCode,
-  Smartphone,
-} from "lucide-react";
-import { useAdminStore } from "../admin-store";
-import { formatCurrency, formatDateTime, formatDate } from "@/lib/format";
 import {
   Table,
   TableBody,
@@ -115,9 +67,67 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { ORDER_STATUS_FLOW, PAYMENT_METHOD_LABEL, ORDER_STATUS_LABEL } from "@/lib/constants";
 import { motion, AnimatePresence } from "framer-motion";
+import {
+  ArrowLeft,
+  ArrowRight,
+  Download,
+  Printer,
+  CheckCircle2,
+  PackageCheck,
+  Truck,
+  PartyPopper,
+  XCircle,
+  Clock,
+  Trash2,
+  Loader2,
+  User,
+  MapPin,
+  CreditCard,
+  FileImage,
+  ClipboardList,
+  Receipt,
+  Hash,
+  CalendarClock,
+  Copy,
+  ExternalLink,
+  Phone,
+  Mail,
+  StickyNote,
+  ShieldCheck,
+  ShieldX,
+  RotateCw,
+  ZoomIn,
+  ZoomOut,
+  Package,
+  History,
+  Wallet,
+  Banknote,
+  QrCode,
+  Smartphone,
+  MessageSquare,
+  ChevronRight,
+  AlertTriangle,
+  CircleCheck,
+  CircleDot,
+  Building2,
+  IdCard,
+  Send,
+  Activity,
+} from "lucide-react";
+import { useAdminStore } from "../admin-store";
+import {
+  formatCurrency,
+  formatDateTime,
+  formatDate,
+  getInitials,
+} from "@/lib/format";
+import { PAYMENT_METHOD_LABEL } from "@/lib/constants";
+import { cn } from "@/lib/utils";
 
+// ---------------------------------------------------------------------------
+// Types — mirror the API contract (GET /api/admin/orders/[id])
+// ---------------------------------------------------------------------------
 type OrderNote = {
   id: string;
   body: string;
@@ -135,6 +145,31 @@ type PrescriptionData = {
   adminNotes: string | null;
   createdAt: string;
 } | null;
+
+type StatusHistoryEntry = {
+  id: string;
+  status: string;
+  note: string | null;
+  createdBy: string | null;
+  createdAt: string;
+};
+
+type OrderItem = {
+  id: string;
+  name: string;
+  image: string | null;
+  sku?: string | null;
+  mrp: number;
+  qty: number;
+  lineTotal: number;
+  appliedDiscountPct: number;
+  product?: {
+    id: string;
+    name: string;
+    stock: number;
+    prescriptionRequired?: boolean;
+  } | null;
+};
 
 type OrderDetail = {
   id: string;
@@ -178,14 +213,294 @@ type OrderDetail = {
   cancelledAt: string | null;
   createdAt: string;
   updatedAt: string;
-  customer: { id: string; name: string; email: string; phone: string; isActive: boolean } | null;
-  items: any[];
-  statusHistory: any[];
+  customer: {
+    id: string;
+    name: string;
+    email: string;
+    phone: string;
+    isActive: boolean;
+  } | null;
+  items: OrderItem[];
+  statusHistory: StatusHistoryEntry[];
   orderNotes: OrderNote[];
   prescription: PrescriptionData;
   customerStats: { orderCount: number; totalSpent: number } | null;
 };
 
+// ---------------------------------------------------------------------------
+// Smart status workflow — mirrors VALID_TRANSITIONS on the server
+// (src/app/api/admin/orders/[id]/status/route.ts). Kept in sync so the UI
+// only offers transitions the API will accept.
+// ---------------------------------------------------------------------------
+const VALID_TRANSITIONS: Record<string, string[]> = {
+  pending: ["confirmed", "cancelled"],
+  confirmed: ["packed", "out_for_delivery", "delivered", "cancelled"],
+  packed: ["out_for_delivery", "delivered", "cancelled"],
+  out_for_delivery: ["delivered", "cancelled"],
+  delivered: ["returned"],
+  returned: [],
+  cancelled: [],
+};
+
+const TERMINAL_STATUSES = new Set(["cancelled", "returned"]);
+
+// Visual config for each status — icon, label, and tint (used for badges,
+// timeline dots, and the "next status" action buttons).
+type StatusVisual = {
+  label: string;
+  icon: typeof CheckCircle2;
+  dot: string; // dot color
+  ring: string; // ring-2 ring-... classes for prominent badges
+  tint: string; // action button background
+  tintHover: string;
+};
+
+const STATUS_VISUAL: Record<string, StatusVisual> = {
+  pending: {
+    label: "Pending",
+    icon: Clock,
+    dot: "bg-amber-500",
+    ring: "ring-amber-200 dark:ring-amber-900/50",
+    tint: "bg-amber-600",
+    tintHover: "hover:bg-amber-700",
+  },
+  confirmed: {
+    label: "Confirmed",
+    icon: CheckCircle2,
+    dot: "bg-cyan-500",
+    ring: "ring-cyan-200 dark:ring-cyan-900/50",
+    tint: "bg-cyan-600",
+    tintHover: "hover:bg-cyan-700",
+  },
+  packed: {
+    label: "Packed",
+    icon: PackageCheck,
+    dot: "bg-teal-600",
+    ring: "ring-teal-200 dark:ring-teal-900/50",
+    tint: "bg-teal-600",
+    tintHover: "hover:bg-teal-700",
+  },
+  out_for_delivery: {
+    label: "Out for Delivery",
+    icon: Truck,
+    dot: "bg-orange-500",
+    ring: "ring-orange-200 dark:ring-orange-900/50",
+    tint: "bg-orange-600",
+    tintHover: "hover:bg-orange-700",
+  },
+  delivered: {
+    label: "Delivered",
+    icon: PartyPopper,
+    dot: "bg-emerald-500",
+    ring: "ring-emerald-200 dark:ring-emerald-900/50",
+    tint: "bg-emerald-600",
+    tintHover: "hover:bg-emerald-700",
+  },
+  cancelled: {
+    label: "Cancelled",
+    icon: XCircle,
+    dot: "bg-rose-500",
+    ring: "ring-rose-200 dark:ring-rose-900/50",
+    tint: "bg-rose-600",
+    tintHover: "hover:bg-rose-700",
+  },
+  returned: {
+    label: "Returned",
+    icon: RotateCw,
+    dot: "bg-stone-500",
+    ring: "ring-stone-200 dark:ring-stone-700/60",
+    tint: "bg-stone-600",
+    tintHover: "hover:bg-stone-700",
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Payment status visual config — colors per the spec.
+// pending: amber, paid: emerald, partially_paid: cyan, failed: red,
+// refunded: rose, refund_initiated: orange, cancelled: slate
+// ---------------------------------------------------------------------------
+type PaymentVisual = {
+  label: string;
+  badge: string; // bg + text classes
+  dot: string;
+};
+
+const PAYMENT_VISUAL: Record<string, PaymentVisual> = {
+  pending: {
+    label: "Pending",
+    badge:
+      "bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-950/50 dark:text-amber-300 dark:border-amber-900/60",
+    dot: "bg-amber-500",
+  },
+  paid: {
+    label: "Paid",
+    badge:
+      "bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-900/60",
+    dot: "bg-emerald-500",
+  },
+  partially_paid: {
+    label: "Partially Paid",
+    badge:
+      "bg-cyan-100 text-cyan-800 border-cyan-200 dark:bg-cyan-950/50 dark:text-cyan-300 dark:border-cyan-900/60",
+    dot: "bg-cyan-500",
+  },
+  failed: {
+    label: "Failed",
+    badge:
+      "bg-red-100 text-red-800 border-red-200 dark:bg-red-950/50 dark:text-red-300 dark:border-red-900/60",
+    dot: "bg-red-500",
+  },
+  refunded: {
+    label: "Refunded",
+    badge:
+      "bg-rose-100 text-rose-800 border-rose-200 dark:bg-rose-950/50 dark:text-rose-300 dark:border-rose-900/60",
+    dot: "bg-rose-500",
+  },
+  refund_initiated: {
+    label: "Refund Initiated",
+    badge:
+      "bg-orange-100 text-orange-800 border-orange-200 dark:bg-orange-950/50 dark:text-orange-300 dark:border-orange-900/60",
+    dot: "bg-orange-500",
+  },
+  cancelled: {
+    label: "Cancelled",
+    badge:
+      "bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800/60 dark:text-slate-300 dark:border-slate-700",
+    dot: "bg-slate-500",
+  },
+};
+
+const PAYMENT_STATUS_ORDER = [
+  "pending",
+  "paid",
+  "partially_paid",
+  "failed",
+  "refunded",
+  "refund_initiated",
+  "cancelled",
+];
+
+// ---------------------------------------------------------------------------
+// Status badge helper components
+// ---------------------------------------------------------------------------
+function OrderStatusBadge({
+  status,
+  size = "md",
+}: {
+  status: string;
+  size?: "sm" | "md" | "lg";
+}) {
+  const v = STATUS_VISUAL[status] || STATUS_VISUAL.pending;
+  const Icon = v.icon;
+  const sizeCls =
+    size === "lg"
+      ? "text-sm px-3 py-1.5 gap-1.5"
+      : size === "sm"
+        ? "text-[11px] px-2 py-0.5 gap-1"
+        : "text-xs px-2.5 py-1 gap-1";
+  const iconCls = size === "lg" ? "size-4" : "size-3";
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center rounded-full border font-semibold ring-2",
+        v.ring,
+        sizeCls,
+        status === "delivered"
+          ? "bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-900/60"
+          : status === "cancelled"
+            ? "bg-rose-100 text-rose-800 border-rose-200 dark:bg-rose-950/50 dark:text-rose-300 dark:border-rose-900/60"
+            : status === "pending"
+              ? "bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-950/50 dark:text-amber-300 dark:border-amber-900/60"
+              : status === "confirmed"
+                ? "bg-cyan-100 text-cyan-800 border-cyan-200 dark:bg-cyan-950/50 dark:text-cyan-300 dark:border-cyan-900/60"
+                : status === "packed"
+                  ? "bg-teal-100 text-teal-800 border-teal-200 dark:bg-teal-950/50 dark:text-teal-300 dark:border-teal-900/60"
+                  : status === "out_for_delivery"
+                    ? "bg-orange-100 text-orange-800 border-orange-200 dark:bg-orange-950/50 dark:text-orange-300 dark:border-orange-900/60"
+                    : "bg-stone-100 text-stone-700 border-stone-200 dark:bg-stone-800/60 dark:text-stone-300 dark:border-stone-700"
+      )}
+    >
+      <Icon className={iconCls} />
+      {v.label}
+    </span>
+  );
+}
+
+function PaymentStatusBadge({
+  status,
+  size = "md",
+}: {
+  status: string;
+  size?: "sm" | "md" | "lg";
+}) {
+  const v = PAYMENT_VISUAL[status] || PAYMENT_VISUAL.pending;
+  const sizeCls =
+    size === "lg"
+      ? "text-sm px-3 py-1.5 gap-1.5"
+      : size === "sm"
+        ? "text-[11px] px-2 py-0.5 gap-1"
+        : "text-xs px-2.5 py-1 gap-1";
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center rounded-full border font-semibold",
+        v.badge,
+        sizeCls
+      )}
+    >
+      <span className={cn("size-1.5 rounded-full", v.dot)} />
+      {v.label}
+    </span>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Source badge
+// ---------------------------------------------------------------------------
+function SourceBadge({ source }: { source: string }) {
+  if (source === "prescription") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full border border-teal-200 bg-teal-50 px-2.5 py-0.5 text-xs font-medium text-teal-700 dark:border-teal-900/50 dark:bg-teal-950/40 dark:text-teal-300">
+        <FileImage className="size-3" /> Prescription
+      </span>
+    );
+  }
+  if (source === "manual_request") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-700 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-300">
+        <ClipboardList className="size-3" /> Manual Request
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-xs font-medium text-slate-700 dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-300">
+      <Package className="size-3" /> Direct Order
+    </span>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Payment method icon helper
+// ---------------------------------------------------------------------------
+function PaymentMethodIcon({ method }: { method: string }) {
+  const Icon =
+    method === "cod"
+      ? Banknote
+      : method === "qr"
+        ? QrCode
+        : method === "upi"
+          ? Smartphone
+          : method === "online" ||
+              method === "razorpay" ||
+              method === "cashfree"
+            ? CreditCard
+            : Wallet;
+  return <Icon className="size-4 text-muted-foreground" />;
+}
+
+// ===========================================================================
+// MAIN COMPONENT
+// ===========================================================================
 export function OrderDetailView({ id }: { id: string }) {
   const back = useAdminStore((s) => s.back);
   const navigate = useAdminStore((s) => s.navigate);
@@ -196,57 +511,48 @@ export function OrderDetailView({ id }: { id: string }) {
     queryFn: () => api.get<OrderDetail>(`/api/admin/orders/${id}`),
   });
 
+  // -------- Local UI state --------
+  const [busy, setBusy] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
-  const [addOpen, setAddOpen] = useState(false);
-  const [search, setSearch] = useState("");
-  const [qty, setQty] = useState(1);
-  const [searchResults, setSearchResults] = useState<any[]>([]);
-  const [searching, setSearching] = useState(false);
-  const [paymentStatus, setPaymentStatus] = useState("pending");
-  const [busy, setBusy] = useState(false);
-  const [shipOpen, setShipOpen] = useState(false);
-  const [rejectOpen, setRejectOpen] = useState(false);
-  const [rejectReason, setRejectReason] = useState("");
-  const [activeTab, setActiveTab] = useState("summary");
 
-  // Local notes state — mirrors order.orderNotes but is updated optimistically
-  // when the admin adds/edits/deletes a note. The TanStack query is also
-  // invalidated so a refetch reconciles any drift.
+  // Payment management
+  const [paymentStatus, setPaymentStatus] = useState("pending");
+  const [paymentIdDraft, setPaymentIdDraft] = useState("");
+  const [paymentNote, setPaymentNote] = useState("");
+  const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
+  const [savingPayment, setSavingPayment] = useState(false);
+
+  // Notes
   const [notes, setNotes] = useState<OrderNote[]>([]);
   const [newNote, setNewNote] = useState("");
-  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
-  const [editingBody, setEditingBody] = useState("");
   const [savingNote, setSavingNote] = useState(false);
 
-  // Keep payment status + notes in sync with order data.
+  // Mobile action sheet
+  const [mobileActionsOpen, setMobileActionsOpen] = useState(false);
+
+  // Keep payment + notes state in sync with order data
   useEffect(() => {
     if (order) {
       setPaymentStatus(order.paymentStatus);
+      setPaymentIdDraft(order.paymentId || "");
       setNotes(order.orderNotes ?? []);
     }
-  }, [order?.paymentStatus, order?.orderNotes]);
+  }, [order?.paymentStatus, order?.paymentId, order?.orderNotes]);
 
-  // Default to the Prescription tab if the order has an unverified Rx
-  // (draws the admin's attention to the verification flow on first open).
-  useEffect(() => {
-    if (order?.prescription && order.prescription.status === "pending") {
-      setActiveTab("prescription");
-    }
-  }, [order?.prescription?.status]);
-
-  // --------------------- Status changes ---------------------
+  // -------- Action handlers --------
   async function changeStatus(status: string, reason?: string, note?: string) {
     setBusy(true);
     const r = await run(
       () => api.patch(`/api/admin/orders/${id}/status`, { status, reason, note }),
-      { success: `Order marked as ${ORDER_STATUS_LABEL[status]}`, error: "Status update failed" }
+      { success: `Order marked as ${STATUS_VISUAL[status]?.label || status}`, error: "Status update failed" }
     );
     setBusy(false);
     if (r) {
       qc.invalidateQueries({ queryKey: ["admin-order", id] });
       qc.invalidateQueries({ queryKey: ["admin-orders"] });
       qc.invalidateQueries({ queryKey: ["admin-orders-stats"] });
+      setMobileActionsOpen(false);
     }
   }
 
@@ -266,23 +572,63 @@ export function OrderDetailView({ id }: { id: string }) {
     }
   }
 
-  async function downloadShippingLabel() {
-    try {
-      const buf = await api.raw(`/api/admin/orders/${id}/shipping-label`);
-      const blob = new Blob([buf], { type: "application/pdf" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `shipping-label-${order?.orderNumber || "order"}.pdf`;
-      a.click();
-      URL.revokeObjectURL(url);
-      toast.success("Shipping label downloaded");
-    } catch (e: any) {
-      toast.error(e?.message || "Failed to download shipping label");
+  function printInvoice() {
+    // Reuse the invoice endpoint — open in a new tab where the browser's
+    // built-in PDF viewer exposes its print button. Cleaner than re-rendering
+    // the order into a print stylesheet.
+    window.open(`/api/admin/orders/${id}/invoice`, "_blank", "noopener");
+  }
+
+  function contactCustomer() {
+    if (order?.customer?.phone) {
+      window.location.href = `tel:${order.customer.phone}`;
+    } else if (order?.shipPhone) {
+      window.location.href = `tel:${order.shipPhone}`;
+    } else {
+      toast.error("No phone number on this order");
     }
   }
 
-  // --------------------- Note CRUD ---------------------
+  function copyOrderId() {
+    if (!order) return;
+    navigator.clipboard.writeText(order.id).then(
+      () => toast.success("Order ID copied"),
+      () => toast.error("Failed to copy")
+    );
+  }
+
+  // -------- Payment update --------
+  async function confirmPaymentUpdate() {
+    if (!order) return;
+    if (paymentStatus === order.paymentStatus && paymentIdDraft === (order.paymentId || "")) {
+      toast.info("No changes to save");
+      setPaymentDialogOpen(false);
+      return;
+    }
+    setSavingPayment(true);
+    const r = await run(
+      () =>
+        api.patch(`/api/admin/orders/${id}/payment`, {
+          paymentStatus,
+          paymentId: paymentIdDraft.trim() || undefined,
+          note: paymentNote.trim() || undefined,
+        }),
+      {
+        success: "Payment status updated",
+        error: "Failed to update payment",
+        silent: true,
+      }
+    );
+    setSavingPayment(false);
+    if (r) {
+      setPaymentDialogOpen(false);
+      setPaymentNote("");
+      qc.invalidateQueries({ queryKey: ["admin-order", id] });
+      toast.success("Payment status updated");
+    }
+  }
+
+  // -------- Notes CRUD --------
   async function addNote() {
     if (!newNote.trim()) return;
     setSavingNote(true);
@@ -299,32 +645,13 @@ export function OrderDetailView({ id }: { id: string }) {
     }
   }
 
-  async function saveEditNote(noteId: string) {
-    if (!editingBody.trim()) return;
-    setSavingNote(true);
-    const r = await run(
-      () =>
-        api.patch<OrderNote>(`/api/admin/orders/${id}/notes/${noteId}`, {
-          body: editingBody.trim(),
-        }),
-      { success: "Note updated", error: "Failed to update note", silent: true }
-    );
-    setSavingNote(false);
-    if (r) {
-      setNotes((prev) => prev.map((n) => (n.id === noteId ? r : n)));
-      setEditingNoteId(null);
-      setEditingBody("");
-      qc.invalidateQueries({ queryKey: ["admin-order", id] });
-      toast.success("Note updated");
-    }
-  }
-
   async function deleteNote(noteId: string) {
     if (!confirm("Delete this note? This cannot be undone.")) return;
-    const r = await run(
-      () => api.del(`/api/admin/orders/${id}/notes/${noteId}`),
-      { success: "Note deleted", error: "Failed to delete note", silent: true }
-    );
+    const r = await run(() => api.del(`/api/admin/orders/${id}/notes/${noteId}`), {
+      success: "Note deleted",
+      error: "Failed to delete note",
+      silent: true,
+    });
     if (r) {
       setNotes((prev) => prev.filter((n) => n.id !== noteId));
       qc.invalidateQueries({ queryKey: ["admin-order", id] });
@@ -332,76 +659,11 @@ export function OrderDetailView({ id }: { id: string }) {
     }
   }
 
-  // --------------------- Add product (existing flow) ---------------------
-  async function searchProducts() {
-    if (!search.trim()) return;
-    setSearching(true);
-    try {
-      const res = await api.get<{ items: any[] }>(
-        `/api/admin/products?search=${encodeURIComponent(search)}&pageSize=10`
-      );
-      setSearchResults(res.items);
-    } catch {
-      setSearchResults([]);
-    }
-    setSearching(false);
-  }
-
-  async function addProduct(productId: string) {
-    setBusy(true);
-    const r = await run(() => api.post(`/api/admin/orders/${id}/items`, { productId, qty }), {
-      success: "Product added",
-      error: "Add failed",
-    });
-    setBusy(false);
-    if (r) {
-      setAddOpen(false);
-      setSearch("");
-      setSearchResults([]);
-      setQty(1);
-      qc.invalidateQueries({ queryKey: ["admin-order", id] });
-    }
-  }
-
-  async function updateItemQty(itemId: string, newQty: number) {
-    if (newQty < 1) return;
-    const r = await run(
-      () => api.patch(`/api/admin/orders/${id}/item/${itemId}`, { qty: newQty }),
-      { error: "Update failed", silent: true }
-    );
-    if (r) qc.invalidateQueries({ queryKey: ["admin-order", id] });
-  }
-
-  async function removeItem(itemId: string) {
-    const r = await run(() => api.del(`/api/admin/orders/${id}/item/${itemId}`), {
-      success: "Item removed",
-      error: "Remove failed",
-    });
-    if (r) qc.invalidateQueries({ queryKey: ["admin-order", id] });
-  }
-
-  // --------------------- Payment status update ---------------------
-  const [savingPayment, setSavingPayment] = useState(false);
-  async function updatePayment() {
-    if (!order) return;
-    setSavingPayment(true);
-    const r = await run(
-      () => api.patch(`/api/admin/orders/${id}/payment`, { paymentStatus }),
-      { success: "Payment status updated", error: "Failed to update payment", silent: true }
-    );
-    setSavingPayment(false);
-    if (r) qc.invalidateQueries({ queryKey: ["admin-order", id] });
-  }
-
-  // --------------------- Prescription verify ---------------------
+  // -------- Prescription verify --------
   async function verifyPrescription(action: "approve" | "reject", reason?: string) {
     setBusy(true);
     const r = await run(
-      () =>
-        api.post(`/api/admin/orders/${id}/prescription-verify`, {
-          action,
-          reason,
-        }),
+      () => api.post(`/api/admin/orders/${id}/prescription-verify`, { action, reason }),
       {
         success:
           action === "approve"
@@ -418,118 +680,40 @@ export function OrderDetailView({ id }: { id: string }) {
     }
   }
 
-  // --------------------- Shipping info ---------------------
-  // The shipping API packs trackingNumber + carrier into a [shipping]
-  // header line at the top of adminNotes (see shipping/route.ts). Parse
-  // it back out so we can pre-fill the edit form.
-  const shippingInfo = useMemo(() => {
-    if (!order?.adminNotes) return { trackingNumber: "", carrier: "" };
-    const m = order.adminNotes.match(/^\[shipping\](.*)$/m);
-    if (!m) return { trackingNumber: "", carrier: "" };
-    try {
-      const parsed = JSON.parse(m[1]);
-      return {
-        trackingNumber: parsed.trackingNumber || "",
-        carrier: parsed.carrier || "",
-      };
-    } catch {
-      return { trackingNumber: "", carrier: "" };
-    }
-  }, [order?.adminNotes]);
+  // -------- Derived data --------
+  const allowedNext = order ? VALID_TRANSITIONS[order.status] ?? [] : [];
+  const isTerminal = order ? TERMINAL_STATUSES.has(order.status) : false;
 
-  const [trackingNumber, setTrackingNumber] = useState("");
-  const [carrier, setCarrier] = useState("");
-  const [estimatedDelivery, setEstimatedDelivery] = useState("");
-  useEffect(() => {
-    setTrackingNumber(shippingInfo.trackingNumber);
-    setCarrier(shippingInfo.carrier);
-    setEstimatedDelivery(order?.estimatedDelivery ? order.estimatedDelivery.slice(0, 10) : "");
-  }, [shippingInfo.trackingNumber, shippingInfo.carrier, order?.estimatedDelivery]);
-
-  async function saveShipping() {
-    setBusy(true);
-    const r = await run(
-      () =>
-        api.patch(`/api/admin/orders/${id}/shipping`, {
-          trackingNumber: trackingNumber || null,
-          carrier: carrier || null,
-          estimatedDelivery: estimatedDelivery || null,
-        }),
-      { success: "Shipping details updated", error: "Failed to update shipping" }
+  const mapsQuery = useMemo(() => {
+    if (!order) return "";
+    return encodeURIComponent(
+      [
+        order.shipLine1,
+        order.shipLine2,
+        order.shipLocality,
+        order.shipCity,
+        order.shipState,
+        order.shipPincode,
+      ]
+        .filter(Boolean)
+        .join(", ")
     );
-    setBusy(false);
-    if (r) {
-      setShipOpen(false);
-      qc.invalidateQueries({ queryKey: ["admin-order", id] });
-    }
-  }
+  }, [order]);
+  const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${mapsQuery}`;
 
-  // --------------------- Render helpers ---------------------
-  if (isLoading) {
-    return (
-      <div>
-        <Button variant="ghost" size="sm" onClick={back} className="mb-3">
-          <ArrowLeft className="size-4 mr-1" /> Back
-        </Button>
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <Card className="lg:col-span-2"><CardContent className="pt-6 h-48 bg-muted/30 animate-pulse" /></Card>
-          <Card><CardContent className="pt-6 h-48 bg-muted/30 animate-pulse" /></Card>
-        </div>
-      </div>
-    );
-  }
-  if (!order) {
-    return (
-      <div>
-        <Button variant="ghost" size="sm" onClick={back} className="mb-3">
-          <ArrowLeft className="size-4 mr-1" /> Back
-        </Button>
-        <EmptyState title="Order not found" />
-      </div>
-    );
-  }
-
-  const isCancelled = order.status === "cancelled";
-  const isDelivered = order.status === "delivered";
-  const canAdvance = !isCancelled && !isDelivered;
-  const currentIdx = ORDER_STATUS_FLOW.indexOf(order.status);
-  const nextStatus =
-    canAdvance && currentIdx >= 0 && currentIdx < ORDER_STATUS_FLOW.length - 1
-      ? ORDER_STATUS_FLOW[currentIdx + 1]
-      : null;
-
-  const NEXT_BUTTONS: Record<string, { label: string; icon: any; tint: string }> = {
-    confirmed: { label: "Mark Confirmed", icon: CheckCircle2, tint: "bg-cyan-600 hover:bg-cyan-700" },
-    packed: { label: "Mark Packed", icon: PackageCheck, tint: "bg-teal-700 hover:bg-teal-800" },
-    out_for_delivery: { label: "Mark Shipped", icon: Truck, tint: "bg-orange-600 hover:bg-orange-700" },
-    delivered: { label: "Mark Delivered", icon: PartyPopper, tint: "bg-emerald-600 hover:bg-emerald-700" },
-  };
-
-  // Build the maps URL from the shipping address (Google Maps search).
-  const mapsQuery = encodeURIComponent(
-    [
+  const fullAddress = useMemo(() => {
+    if (!order) return "";
+    return [
+      order.shipName,
       order.shipLine1,
       order.shipLine2,
       order.shipLocality,
-      order.shipCity,
-      order.shipState,
-      order.shipPincode,
+      `${order.shipCity}, ${order.shipState} ${order.shipPincode}`,
+      `Phone: ${order.shipPhone}`,
     ]
       .filter(Boolean)
-      .join(", ")
-  );
-  const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${mapsQuery}`;
-
-  const fullAddress = [
-    order.shipName,
-    order.shipLine1,
-    order.shipLine2,
-    order.shipLocality,
-    `${order.shipCity}, ${order.shipState} ${order.shipPincode}`,
-    `Phone: ${order.shipPhone}`,
-  ]
-    .filter(Boolean)
-    .join("\n");
+      .join("\n");
+  }, [order]);
 
   function copyAddress() {
     navigator.clipboard.writeText(fullAddress).then(
@@ -538,994 +722,1059 @@ export function OrderDetailView({ id }: { id: string }) {
     );
   }
 
-  const hasRxItems = order.items.some((it: any) => it.product?.prescriptionRequired);
+  // Activity feed — combines status history + notes into one chronological list.
+  // Status history entries with notes that look like "Payment status: X → Y"
+  // are tagged as payment events so we can show them with a distinct icon.
+  type ActivityItem = {
+    id: string;
+    kind: "status" | "payment" | "note";
+    title: string;
+    description?: string | null;
+    timestamp: string;
+    actor?: string | null;
+  };
+  const activityFeed: ActivityItem[] = useMemo(() => {
+    if (!order) return [];
+    const items: ActivityItem[] = [];
 
-  return (
-    <div>
-      {/* ----------------------- Header ----------------------- */}
-      <div className="flex items-start justify-between gap-3 mb-4 flex-wrap">
-        <div className="flex items-center gap-2 flex-wrap min-w-0">
-          <Button variant="ghost" size="sm" onClick={back}>
-            <ArrowLeft className="size-4 mr-1" /> Back
-          </Button>
-          <h1 className="text-2xl font-semibold tracking-tight truncate">
-            {order.orderNumber}
-          </h1>
-          <StatusBadge status={order.status} />
-          {order.source === "prescription" && (
-            <span className="inline-flex items-center gap-1 rounded-full border border-teal-200 bg-teal-50 px-2.5 py-0.5 text-xs font-medium text-teal-700 dark:border-teal-900/50 dark:bg-teal-950/40 dark:text-teal-300">
-              <FileImage className="size-3" /> Prescription Order
-            </span>
-          )}
-          {order.source === "manual_request" && (
-            <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-700">
-              <ClipboardList className="size-3" /> Manual Request
-            </span>
-          )}
-          {hasRxItems && (
-            <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-0.5 text-xs font-medium text-rose-700">
-              <FileImage className="size-3" /> Contains Rx Items
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <Button variant="outline" size="sm" onClick={downloadInvoice} className="gap-1.5">
-            <Download className="size-4" /> Invoice
-          </Button>
-          <Button variant="outline" size="sm" onClick={downloadShippingLabel} className="gap-1.5">
-            <Truck className="size-4" /> Label
-          </Button>
+    for (const h of order.statusHistory) {
+      const isPaymentEvent =
+        h.note?.startsWith("Payment status:") || h.note?.includes("Payment status:");
+      items.push({
+        id: h.id,
+        kind: isPaymentEvent ? "payment" : "status",
+        title: isPaymentEvent
+          ? "Payment status changed"
+          : `Order ${STATUS_VISUAL[h.status]?.label || h.status.replace(/_/g, " ")}`,
+        description: h.note,
+        timestamp: h.createdAt,
+        actor: h.createdBy === "system" ? "System" : "Admin",
+      });
+    }
+
+    for (const n of order.orderNotes) {
+      items.push({
+        id: `note-${n.id}`,
+        kind: "note",
+        title: "Internal note added",
+        description: n.body,
+        timestamp: n.createdAt,
+        actor: n.authorName || "Admin",
+      });
+    }
+
+    // Sort newest first.
+    return items.sort(
+      (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+    );
+  }, [order]);
+
+  // -------- Loading & empty states --------
+  if (isLoading) {
+    return (
+      <div className="space-y-4">
+        <SkeletonHeader />
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <Card className="lg:col-span-2">
+            <CardContent className="pt-6 h-64 skeleton-premium rounded-xl" />
+          </Card>
+          <Card>
+            <CardContent className="pt-6 h-64 skeleton-premium rounded-xl" />
+          </Card>
         </div>
       </div>
+    );
+  }
 
-      {/* ----------------------- Quick status actions (always visible) ----------------------- */}
-      <Card className="mb-4 border-emerald-200/60">
-        <CardContent className="pt-4 pb-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="flex items-center gap-2 mr-auto">
-              <span className="text-sm text-muted-foreground">Current status:</span>
-              <StatusBadge status={order.status} />
-              {order.estimatedDelivery && (
-                <span className="text-xs text-muted-foreground inline-flex items-center gap-1 ml-2">
-                  <CalendarClock className="size-3.5" /> ETA: {formatDate(order.estimatedDelivery)}
-                </span>
-              )}
+  if (!order) {
+    return (
+      <div className="space-y-4">
+        <Button variant="ghost" size="sm" onClick={back} className="gap-1.5">
+          <ArrowLeft className="size-4" /> Back to Orders
+        </Button>
+        <EmptyState
+          title="Order not found"
+          description="This order may have been deleted, or the ID is invalid."
+          icon={<Package className="size-6" />}
+          action={
+            <Button onClick={() => navigate({ name: "orders" })} variant="outline">
+              View all orders
+            </Button>
+          }
+        />
+      </div>
+    );
+  }
+
+  const hasRxItems = order.items.some((it) => it.product?.prescriptionRequired);
+
+  return (
+    <div className="space-y-5 pb-24 lg:pb-6">
+      {/* ================================================================
+          1. PREMIUM HEADER CARD
+          ================================================================ */}
+      <motion.div
+        initial={{ opacity: 0, y: -8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.25 }}
+      >
+        <Card className="overflow-hidden border-emerald-200/60 dark:border-emerald-900/40 shadow-premium">
+          <CardContent className="p-0">
+            {/* Top row: back + meta */}
+            <div className="flex items-center gap-2 px-4 sm:px-6 pt-4 pb-3 border-b border-border/60 bg-gradient-to-r from-emerald-50/50 to-transparent dark:from-emerald-950/20">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={back}
+                className="gap-1.5 -ml-1 min-h-[40px]"
+              >
+                <ArrowLeft className="size-4" /> Back to Orders
+              </Button>
+              <div className="ml-auto hidden sm:flex items-center gap-1.5 text-xs text-muted-foreground">
+                <CalendarClock className="size-3.5" />
+                Placed {formatDateTime(order.createdAt)}
+              </div>
             </div>
-            {canAdvance && nextStatus && NEXT_BUTTONS[nextStatus] && (() => {
-              const NextBtn = NEXT_BUTTONS[nextStatus];
-              const Icon = NextBtn.icon;
-              return (
-                <Button
-                  className={`text-white ${NextBtn.tint} min-h-[44px]`}
-                  disabled={busy}
-                  onClick={() => {
-                    // When marking as shipped, prompt for tracking number.
-                    if (nextStatus === "out_for_delivery") {
-                      setShipOpen(true);
-                    } else {
-                      changeStatus(nextStatus);
-                    }
-                  }}
-                >
-                  {busy ? <Loader2 className="size-4 mr-1.5 animate-spin" /> : <Icon className="size-4 mr-1.5" />}
-                  {NextBtn.label}
-                </Button>
-              );
-            })()}
-            {!isCancelled && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="text-rose-600 hover:text-rose-700 hover:border-rose-300 min-h-[44px]"
-                disabled={busy || isDelivered}
-                onClick={() => setCancelOpen(true)}
-              >
-                <XCircle className="size-4 mr-1.5" /> Cancel
-              </Button>
-            )}
-            {isDelivered && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="min-h-[44px]"
-                disabled={busy}
-                onClick={() => changeStatus("returned")}
-              >
-                <RotateCw className="size-4 mr-1.5" /> Mark Returned
-              </Button>
-            )}
-          </div>
-        </CardContent>
-      </Card>
 
-      {/* ----------------------- Tabs ----------------------- */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <div className="overflow-x-auto pb-1">
-          <TabsList className="inline-flex w-auto min-w-full sm:w-full">
-            <TabsTrigger value="summary" className="gap-1.5"><Package className="size-3.5" /> Summary</TabsTrigger>
-            <TabsTrigger value="customer" className="gap-1.5"><User className="size-3.5" /> Customer</TabsTrigger>
-            <TabsTrigger value="payment" className="gap-1.5"><CreditCard className="size-3.5" /> Payment</TabsTrigger>
-            <TabsTrigger value="shipping" className="gap-1.5"><Truck className="size-3.5" /> Shipping</TabsTrigger>
-            {order.prescription && (
-              <TabsTrigger value="prescription" className="gap-1.5">
-                <FileImage className="size-3.5" /> Rx
-                {order.prescription.status === "pending" && (
-                  <span className="size-1.5 rounded-full bg-amber-500" />
-                )}
-              </TabsTrigger>
-            )}
-            <TabsTrigger value="notes" className="gap-1.5">
-              <StickyNote className="size-3.5" /> Notes
-              {notes.length > 0 && (
-                <Badge className="ml-1 h-4 px-1 text-[10px] bg-emerald-100 text-emerald-700">
-                  {notes.length}
-                </Badge>
-              )}
-            </TabsTrigger>
-            <TabsTrigger value="timeline" className="gap-1.5"><History className="size-3.5" /> Timeline</TabsTrigger>
-          </TabsList>
-        </div>
+            {/* Main row: order number + status + quick actions */}
+            <div className="px-4 sm:px-6 py-4 flex flex-col lg:flex-row lg:items-start gap-4 lg:gap-6">
+              <div className="flex-1 min-w-0 space-y-3">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground truncate">
+                    {order.orderNumber}
+                  </h1>
+                  <OrderStatusBadge status={order.status} size="lg" />
+                </div>
 
-        {/* ----------------------- SUMMARY TAB ----------------------- */}
-        <TabsContent value="summary" className="mt-4">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            <div className="lg:col-span-2 space-y-4">
-              {/* Order Items */}
-              <Card>
-                <CardHeader className="flex-row items-center justify-between space-y-0">
-                  <CardTitle className="text-base">Order Items ({order.items.length})</CardTitle>
-                  {canAdvance && (
-                    <Button size="sm" variant="outline" onClick={() => setAddOpen(true)}>
-                      <Plus className="size-4 mr-1" /> Add Product
-                    </Button>
-                  )}
-                </CardHeader>
-                <CardContent className="p-0">
-                  <div className="overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Product</TableHead>
-                          <TableHead className="text-right">MRP</TableHead>
-                          <TableHead className="text-right">Qty</TableHead>
-                          <TableHead className="text-right">Disc%</TableHead>
-                          <TableHead className="text-right">Line Total</TableHead>
-                          {canAdvance && <TableHead></TableHead>}
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {order.items.map((it: any) => (
-                          <TableRow key={it.id}>
-                            <TableCell>
-                              <div className="flex items-center gap-3">
-                                <ProductThumb image={it.image} name={it.name} size={40} />
-                                <div className="min-w-0">
-                                  <div className="text-sm font-medium truncate max-w-[200px]">{it.name}</div>
-                                  {it.sku && (
-                                    <div className="text-xs text-muted-foreground font-mono">{it.sku}</div>
-                                  )}
-                                  {it.product && (
-                                    <div className="text-[11px] text-muted-foreground flex items-center gap-2">
-                                      <span>Stock: {it.product.stock}</span>
-                                      {it.product.prescriptionRequired && (
-                                        <span className="inline-flex items-center gap-0.5 text-rose-600">
-                                          <FileImage className="size-2.5" /> Rx
-                                        </span>
-                                      )}
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                            </TableCell>
-                            <TableCell className="text-right text-sm">{formatCurrency(it.mrp)}</TableCell>
-                            <TableCell className="text-right">
-                              {canAdvance ? (
-                                <Input
-                                  type="number"
-                                  min={1}
-                                  value={it.qty}
-                                  onChange={(e) => updateItemQty(it.id, parseInt(e.target.value) || 1)}
-                                  className="w-16 h-8 ml-auto text-right"
-                                />
-                              ) : (
-                                <span className="text-sm">{it.qty}</span>
-                              )}
-                            </TableCell>
-                            <TableCell className="text-right text-sm">
-                              {it.appliedDiscountPct > 0 ? `${it.appliedDiscountPct.toFixed(1)}%` : "—"}
-                            </TableCell>
-                            <TableCell className="text-right text-sm font-semibold">
-                              {formatCurrency(it.lineTotal)}
-                            </TableCell>
-                            {canAdvance && (
-                              <TableCell>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="text-rose-600 hover:text-rose-700"
-                                  onClick={() => removeItem(it.id)}
-                                >
-                                  <Trash2 className="size-4" />
-                                </Button>
-                              </TableCell>
-                            )}
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Totals Breakdown */}
-              <Card>
-                <CardHeader><CardTitle className="text-base">Price Breakdown</CardTitle></CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-sm">
-                    <TotalRow label="Items Total (MRP × Qty)" value={formatCurrency(order.itemsTotal)} />
-                    <TotalRow
-                      label="Product Discount"
-                      value={`- ${formatCurrency(order.productDiscount)}`}
-                      accent={order.productDiscount > 0 ? "emerald" : undefined}
-                    />
-                    <TotalRow
-                      label={`Voucher${order.voucherCode ? ` (${order.voucherCode})` : ""}`}
-                      value={`- ${formatCurrency(order.voucherDiscount)}`}
-                      accent={order.voucherDiscount > 0 ? "emerald" : undefined}
-                    />
-                    <TotalRow
-                      label="Delivery Charge"
-                      value={order.deliveryCharge === 0 ? "FREE" : formatCurrency(order.deliveryCharge)}
-                      accent={order.deliveryCharge === 0 ? "emerald" : undefined}
-                    />
-                    {order.taxTotal > 0 && (
-                      <TotalRow label="Tax" value={formatCurrency(order.taxTotal)} />
-                    )}
-                    {order.roundOff !== 0 && (
-                      <TotalRow
-                        label="Round Off"
-                        value={`${order.roundOff > 0 ? "+" : ""}${formatCurrency(order.roundOff)}`}
-                      />
-                    )}
-                    {order.loyaltyPointsRedeemed > 0 && (
-                      <TotalRow
-                        label={`Loyalty discount (${order.loyaltyPointsRedeemed} pts)`}
-                        value={`- ${formatCurrency(order.loyaltyDiscount)}`}
-                        accent="amber"
-                      />
-                    )}
-                  </div>
-                  <div className="border-t mt-3 pt-3 flex items-center justify-between">
-                    <span className="text-base font-semibold">Grand Total</span>
-                    <span className="text-xl font-bold text-emerald-600">
-                      {formatCurrency(order.grandTotal)}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <SourceBadge source={order.source} />
+                  {hasRxItems && (
+                    <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-0.5 text-xs font-medium text-rose-700 dark:border-rose-900/50 dark:bg-rose-950/40 dark:text-rose-300">
+                      <FileImage className="size-3" /> Contains Rx Items
                     </span>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Right column: meta info */}
-            <div className="space-y-4">
-              <Card>
-                <CardHeader><CardTitle className="text-base">Order Meta</CardTitle></CardHeader>
-                <CardContent className="text-xs text-muted-foreground space-y-1.5">
-                  <MetaRow label="Source" value={order.source} />
-                  <MetaRow label="Created" value={formatDateTime(order.createdAt)} />
-                  {order.confirmedAt && <MetaRow label="Confirmed" value={formatDateTime(order.confirmedAt)} />}
-                  {order.packedAt && <MetaRow label="Packed" value={formatDateTime(order.packedAt)} />}
-                  {order.outForDeliveryAt && <MetaRow label="Out for Delivery" value={formatDateTime(order.outForDeliveryAt)} />}
-                  {order.deliveredAt && <MetaRow label="Delivered" value={formatDateTime(order.deliveredAt)} />}
-                  {order.cancelledAt && <MetaRow label="Cancelled" value={formatDateTime(order.cancelledAt)} />}
-                  {order.updatedAt && <MetaRow label="Last Updated" value={formatDateTime(order.updatedAt)} />}
-                  {order.notes && (
-                    <div className="pt-2 border-t">
-                      <div className="text-xs font-semibold text-foreground mb-1">Customer Notes</div>
-                      <div className="text-xs bg-amber-50 dark:bg-amber-950/30 text-amber-900 dark:text-amber-200 rounded p-2 whitespace-pre-wrap">
-                        {order.notes}
-                      </div>
-                    </div>
                   )}
-                </CardContent>
-              </Card>
-            </div>
-          </div>
-        </TabsContent>
+                  {order.voucherCode && (
+                    <span className="inline-flex items-center gap-1 rounded-full border border-purple-200 bg-purple-50 px-2.5 py-0.5 text-xs font-medium text-purple-700 dark:border-purple-900/50 dark:bg-purple-950/40 dark:text-purple-300">
+                      <Hash className="size-3" /> Voucher: {order.voucherCode}
+                    </span>
+                  )}
+                  <span className="sm:hidden inline-flex items-center gap-1 text-xs text-muted-foreground">
+                    <CalendarClock className="size-3.5" />
+                    {formatDate(order.createdAt)}
+                  </span>
+                </div>
 
-        {/* ----------------------- CUSTOMER TAB ----------------------- */}
-        <TabsContent value="customer" className="mt-4">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <Card>
-              <CardHeader className="flex-row items-center justify-between space-y-0">
-                <CardTitle className="text-base">Customer Information</CardTitle>
-                <User className="size-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <button
-                  className={`text-left w-full -mx-2 px-2 py-1.5 rounded ${
-                    order.customer ? "hover:bg-muted/40 cursor-pointer" : "cursor-default"
-                  }`}
-                  onClick={
-                    order.customer
-                      ? () => navigate({ name: "customer-detail", id: order.customer!.id })
-                      : undefined
-                  }
-                >
-                  <CustomerName customer={order.customer} fallback={order.shipName} />
-                </button>
-
-                {order.customer?.phone && (
-                  <a
-                    href={`tel:${order.customer.phone}`}
-                    className="flex items-center gap-2 text-sm hover:text-emerald-700 hover:underline"
-                  >
-                    <Phone className="size-3.5 text-muted-foreground" />
-                    {order.customer.phone}
-                  </a>
-                )}
-                {!order.customer?.phone && order.shipPhone && (
-                  <a
-                    href={`tel:${order.shipPhone}`}
-                    className="flex items-center gap-2 text-sm hover:text-emerald-700 hover:underline"
-                  >
-                    <Phone className="size-3.5 text-muted-foreground" />
-                    {order.shipPhone}
-                  </a>
-                )}
-
-                {order.customer?.email && (
-                  <a
-                    href={`mailto:${order.customer.email}`}
-                    className="flex items-center gap-2 text-sm hover:text-emerald-700 hover:underline truncate"
-                  >
-                    <Mail className="size-3.5 text-muted-foreground shrink-0" />
-                    <span className="truncate">{order.customer.email}</span>
-                  </a>
-                )}
-
-                {/* Customer stats */}
-                {order.customerStats && (
-                  <div className="grid grid-cols-2 gap-2 pt-2 border-t">
-                    <div className="rounded-lg bg-emerald-50 dark:bg-emerald-950/40 p-2.5">
-                      <div className="text-[10px] text-muted-foreground uppercase tracking-wide">
-                        Previous Orders
-                      </div>
-                      <div className="text-lg font-bold text-emerald-700">
-                        {order.customerStats.orderCount}
-                      </div>
-                    </div>
-                    <div className="rounded-lg bg-amber-50 dark:bg-amber-950/40 p-2.5">
-                      <div className="text-[10px] text-muted-foreground uppercase tracking-wide">
-                        Lifetime Spent
-                      </div>
-                      <div className="text-lg font-bold text-amber-700">
-                        {formatCurrency(order.customerStats.totalSpent)}
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {order.customer && (
+                {/* Quick action toolbar */}
+                <div className="flex items-center gap-2 flex-wrap pt-1">
                   <Button
                     variant="outline"
                     size="sm"
-                    className="w-full gap-1.5 mt-2"
-                    onClick={() => navigate({ name: "customer-detail", id: order.customer!.id })}
+                    onClick={printInvoice}
+                    className="gap-1.5 min-h-[40px]"
                   >
-                    <User className="size-4" /> View Customer Profile
+                    <Printer className="size-4" /> Print
                   </Button>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex-row items-center justify-between space-y-0">
-                <CardTitle className="text-base">Shipping Address</CardTitle>
-                <div className="flex items-center gap-1">
                   <Button
-                    variant="ghost"
+                    variant="outline"
                     size="sm"
-                    className="h-7 text-xs gap-1"
-                    onClick={copyAddress}
+                    onClick={downloadInvoice}
+                    className="gap-1.5 min-h-[40px]"
                   >
-                    <Copy className="size-3" /> Copy
+                    <Download className="size-4" /> Invoice
                   </Button>
-                  <a href={mapsUrl} target="_blank" rel="noreferrer">
-                    <Button variant="ghost" size="sm" className="h-7 text-xs gap-1">
-                      <ExternalLink className="size-3" /> Maps
-                    </Button>
-                  </a>
-                </div>
-              </CardHeader>
-              <CardContent className="text-sm space-y-1">
-                <div className="font-medium">{order.shipName}</div>
-                <div className="text-muted-foreground">
-                  {order.shipLine1}
-                  {order.shipLine2 && <><br />{order.shipLine2}</>}
-                  {order.shipLocality && <><br />{order.shipLocality}</>}
-                  <br />{order.shipCity}, {order.shipState} {order.shipPincode}
-                  <br />District: {order.shipDistrict}
-                </div>
-                <a
-                  href={`tel:${order.shipPhone}`}
-                  className="inline-flex items-center gap-1.5 text-sm text-emerald-700 hover:underline mt-2"
-                >
-                  <Phone className="size-3.5" /> {order.shipPhone}
-                </a>
-                <div className="pt-2 mt-2 border-t">
-                  <a
-                    href={mapsUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-1.5 text-xs text-emerald-700 hover:underline"
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={contactCustomer}
+                    className="gap-1.5 min-h-[40px]"
                   >
-                    <MapPin className="size-3.5" /> Open in Google Maps
-                  </a>
+                    <Phone className="size-4" /> Contact
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={copyOrderId}
+                    className="gap-1.5 min-h-[40px] font-mono text-xs"
+                    title={order.id}
+                  >
+                    <Copy className="size-4" /> Copy ID
+                  </Button>
                 </div>
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
+              </div>
 
-        {/* ----------------------- PAYMENT TAB ----------------------- */}
-        <TabsContent value="payment" className="mt-4">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <Card>
-              <CardHeader className="flex-row items-center justify-between space-y-0">
-                <CardTitle className="text-base">Payment Details</CardTitle>
-                <PaymentMethodIcon method={order.paymentMethod} />
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Method</span>
-                  <span className="font-medium">
-                    {PAYMENT_METHOD_LABEL[order.paymentMethod] || order.paymentMethod}
-                  </span>
+              {/* Grand total summary block (desktop) */}
+              <div className="hidden lg:block w-56 shrink-0 rounded-xl border border-emerald-200/60 bg-emerald-50/50 dark:bg-emerald-950/20 dark:border-emerald-900/40 p-4">
+                <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">
+                  Grand Total
                 </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Status</span>
-                  <StatusBadge status={order.paymentStatus} />
+                <div className="text-2xl font-bold text-emerald-700 dark:text-emerald-400 mt-1">
+                  {formatCurrency(order.grandTotal)}
                 </div>
-                {order.paymentId && (
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-muted-foreground inline-flex items-center gap-1">
-                      <Hash className="size-3.5" /> Transaction ID
-                    </span>
-                    <span className="font-mono font-medium">{order.paymentId}</span>
+                <div className="mt-2 pt-2 border-t border-emerald-200/40 dark:border-emerald-900/40">
+                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">
+                    Payment
                   </div>
-                )}
-                {order.paymentGateway && (
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-muted-foreground">Gateway</span>
-                    <span className="font-medium capitalize">{order.paymentGateway}</span>
+                  <div className="mt-1">
+                    <PaymentStatusBadge status={order.paymentStatus} size="sm" />
                   </div>
-                )}
-                {order.paymentTxnId && (
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-muted-foreground inline-flex items-center gap-1">
-                      <Hash className="size-3.5" /> Customer Txn ID
-                    </span>
-                    <span className="font-mono font-medium">{order.paymentTxnId}</span>
-                  </div>
-                )}
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
 
-                {/* COD callout */}
-                {order.paymentMethod === "cod" && (
-                  <div className="rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/30 p-3 text-sm">
-                    <div className="flex items-center gap-2 font-medium text-amber-800 dark:text-amber-200">
-                      <Banknote className="size-4" /> Collect on Delivery
-                    </div>
-                    <div className="text-amber-700 dark:text-amber-300 mt-1">
-                      Collect <span className="font-bold">{formatCurrency(order.grandTotal)}</span> in cash from the customer at delivery.
-                    </div>
-                  </div>
-                )}
+      {/* ================================================================
+          2. SMART STATUS WORKFLOW PANEL
+          ================================================================ */}
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.25, delay: 0.05 }}
+      >
+        <Card className="shadow-premium-sm">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <CardTitle className="text-base flex items-center gap-2">
+                <CircleDot className="size-4 text-emerald-600" />
+                Status Workflow
+              </CardTitle>
+              {order.estimatedDelivery && (
+                <div className="text-xs text-muted-foreground inline-flex items-center gap-1">
+                  <CalendarClock className="size-3.5" />
+                  ETA: {formatDate(order.estimatedDelivery)}
+                </div>
+              )}
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Current status row */}
+            <div className="flex items-center gap-3 flex-wrap">
+              <span className="text-xs text-muted-foreground uppercase tracking-wide font-medium">
+                Current
+              </span>
+              <OrderStatusBadge status={order.status} size="lg" />
+              {isTerminal && (
+                <span className="text-xs text-muted-foreground italic">
+                  (terminal — no further transitions)
+                </span>
+              )}
+            </div>
 
-                {/* Payment status editor */}
-                <div className="pt-3 border-t space-y-2">
-                  <Label className="text-xs font-medium text-muted-foreground">
-                    Update payment status
-                  </Label>
-                  <div className="flex gap-2">
-                    <Select value={paymentStatus} onValueChange={setPaymentStatus}>
-                      <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="pending">Pending</SelectItem>
-                        <SelectItem value="paid">Paid</SelectItem>
-                        <SelectItem value="failed">Failed</SelectItem>
-                        <SelectItem value="refunded">Refunded</SelectItem>
-                      </SelectContent>
-                    </Select>
+            {/* Allowed next statuses */}
+            {!isTerminal && allowedNext.length > 0 && (
+              <div className="space-y-2">
+                <div className="text-xs text-muted-foreground uppercase tracking-wide font-medium">
+                  Advance to
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  {allowedNext
+                    .filter((s) => s !== "cancelled")
+                    .map((nextStatus) => {
+                      const v = STATUS_VISUAL[nextStatus];
+                      if (!v) return null;
+                      const Icon = v.icon;
+                      return (
+                        <Button
+                          key={nextStatus}
+                          size="sm"
+                          disabled={busy}
+                          onClick={() => changeStatus(nextStatus)}
+                          className={cn(
+                            "gap-1.5 min-h-[44px] text-white shadow-premium-sm",
+                            v.tint,
+                            v.tintHover
+                          )}
+                        >
+                          {busy ? (
+                            <Loader2 className="size-4 animate-spin" />
+                          ) : (
+                            <Icon className="size-4" />
+                          )}
+                          Mark {v.label}
+                        </Button>
+                      );
+                    })}
+
+                  {allowedNext.includes("cancelled") && (
                     <Button
                       size="sm"
-                      className="gap-1.5 shrink-0"
-                      disabled={savingPayment || paymentStatus === order.paymentStatus}
-                      onClick={updatePayment}
+                      variant="outline"
+                      disabled={busy}
+                      onClick={() => setCancelOpen(true)}
+                      className="gap-1.5 min-h-[44px] text-rose-600 hover:text-rose-700 hover:border-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/30"
                     >
-                      {savingPayment ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
-                      Save
+                      <XCircle className="size-4" /> Cancel Order
                     </Button>
-                  </div>
+                  )}
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            )}
 
-            {/* Payment Screenshot / Verification */}
-            {order.paymentScreenshot ? (
-              <Card>
-                <CardHeader className="flex-row items-center justify-between space-y-0">
-                  <CardTitle className="text-base">Payment Verification</CardTitle>
-                  <Receipt className="size-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="overflow-hidden rounded-md border bg-muted/30">
+            {isTerminal && (
+              <div
+                className={cn(
+                  "rounded-lg border p-3 flex items-start gap-2 text-sm",
+                  order.status === "cancelled"
+                    ? "bg-rose-50 dark:bg-rose-950/30 border-rose-200 dark:border-rose-900/50 text-rose-800 dark:text-rose-200"
+                    : "bg-stone-50 dark:bg-stone-900/40 border-stone-200 dark:border-stone-700 text-stone-700 dark:text-stone-300"
+                )}
+              >
+                <AlertTriangle className="size-4 shrink-0 mt-0.5" />
+                <div>
+                  This order is in a terminal state (<strong>{order.status}</strong>).
+                  No further status transitions are allowed.
+                  {order.cancelledAt && (
+                    <div className="text-xs mt-1 opacity-80">
+                      Cancelled at {formatDateTime(order.cancelledAt)}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </motion.div>
+
+      {/* ================================================================
+          3. PAYMENT MANAGEMENT PANEL
+          ================================================================ */}
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.25, delay: 0.1 }}
+      >
+        <Card className="shadow-premium-sm">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Wallet className="size-4 text-emerald-600" />
+              Payment Management
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* Method */}
+              <div className="space-y-1">
+                <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">
+                  Method
+                </div>
+                <div className="flex items-center gap-2 text-sm font-medium">
+                  <PaymentMethodIcon method={order.paymentMethod} />
+                  {PAYMENT_METHOD_LABEL[order.paymentMethod] || order.paymentMethod}
+                </div>
+              </div>
+
+              {/* Current status (prominent) */}
+              <div className="space-y-1">
+                <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">
+                  Current Status
+                </div>
+                <PaymentStatusBadge status={order.paymentStatus} size="lg" />
+              </div>
+
+              {/* Gateway */}
+              <div className="space-y-1">
+                <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">
+                  Gateway
+                </div>
+                <div className="text-sm font-medium capitalize">
+                  {order.paymentGateway || "—"}
+                </div>
+              </div>
+            </div>
+
+            {/* Payment ID + action row */}
+            <div className="mt-4 pt-4 border-t border-border/60 space-y-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+                    <Hash className="size-3" /> Transaction ID
+                  </Label>
+                  <Input
+                    value={paymentIdDraft}
+                    onChange={(e) => setPaymentIdDraft(e.target.value)}
+                    placeholder="e.g. pay_NX7k2bQwAbC123"
+                    className="font-mono text-sm h-9"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium text-muted-foreground">
+                    New Status
+                  </Label>
+                  <Select value={paymentStatus} onValueChange={setPaymentStatus}>
+                    <SelectTrigger className="h-9">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {PAYMENT_STATUS_ORDER.map((s) => (
+                        <SelectItem key={s} value={s}>
+                          <span className="flex items-center gap-2">
+                            <span
+                              className={cn(
+                                "size-1.5 rounded-full",
+                                PAYMENT_VISUAL[s]?.dot
+                              )}
+                            />
+                            {PAYMENT_VISUAL[s]?.label || s}
+                          </span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div className="text-xs text-muted-foreground">
+                  {paymentStatus !== order.paymentStatus ||
+                  paymentIdDraft !== (order.paymentId || "") ? (
+                    <span className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400">
+                      <CircleDot className="size-3" /> Unsaved changes
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
+                      <CircleCheck className="size-3" /> All changes saved
+                    </span>
+                  )}
+                </div>
+                <Button
+                  size="sm"
+                  onClick={() => setPaymentDialogOpen(true)}
+                  disabled={
+                    savingPayment ||
+                    (paymentStatus === order.paymentStatus &&
+                      paymentIdDraft === (order.paymentId || ""))
+                  }
+                  className="gap-1.5 min-h-[40px] bg-emerald-600 hover:bg-emerald-700 text-white"
+                >
+                  <CheckCircle2 className="size-4" />
+                  Update Payment
+                </Button>
+              </div>
+
+              {/* Payment screenshot (if any) */}
+              {order.paymentScreenshot && (
+                <div className="pt-3 border-t border-border/60">
+                  <div className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1">
+                    <Receipt className="size-3.5" /> Payment Proof
+                    {order.paymentScreenshotUploadedAt && (
+                      <span className="text-muted-foreground/70">
+                        · {formatDateTime(order.paymentScreenshotUploadedAt)}
+                      </span>
+                    )}
+                  </div>
+                  <a
+                    href={order.paymentScreenshot}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="block w-40 rounded-md border overflow-hidden hover:border-emerald-400 transition-premium"
+                  >
                     <img
                       src={order.paymentScreenshot}
                       alt="Payment screenshot"
-                      className="max-h-72 w-full object-contain bg-white"
+                      className="w-full h-28 object-cover bg-white"
                     />
-                  </div>
-                  <div className="space-y-1.5 text-xs">
-                    <div className="flex items-center justify-between">
-                      <span className="text-muted-foreground inline-flex items-center gap-1">
-                        <CalendarClock className="size-3.5" /> Uploaded
-                      </span>
-                      <span className="font-medium">
-                        {order.paymentScreenshotUploadedAt
-                          ? formatDateTime(order.paymentScreenshotUploadedAt)
-                          : "—"}
-                      </span>
-                    </div>
-                    {order.paymentTxnId && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-muted-foreground inline-flex items-center gap-1">
-                          <Hash className="size-3.5" /> Transaction ID
-                        </span>
-                        <span className="font-mono font-medium">{order.paymentTxnId}</span>
-                      </div>
-                    )}
-                  </div>
-                  {order.paymentStatus !== "paid" && (
-                    <Button
-                      size="sm"
-                      className="w-full gap-2 bg-emerald-600 hover:bg-emerald-700"
-                      disabled={savingPayment}
-                      onClick={async () => {
-                        setSavingPayment(true);
-                        const r = await run(
-                          () => api.patch(`/api/admin/orders/${id}/payment`, { paymentStatus: "paid" }),
-                          { success: "Payment marked as paid", error: "Failed to update payment" }
-                        );
-                        setSavingPayment(false);
-                        if (r) {
-                          setPaymentStatus("paid");
-                          qc.invalidateQueries({ queryKey: ["admin-order", id] });
-                        }
-                      }}
-                    >
-                      {savingPayment ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
-                      Mark as Paid
-                    </Button>
-                  )}
-                </CardContent>
-              </Card>
-            ) : (
-              <Card>
-                <CardHeader className="flex-row items-center justify-between space-y-0">
-                  <CardTitle className="text-base">Amount Breakdown</CardTitle>
-                  <Wallet className="size-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent className="space-y-1.5 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Items Total</span>
-                    <span>{formatCurrency(order.itemsTotal)}</span>
-                  </div>
-                  <div className="flex justify-between text-emerald-700">
-                    <span>Product Discount</span>
-                    <span>- {formatCurrency(order.productDiscount)}</span>
-                  </div>
-                  {order.voucherDiscount > 0 && (
-                    <div className="flex justify-between text-emerald-700">
-                      <span>Voucher ({order.voucherCode})</span>
-                      <span>- {formatCurrency(order.voucherDiscount)}</span>
-                    </div>
-                  )}
-                  {order.loyaltyDiscount > 0 && (
-                    <div className="flex justify-between text-amber-700">
-                      <span>Loyalty ({order.loyaltyPointsRedeemed} pts)</span>
-                      <span>- {formatCurrency(order.loyaltyDiscount)}</span>
-                    </div>
-                  )}
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Delivery</span>
-                    <span>{order.deliveryCharge === 0 ? "FREE" : formatCurrency(order.deliveryCharge)}</span>
-                  </div>
-                  {order.taxTotal > 0 && (
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Tax</span>
-                      <span>{formatCurrency(order.taxTotal)}</span>
-                    </div>
-                  )}
-                  <div className="flex justify-between border-t pt-2 mt-2 font-bold text-base">
-                    <span>Grand Total</span>
-                    <span className="text-emerald-600">{formatCurrency(order.grandTotal)}</span>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-          </div>
-        </TabsContent>
-
-        {/* ----------------------- SHIPPING TAB ----------------------- */}
-        <TabsContent value="shipping" className="mt-4">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <Card>
-              <CardHeader className="flex-row items-center justify-between space-y-0">
-                <CardTitle className="text-base">Shipping & Fulfillment</CardTitle>
-                <Button variant="ghost" size="sm" className="h-7 text-xs gap-1" onClick={() => setShipOpen(true)}>
-                  <Pencil className="size-3" /> Edit
-                </Button>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Fulfillment Status</span>
-                  <StatusBadge status={order.status} />
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground inline-flex items-center gap-1.5">
-                    <Truck className="size-3.5" /> Carrier
-                  </span>
-                  <span className="font-medium">
-                    {shippingInfo.carrier || "Not specified"}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground inline-flex items-center gap-1.5">
-                    <Hash className="size-3.5" /> Tracking Number
-                  </span>
-                  {shippingInfo.trackingNumber ? (
-                    <span className="font-mono font-medium text-xs">
-                      {shippingInfo.trackingNumber}
-                    </span>
-                  ) : (
-                    <span className="text-muted-foreground italic">Not set</span>
-                  )}
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground inline-flex items-center gap-1.5">
-                    <CalendarClock className="size-3.5" /> Estimated Delivery
-                  </span>
-                  <span className="font-medium">
-                    {order.estimatedDelivery ? formatDate(order.estimatedDelivery) : "Not set"}
-                  </span>
-                </div>
-
-                {/* Shipping status flow visualization */}
-                <div className="pt-3 border-t">
-                  <div className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">
-                    Shipping Flow
-                  </div>
-                  <div className="flex items-center gap-1">
-                    {[
-                      { key: "pending", label: "Placed", icon: Clock },
-                      { key: "confirmed", label: "Confirmed", icon: CheckCircle2 },
-                      { key: "packed", label: "Packed", icon: PackageCheck },
-                      { key: "out_for_delivery", label: "Shipped", icon: Truck },
-                      { key: "delivered", label: "Delivered", icon: PartyPopper },
-                    ].map((step, i) => {
-                      const idx = ORDER_STATUS_FLOW.indexOf(step.key);
-                      const currentIdxFlow = ORDER_STATUS_FLOW.indexOf(order.status);
-                      const isDone = currentIdxFlow >= idx && currentIdxFlow >= 0;
-                      const isCurrent = order.status === step.key;
-                      const Icon = step.icon;
-                      return (
-                        <div key={step.key} className="flex items-center flex-1">
-                          <div
-                            className={`flex flex-col items-center gap-1 flex-1 ${
-                              isCurrent ? "scale-110" : ""
-                            }`}
-                          >
-                            <div
-                              className={`size-8 rounded-full flex items-center justify-center ${
-                                isCurrent
-                                  ? "bg-emerald-600 text-white ring-4 ring-emerald-100"
-                                  : isDone
-                                    ? "bg-emerald-100 text-emerald-700"
-                                    : "bg-muted text-muted-foreground"
-                              }`}
-                            >
-                              <Icon className="size-4" />
-                            </div>
-                            <div
-                              className={`text-[10px] text-center ${
-                                isCurrent
-                                  ? "font-bold text-emerald-700"
-                                  : isDone
-                                    ? "text-emerald-700"
-                                    : "text-muted-foreground"
-                              }`}
-                            >
-                              {step.label}
-                            </div>
-                          </div>
-                          {i < 4 && (
-                            <div
-                              className={`h-0.5 flex-1 -mt-4 ${
-                                currentIdxFlow > idx ? "bg-emerald-400" : "bg-muted"
-                              }`}
-                            />
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Quick action buttons */}
-                {canAdvance && nextStatus && (
-                  <div className="pt-3 border-t space-y-2">
-                    <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                      Quick Actions
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      {Object.entries(NEXT_BUTTONS).map(([key, btn]) => {
-                        const Icon = btn.icon;
-                        const isNext = key === nextStatus;
-                        return (
-                          <Button
-                            key={key}
-                            size="sm"
-                            variant={isNext ? "default" : "outline"}
-                            className={`gap-1.5 min-h-[40px] ${
-                              isNext ? `text-white ${btn.tint}` : ""
-                            }`}
-                            disabled={busy || !isNext}
-                            onClick={() => {
-                              if (key === "out_for_delivery") {
-                                setShipOpen(true);
-                              } else {
-                                changeStatus(key);
-                              }
-                            }}
-                          >
-                            <Icon className="size-3.5" />
-                            {btn.label}
-                          </Button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex-row items-center justify-between space-y-0">
-                <CardTitle className="text-base">Delivery Address</CardTitle>
-                <div className="flex items-center gap-1">
-                  <Button variant="ghost" size="sm" className="h-7 text-xs gap-1" onClick={copyAddress}>
-                    <Copy className="size-3" /> Copy
-                  </Button>
-                  <a href={mapsUrl} target="_blank" rel="noreferrer">
-                    <Button variant="ghost" size="sm" className="h-7 text-xs gap-1">
-                      <ExternalLink className="size-3" /> Maps
-                    </Button>
                   </a>
                 </div>
-              </CardHeader>
-              <CardContent className="text-sm space-y-1">
-                <div className="font-medium">{order.shipName}</div>
-                <div className="text-muted-foreground">
-                  {order.shipLine1}
-                  {order.shipLine2 && <><br />{order.shipLine2}</>}
-                  {order.shipLocality && <><br />{order.shipLocality}</>}
-                  <br />{order.shipCity}, {order.shipState} {order.shipPincode}
+              )}
+
+              {/* COD callout */}
+              {order.paymentMethod === "cod" && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-900/50 p-3 text-sm flex items-start gap-2">
+                  <Banknote className="size-4 text-amber-600 shrink-0 mt-0.5" />
+                  <div>
+                    <div className="font-medium text-amber-800 dark:text-amber-200">
+                      Collect on Delivery
+                    </div>
+                    <div className="text-amber-700 dark:text-amber-300 mt-0.5">
+                      Collect{" "}
+                      <strong>{formatCurrency(order.grandTotal)}</strong> in cash
+                      from the customer at delivery.
+                    </div>
+                  </div>
                 </div>
-                <a
-                  href={`tel:${order.shipPhone}`}
-                  className="inline-flex items-center gap-1.5 text-sm text-emerald-700 hover:underline mt-2"
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
+
+      {/* ================================================================
+          4. INFORMATION CARDS GRID (Customer / Address / Payment / Pricing)
+          ================================================================ */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Customer Information */}
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.25, delay: 0.15 }}
+        >
+          <Card className="h-full shadow-premium-sm">
+            <CardHeader className="pb-3 flex-row items-center justify-between space-y-0">
+              <CardTitle className="text-base flex items-center gap-2">
+                <User className="size-4 text-emerald-600" /> Customer
+              </CardTitle>
+              {order.customer && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs gap-1"
+                  onClick={() =>
+                    navigate({ name: "customer-detail", id: order.customer!.id })
+                  }
                 >
-                  <Phone className="size-3.5" /> {order.shipPhone}
-                </a>
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
-
-        {/* ----------------------- PRESCRIPTION TAB ----------------------- */}
-        {order.prescription && (
-          <TabsContent value="prescription" className="mt-4">
-            <PrescriptionSection
-              prescription={order.prescription}
-              orderStatus={order.status}
-              busy={busy}
-              onApprove={() => verifyPrescription("approve")}
-              onReject={(reason) => {
-                setRejectReason(reason);
-                verifyPrescription("reject", reason);
-              }}
-            />
-          </TabsContent>
-        )}
-
-        {/* ----------------------- NOTES TAB ----------------------- */}
-        <TabsContent value="notes" className="mt-4">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <Card>
-              <CardHeader className="flex-row items-center justify-between space-y-0">
-                <CardTitle className="text-base">Internal Notes ({notes.length})</CardTitle>
-                <StickyNote className="size-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="Add an internal note (visible only to admins)..."
-                    value={newNote}
-                    onChange={(e) => setNewNote(e.target.value)}
-                    className="h-9"
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && newNote.trim()) addNote();
-                    }}
-                  />
-                  <Button
-                    size="sm"
-                    className="gap-1.5 shrink-0"
-                    disabled={!newNote.trim() || savingNote}
-                    onClick={addNote}
+                  View Profile <ArrowRight className="size-3" />
+                </Button>
+              )}
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {order.customer ? (
+                <>
+                  <button
+                    className="flex items-center gap-3 w-full text-left -mx-1 px-1 py-1 rounded hover:bg-muted/40 transition-premium"
+                    onClick={() =>
+                      navigate({ name: "customer-detail", id: order.customer!.id })
+                    }
                   >
-                    {savingNote ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
-                    Add
-                  </Button>
-                </div>
-
-                <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
-                  {notes.length === 0 ? (
-                    <div className="text-sm text-muted-foreground italic text-center py-6">
-                      No internal notes yet.
+                    <div className="size-11 rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 text-white flex items-center justify-center font-bold shadow-premium-sm">
+                      {getInitials(order.customer.name || "U")}
                     </div>
-                  ) : (
-                    <AnimatePresence initial={false}>
-                      {notes.map((note) => (
-                        <motion.div
-                          key={note.id}
-                          initial={{ opacity: 0, y: -5 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0, height: 0 }}
-                          className="rounded-lg border bg-emerald-50/40 dark:bg-emerald-950/20 p-2.5"
-                        >
-                          {editingNoteId === note.id ? (
-                            <div className="space-y-2">
-                              <Textarea
-                                value={editingBody}
-                                onChange={(e) => setEditingBody(e.target.value)}
-                                rows={2}
-                                className="text-sm"
-                              />
-                              <div className="flex gap-2">
-                                <Button
-                                  size="sm"
-                                  className="h-7 gap-1"
-                                  disabled={savingNote || !editingBody.trim()}
-                                  onClick={() => saveEditNote(note.id)}
-                                >
-                                  {savingNote ? <Loader2 className="size-3 animate-spin" /> : <CheckCircle2 className="size-3.5" />}
-                                  Save
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  className="h-7"
-                                  onClick={() => {
-                                    setEditingNoteId(null);
-                                    setEditingBody("");
-                                  }}
-                                >
-                                  Cancel
-                                </Button>
-                              </div>
-                            </div>
-                          ) : (
-                            <>
-                              <div className="text-sm whitespace-pre-wrap">{note.body}</div>
-                              <div className="flex items-center justify-between mt-1.5 text-[10px] text-muted-foreground">
-                                <span>
-                                  {note.authorName || "Admin"} · {formatDateTime(note.createdAt)}
-                                  {new Date(note.updatedAt).getTime() - new Date(note.createdAt).getTime() > 1000 && (
-                                    <span className="italic"> (edited)</span>
-                                  )}
-                                </span>
-                                <div className="flex gap-1">
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="size-6"
-                                    onClick={() => {
-                                      setEditingNoteId(note.id);
-                                      setEditingBody(note.body);
-                                    }}
-                                  >
-                                    <Pencil className="size-3" />
-                                  </Button>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="size-6 text-rose-600 hover:text-rose-700"
-                                    onClick={() => deleteNote(note.id)}
-                                  >
-                                    <Trash2 className="size-3" />
-                                  </Button>
-                                </div>
-                              </div>
-                            </>
-                          )}
-                        </motion.div>
-                      ))}
-                    </AnimatePresence>
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold truncate">
+                        {order.customer.name}
+                      </div>
+                      <div className="text-xs text-muted-foreground truncate font-mono">
+                        ID: {order.customer.id.slice(-8)}
+                      </div>
+                    </div>
+                  </button>
+
+                  <div className="space-y-1.5 text-sm">
+                    {order.customer.email && (
+                      <a
+                        href={`mailto:${order.customer.email}`}
+                        className="flex items-center gap-2 text-sm hover:text-emerald-700 dark:hover:text-emerald-400 transition-premium"
+                      >
+                        <Mail className="size-3.5 text-muted-foreground shrink-0" />
+                        <span className="truncate">{order.customer.email}</span>
+                      </a>
+                    )}
+                    {order.customer.phone && (
+                      <a
+                        href={`tel:${order.customer.phone}`}
+                        className="flex items-center gap-2 text-sm hover:text-emerald-700 dark:hover:text-emerald-400 transition-premium"
+                      >
+                        <Phone className="size-3.5 text-muted-foreground shrink-0" />
+                        {order.customer.phone}
+                      </a>
+                    )}
+                  </div>
+
+                  {order.customerStats && (
+                    <div className="grid grid-cols-2 gap-2 pt-3 border-t border-border/60">
+                      <div className="rounded-lg bg-emerald-50 dark:bg-emerald-950/40 p-2.5">
+                        <div className="text-[10px] text-muted-foreground uppercase tracking-wide">
+                          Previous Orders
+                        </div>
+                        <div className="text-lg font-bold text-emerald-700 dark:text-emerald-400">
+                          {order.customerStats.orderCount}
+                        </div>
+                      </div>
+                      <div className="rounded-lg bg-amber-50 dark:bg-amber-950/40 p-2.5">
+                        <div className="text-[10px] text-muted-foreground uppercase tracking-wide">
+                          Lifetime Spent
+                        </div>
+                        <div className="text-lg font-bold text-amber-700 dark:text-amber-400">
+                          {formatCurrency(order.customerStats.totalSpent)}
+                        </div>
+                      </div>
+                    </div>
                   )}
+                </>
+              ) : (
+                <div className="text-sm text-muted-foreground italic flex items-center gap-2 py-2">
+                  <User className="size-4" /> Customer deleted — using shipping
+                  snapshot.
                 </div>
-              </CardContent>
-            </Card>
+              )}
 
-            <Card>
-              <CardHeader className="flex-row items-center justify-between space-y-0">
-                <CardTitle className="text-base">Customer Notes</CardTitle>
-                <ClipboardList className="size-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                {order.notes ? (
-                  <div className="text-sm bg-amber-50 dark:bg-amber-950/30 text-amber-900 dark:text-amber-200 rounded-lg p-3 whitespace-pre-wrap">
-                    {order.notes}
-                  </div>
-                ) : (
-                  <div className="text-sm text-muted-foreground italic text-center py-6">
-                    No customer notes were attached to this order.
-                  </div>
-                )}
-
-                {/* Legacy admin notes (from before OrderNote existed) — shown read-only */}
-                {order.adminNotes && (() => {
-                  // Strip the [shipping] header line — it's metadata, not
-                  // a real note. Show the rest as legacy notes.
-                  const cleaned = order.adminNotes.replace(/^\[shipping\].*\n?/, "");
-                  if (!cleaned.trim()) return null;
-                  return (
-                    <div className="mt-3 pt-3 border-t">
-                      <div className="text-xs font-semibold text-muted-foreground mb-1">
-                        Legacy Admin Notes
-                      </div>
-                      <div className="text-xs bg-muted/30 rounded p-2 whitespace-pre-wrap">
-                        {cleaned}
-                      </div>
-                    </div>
-                  );
-                })()}
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
-
-        {/* ----------------------- TIMELINE TAB ----------------------- */}
-        <TabsContent value="timeline" className="mt-4">
-          <Card>
-            <CardHeader><CardTitle className="text-base">Order Timeline</CardTitle></CardHeader>
-            <CardContent>
-              <OrderTimeline statusHistory={order.statusHistory} currentStatus={order.status} />
+              {/* Shipping snapshot name fallback */}
+              {!order.customer && (
+                <div className="text-sm font-medium pt-1">{order.shipName}</div>
+              )}
             </CardContent>
           </Card>
-        </TabsContent>
-      </Tabs>
+        </motion.div>
 
-      {/* ----------------------- Dialogs ----------------------- */}
+        {/* Delivery Address */}
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.25, delay: 0.2 }}
+        >
+          <Card className="h-full shadow-premium-sm">
+            <CardHeader className="pb-3 flex-row items-center justify-between space-y-0">
+              <CardTitle className="text-base flex items-center gap-2">
+                <MapPin className="size-4 text-emerald-600" /> Delivery Address
+              </CardTitle>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs gap-1"
+                  onClick={copyAddress}
+                >
+                  <Copy className="size-3" /> Copy
+                </Button>
+                <a href={mapsUrl} target="_blank" rel="noreferrer">
+                  <Button variant="ghost" size="sm" className="h-7 text-xs gap-1">
+                    <ExternalLink className="size-3" /> Maps
+                  </Button>
+                </a>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-2 text-sm">
+              <div className="font-semibold">{order.shipName}</div>
+              <div className="text-muted-foreground leading-relaxed">
+                {order.shipLine1}
+                {order.shipLine2 && (
+                  <>
+                    <br />
+                    {order.shipLine2}
+                  </>
+                )}
+                {order.shipLocality && (
+                  <>
+                    <br />
+                    {order.shipLocality}
+                  </>
+                )}
+                <br />
+                {order.shipCity}, {order.shipState} {order.shipPincode}
+                <br />
+                <span className="inline-flex items-center gap-1 mt-0.5">
+                  <Building2 className="size-3" /> District: {order.shipDistrict}
+                </span>
+              </div>
+              <a
+                href={`tel:${order.shipPhone}`}
+                className="inline-flex items-center gap-1.5 text-sm text-emerald-700 dark:text-emerald-400 hover:underline pt-2 border-t border-border/60 mt-2"
+              >
+                <Phone className="size-3.5" /> {order.shipPhone}
+              </a>
+              {order.notes && (
+                <div className="pt-2 mt-2 border-t border-border/60">
+                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium mb-1 flex items-center gap-1">
+                    <ClipboardList className="size-3" /> Delivery Instructions
+                  </div>
+                  <div className="text-xs bg-amber-50 dark:bg-amber-950/30 text-amber-900 dark:text-amber-200 rounded p-2 whitespace-pre-wrap">
+                    {order.notes}
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </motion.div>
 
-      {/* Cancel dialog */}
+        {/* Payment Information */}
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.25, delay: 0.25 }}
+        >
+          <Card className="h-full shadow-premium-sm">
+            <CardHeader className="pb-3 flex-row items-center justify-between space-y-0">
+              <CardTitle className="text-base flex items-center gap-2">
+                <CreditCard className="size-4 text-emerald-600" /> Payment Info
+              </CardTitle>
+              <PaymentMethodIcon method={order.paymentMethod} />
+            </CardHeader>
+            <CardContent className="space-y-2.5 text-sm">
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Method</span>
+                <span className="font-medium">
+                  {PAYMENT_METHOD_LABEL[order.paymentMethod] || order.paymentMethod}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Status</span>
+                <PaymentStatusBadge status={order.paymentStatus} size="sm" />
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-muted-foreground inline-flex items-center gap-1 shrink-0">
+                  <Hash className="size-3.5" /> Transaction ID
+                </span>
+                <span className="font-mono font-medium text-xs truncate">
+                  {order.paymentId || "—"}
+                </span>
+              </div>
+              {order.paymentTxnId && (
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-muted-foreground inline-flex items-center gap-1 shrink-0">
+                    <IdCard className="size-3.5" /> Customer Txn
+                  </span>
+                  <span className="font-mono font-medium text-xs truncate">
+                    {order.paymentTxnId}
+                  </span>
+                </div>
+              )}
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Gateway</span>
+                <span className="font-medium capitalize">
+                  {order.paymentGateway || "—"}
+                </span>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        {/* Pricing Breakdown */}
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.25, delay: 0.3 }}
+        >
+          <Card className="h-full shadow-premium-sm">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Receipt className="size-4 text-emerald-600" /> Pricing Breakdown
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-1.5 text-sm">
+              <PriceRow
+                label="Subtotal (MRP × Qty)"
+                value={formatCurrency(order.itemsTotal)}
+              />
+              {order.productDiscount > 0 && (
+                <PriceRow
+                  label="Product Discount"
+                  value={`- ${formatCurrency(order.productDiscount)}`}
+                  accent="emerald"
+                />
+              )}
+              {order.voucherDiscount > 0 && (
+                <PriceRow
+                  label={`Voucher${order.voucherCode ? ` (${order.voucherCode})` : ""}`}
+                  value={`- ${formatCurrency(order.voucherDiscount)}`}
+                  accent="emerald"
+                />
+              )}
+              {order.loyaltyDiscount > 0 && (
+                <PriceRow
+                  label={`Loyalty (${order.loyaltyPointsRedeemed} pts)`}
+                  value={`- ${formatCurrency(order.loyaltyDiscount)}`}
+                  accent="amber"
+                />
+              )}
+              <PriceRow
+                label="Delivery Charge"
+                value={
+                  order.deliveryCharge === 0
+                    ? "FREE"
+                    : formatCurrency(order.deliveryCharge)
+                }
+                accent={order.deliveryCharge === 0 ? "emerald" : undefined}
+              />
+              {order.taxTotal > 0 && (
+                <PriceRow label="Tax" value={formatCurrency(order.taxTotal)} />
+              )}
+              {order.roundOff !== 0 && (
+                <PriceRow
+                  label="Round Off"
+                  value={`${order.roundOff > 0 ? "+" : ""}${formatCurrency(order.roundOff)}`}
+                />
+              )}
+              <div className="border-t pt-2 mt-2 flex items-center justify-between">
+                <span className="text-base font-semibold">Grand Total</span>
+                <span className="text-xl font-bold text-emerald-600 dark:text-emerald-400">
+                  {formatCurrency(order.grandTotal)}
+                </span>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+      </div>
+
+      {/* ================================================================
+          5. ORDERED PRODUCTS TABLE
+          ================================================================ */}
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.25, delay: 0.35 }}
+      >
+        <Card className="shadow-premium-sm">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Package className="size-4 text-emerald-600" />
+              Ordered Products
+              <Badge className="ml-1 bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">
+                {order.items.length}
+              </Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            {/* Desktop table */}
+            <div className="hidden md:block overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-muted/40">
+                    <TableHead>Product</TableHead>
+                    <TableHead className="text-right">Unit Price</TableHead>
+                    <TableHead className="text-right">Qty</TableHead>
+                    <TableHead className="text-right">Line Total</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {order.items.map((it) => (
+                    <TableRow key={it.id} className="hover:bg-muted/30">
+                      <TableCell>
+                        <div className="flex items-center gap-3">
+                          <ProductThumb image={it.image} name={it.name} size={44} />
+                          <div className="min-w-0">
+                            <div className="text-sm font-medium truncate max-w-[260px]">
+                              {it.name}
+                            </div>
+                            {it.sku && (
+                              <div className="text-xs text-muted-foreground font-mono">
+                                {it.sku}
+                              </div>
+                            )}
+                            {it.product?.prescriptionRequired && (
+                              <span className="inline-flex items-center gap-0.5 text-[11px] text-rose-600 dark:text-rose-400 mt-0.5">
+                                <FileImage className="size-2.5" /> Rx Required
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right text-sm">
+                        {formatCurrency(it.mrp)}
+                      </TableCell>
+                      <TableCell className="text-right text-sm">
+                        <span className="inline-flex items-center justify-center min-w-[2.5rem] px-2 py-0.5 rounded-md bg-muted/60 font-medium">
+                          {it.qty}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-right text-sm font-semibold">
+                        {formatCurrency(it.lineTotal)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+
+            {/* Mobile cards */}
+            <div className="md:hidden divide-y">
+              {order.items.map((it) => (
+                <div key={it.id} className="p-3 flex items-start gap-3">
+                  <ProductThumb image={it.image} name={it.name} size={44} />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium truncate">{it.name}</div>
+                    {it.sku && (
+                      <div className="text-xs text-muted-foreground font-mono truncate">
+                        {it.sku}
+                      </div>
+                    )}
+                    <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
+                      <span>{formatCurrency(it.mrp)} / unit</span>
+                      <span>× {it.qty}</span>
+                      {it.product?.prescriptionRequired && (
+                        <span className="inline-flex items-center gap-0.5 text-rose-600 dark:text-rose-400">
+                          <FileImage className="size-2.5" /> Rx
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="text-sm font-semibold shrink-0">
+                    {formatCurrency(it.lineTotal)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
+
+      {/* ================================================================
+          6. TIMELINE  +  7. NOTES + ACTIVITY LOG (side-by-side on desktop)
+          ================================================================ */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Order Timeline */}
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.25, delay: 0.4 }}
+        >
+          <Card className="h-full shadow-premium-sm">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <History className="size-4 text-emerald-600" /> Order Timeline
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <OrderTimeline
+                statusHistory={order.statusHistory}
+                currentStatus={order.status}
+              />
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        {/* Internal Notes */}
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.25, delay: 0.45 }}
+        >
+          <Card className="h-full shadow-premium-sm">
+            <CardHeader className="pb-3 flex-row items-center justify-between space-y-0">
+              <CardTitle className="text-base flex items-center gap-2">
+                <StickyNote className="size-4 text-emerald-600" /> Internal Notes
+                <Badge className="ml-1 bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">
+                  {notes.length}
+                </Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {/* Add note */}
+              <div className="flex gap-2">
+                <Textarea
+                  placeholder="Add an internal note (visible only to admins)..."
+                  value={newNote}
+                  onChange={(e) => setNewNote(e.target.value)}
+                  rows={2}
+                  className="text-sm resize-none"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && newNote.trim()) {
+                      e.preventDefault();
+                      addNote();
+                    }
+                  }}
+                />
+                <Button
+                  size="sm"
+                  className="gap-1.5 shrink-0 self-end min-h-[44px] bg-emerald-600 hover:bg-emerald-700 text-white"
+                  disabled={!newNote.trim() || savingNote}
+                  onClick={addNote}
+                >
+                  {savingNote ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <Send className="size-4" />
+                  )}
+                  <span className="hidden sm:inline">Add</span>
+                </Button>
+              </div>
+
+              {/* Notes list */}
+              <div className="space-y-2 max-h-[420px] overflow-y-auto scrollbar-premium pr-1">
+                {notes.length === 0 ? (
+                  <div className="text-sm text-muted-foreground italic text-center py-8">
+                    No internal notes yet.
+                  </div>
+                ) : (
+                  <AnimatePresence initial={false}>
+                    {[...notes].reverse().map((note) => (
+                      <motion.div
+                        key={note.id}
+                        initial={{ opacity: 0, y: -5 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, height: 0 }}
+                        className="rounded-lg border bg-emerald-50/40 dark:bg-emerald-950/20 p-2.5"
+                      >
+                        <div className="text-sm whitespace-pre-wrap break-words">
+                          {note.body}
+                        </div>
+                        <div className="flex items-center justify-between mt-1.5 text-[10px] text-muted-foreground">
+                          <span>
+                            {note.authorName || "Admin"} ·{" "}
+                            {formatDateTime(note.createdAt)}
+                            {new Date(note.updatedAt).getTime() -
+                              new Date(note.createdAt).getTime() >
+                              1000 && (
+                              <span className="italic"> (edited)</span>
+                            )}
+                          </span>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-6 text-rose-600 hover:text-rose-700"
+                            onClick={() => deleteNote(note.id)}
+                          >
+                            <Trash2 className="size-3" />
+                          </Button>
+                        </div>
+                      </motion.div>
+                    ))}
+                  </AnimatePresence>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+      </div>
+
+      {/* Activity Log (full width) */}
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.25, delay: 0.5 }}
+      >
+        <Card className="shadow-premium-sm">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Activity className="size-4 text-emerald-600" /> Activity Log
+              <Badge className="ml-1 bg-muted text-muted-foreground">
+                {activityFeed.length}
+              </Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ActivityLog items={activityFeed} />
+          </CardContent>
+        </Card>
+      </motion.div>
+
+      {/* ================================================================
+          8. PRESCRIPTION CARD (conditional)
+          ================================================================ */}
+      {order.prescription && (
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.25, delay: 0.55 }}
+        >
+          <PrescriptionCard
+            prescription={order.prescription}
+            orderStatus={order.status}
+            busy={busy}
+            onApprove={() => verifyPrescription("approve")}
+            onReject={(reason) => verifyPrescription("reject", reason)}
+          />
+        </motion.div>
+      )}
+
+      {/* ================================================================
+          DIALOGS
+          ================================================================ */}
+
+      {/* Cancel order dialog */}
       <Dialog open={cancelOpen} onOpenChange={setCancelOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Cancel this order?</DialogTitle>
-            <DialogDescription>The customer will be notified with the reason provided.</DialogDescription>
+            <DialogTitle className="flex items-center gap-2">
+              <XCircle className="size-5 text-rose-600" />
+              Cancel this order?
+            </DialogTitle>
+            <DialogDescription>
+              The customer will be notified with the reason provided. This action
+              cannot be undone.
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
-            <Label>Reason</Label>
+            <Label>Reason for cancellation *</Label>
             <Textarea
               rows={3}
               value={cancelReason}
@@ -1534,192 +1783,230 @@ export function OrderDetailView({ id }: { id: string }) {
             />
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setCancelOpen(false)}>Keep Order</Button>
+            <Button variant="outline" onClick={() => setCancelOpen(false)}>
+              Keep Order
+            </Button>
             <Button
               variant="destructive"
               disabled={busy || !cancelReason.trim()}
               onClick={() => {
-                changeStatus("cancelled", cancelReason);
+                changeStatus("cancelled", cancelReason.trim());
                 setCancelOpen(false);
+                setCancelReason("");
               }}
+              className="gap-1.5"
             >
+              {busy ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <XCircle className="size-4" />
+              )}
               Cancel Order
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Add product dialog */}
-      <Dialog open={addOpen} onOpenChange={setAddOpen}>
-        <DialogContent className="max-w-lg">
+      {/* Payment update confirmation dialog */}
+      <Dialog open={paymentDialogOpen} onOpenChange={setPaymentDialogOpen}>
+        <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Add Product to Order</DialogTitle>
-            <DialogDescription>Search and add a product. Totals will be recomputed.</DialogDescription>
+            <DialogTitle className="flex items-center gap-2">
+              <Wallet className="size-5 text-emerald-600" />
+              Confirm Payment Update
+            </DialogTitle>
+            <DialogDescription>
+              Review the changes below. The customer may be notified by email
+              depending on the new status.
+            </DialogDescription>
           </DialogHeader>
-          <div className="space-y-3">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-              <Input
-                className="pl-9"
-                placeholder="Search products..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && searchProducts()}
+          <div className="space-y-3 text-sm">
+            <div className="flex items-center justify-between gap-3 rounded-lg border bg-muted/30 p-3">
+              <span className="text-muted-foreground">From</span>
+              <PaymentStatusBadge status={order.paymentStatus} size="md" />
+              <ArrowRight className="size-4 text-muted-foreground" />
+              <PaymentStatusBadge status={paymentStatus} size="md" />
+            </div>
+            {paymentIdDraft.trim() !== (order.paymentId || "") && (
+              <div className="flex items-center justify-between gap-2 rounded-lg border p-3">
+                <span className="text-muted-foreground">Transaction ID</span>
+                <span className="font-mono text-xs font-medium truncate max-w-[60%]">
+                  {paymentIdDraft.trim() || "—"}
+                </span>
+              </div>
+            )}
+            <div className="space-y-1.5">
+              <Label>Optional note (added to timeline)</Label>
+              <Textarea
+                rows={2}
+                value={paymentNote}
+                onChange={(e) => setPaymentNote(e.target.value)}
+                placeholder="e.g. Verified via Razorpay dashboard, customer confirmed via call..."
+                className="text-sm"
               />
             </div>
-            <div className="flex items-center gap-2">
-              <Label className="text-xs">Qty:</Label>
-              <Input type="number" min={1} value={qty} onChange={(e) => setQty(parseInt(e.target.value) || 1)} className="w-20" />
-            </div>
-            <div className="max-h-64 overflow-y-auto border rounded-md divide-y">
-              {searching ? (
-                <div className="p-4 text-center text-sm text-muted-foreground">
-                  <Loader2 className="size-4 animate-spin inline mr-2" />Searching...
-                </div>
-              ) : searchResults.length === 0 ? (
-                <div className="p-4 text-center text-sm text-muted-foreground">
-                  {search ? "No results" : "Type a name and press Enter"}
-                </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPaymentDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              disabled={savingPayment}
+              onClick={confirmPaymentUpdate}
+              className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white"
+            >
+              {savingPayment ? (
+                <Loader2 className="size-4 animate-spin" />
               ) : (
-                searchResults.map((p) => (
-                  <button
-                    key={p.id}
-                    onClick={() => addProduct(p.id)}
-                    className="w-full flex items-center gap-3 p-2 text-left hover:bg-muted/40"
-                  >
-                    <ProductThumb image={p.primaryImage} name={p.name} brand={p.brand?.name} size={36} />
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium truncate">{p.name}</div>
-                      <div className="text-xs text-muted-foreground">{p.brand?.name} · Stock: {p.stock}</div>
-                    </div>
-                    <div className="text-sm font-semibold">{formatCurrency(p.sellingPrice)}</div>
-                  </button>
-                ))
+                <CheckCircle2 className="size-4" />
               )}
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setAddOpen(false)}>Close</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Shipping edit dialog */}
-      <Dialog open={shipOpen} onOpenChange={setShipOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Update Shipping Details</DialogTitle>
-            <DialogDescription>
-              Tracking info helps the customer track their delivery. Saving
-              will also advance the order to "Shipped" if it isn't already.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3">
-            <div>
-              <Label className="text-xs">Carrier / Delivery Partner</Label>
-              <Input
-                value={carrier}
-                onChange={(e) => setCarrier(e.target.value)}
-                placeholder="e.g. Delhivery, Blue Dart, DTDC..."
-                className="mt-1"
-              />
-            </div>
-            <div>
-              <Label className="text-xs">Tracking Number / AWB</Label>
-              <Input
-                value={trackingNumber}
-                onChange={(e) => setTrackingNumber(e.target.value)}
-                placeholder="e.g. AWB1234567890"
-                className="mt-1 font-mono"
-              />
-            </div>
-            <div>
-              <Label className="text-xs">Estimated Delivery Date</Label>
-              <Input
-                type="date"
-                value={estimatedDelivery}
-                onChange={(e) => setEstimatedDelivery(e.target.value)}
-                className="mt-1"
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShipOpen(false)}>Cancel</Button>
-            <Button
-              disabled={busy}
-              onClick={async () => {
-                await saveShipping();
-                // If the order is currently "packed" or earlier, also advance
-                // to "out_for_delivery" so the shipping flow reflects the
-                // tracking-number entry.
-                if (
-                  order.status === "pending" ||
-                  order.status === "confirmed" ||
-                  order.status === "packed"
-                ) {
-                  await changeStatus("out_for_delivery");
-                }
-              }}
-              className="gap-1.5"
-            >
-              {busy ? <Loader2 className="size-4 animate-spin" /> : <Truck className="size-4" />}
-              Save & Mark Shipped
+              Confirm Update
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Reject prescription dialog */}
-      <Dialog open={rejectOpen} onOpenChange={setRejectOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Reject Prescription?</DialogTitle>
-            <DialogDescription>
-              The order will be cancelled and the customer will be notified with the reason.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2">
-            <Label>Reason for rejection *</Label>
-            <Textarea
-              rows={3}
-              value={rejectReason}
-              onChange={(e) => setRejectReason(e.target.value)}
-              placeholder="e.g. Prescription is illegible, medication not matching, expired..."
-            />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setRejectOpen(false)}>Keep Order</Button>
+      {/* ================================================================
+          9. MOBILE STICKY ACTION BAR
+          ================================================================ */}
+      {!isTerminal && allowedNext.length > 0 && (
+        <div className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-background/95 backdrop-blur border-t shadow-premium-lg">
+          <div className="flex items-center gap-2 p-3">
+            {(() => {
+              // Primary action = first non-cancel allowed status
+              const primary = allowedNext.find((s) => s !== "cancelled");
+              if (!primary) return null;
+              const v = STATUS_VISUAL[primary];
+              if (!v) return null;
+              const Icon = v.icon;
+              return (
+                <Button
+                  size="sm"
+                  disabled={busy}
+                  onClick={() => changeStatus(primary)}
+                  className={cn(
+                    "flex-1 gap-1.5 min-h-[44px] text-white",
+                    v.tint,
+                    v.tintHover
+                  )}
+                >
+                  {busy ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <Icon className="size-4" />
+                  )}
+                  {v.label}
+                </Button>
+              );
+            })()}
             <Button
-              variant="destructive"
-              disabled={busy || !rejectReason.trim()}
-              onClick={() => {
-                verifyPrescription("reject", rejectReason);
-                setRejectOpen(false);
-              }}
+              size="sm"
+              variant="outline"
+              onClick={() => setMobileActionsOpen(true)}
+              className="min-h-[44px] px-3"
             >
-              Reject & Cancel Order
+              <ChevronRight className="size-4" />
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </div>
+        </div>
+      )}
+
+      {/* Mobile actions sheet */}
+      <Sheet open={mobileActionsOpen} onOpenChange={setMobileActionsOpen}>
+        <SheetContent side="bottom" className="rounded-t-2xl">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2">
+              <CircleDot className="size-4 text-emerald-600" />
+              Order Actions
+            </SheetTitle>
+          </SheetHeader>
+          <div className="px-4 pb-6 space-y-2">
+            {!isTerminal &&
+              allowedNext.map((s) => {
+                if (s === "cancelled") return null;
+                const v = STATUS_VISUAL[s];
+                if (!v) return null;
+                const Icon = v.icon;
+                return (
+                  <Button
+                    key={s}
+                    disabled={busy}
+                    onClick={() => changeStatus(s)}
+                    className={cn(
+                      "w-full gap-2 min-h-[48px] text-white justify-start",
+                      v.tint,
+                      v.tintHover
+                    )}
+                  >
+                    <Icon className="size-4" /> Mark {v.label}
+                  </Button>
+                );
+              })}
+            <Button
+              variant="outline"
+              onClick={downloadInvoice}
+              className="w-full gap-2 min-h-[48px] justify-start"
+            >
+              <Download className="size-4" /> Download Invoice
+            </Button>
+            <Button
+              variant="outline"
+              onClick={printInvoice}
+              className="w-full gap-2 min-h-[48px] justify-start"
+            >
+              <Printer className="size-4" /> Print Invoice
+            </Button>
+            <Button
+              variant="outline"
+              onClick={contactCustomer}
+              className="w-full gap-2 min-h-[48px] justify-start"
+            >
+              <Phone className="size-4" /> Contact Customer
+            </Button>
+            {!isTerminal && allowedNext.includes("cancelled") && (
+              <Button
+                variant="outline"
+                disabled={busy}
+                onClick={() => {
+                  setMobileActionsOpen(false);
+                  setCancelOpen(true);
+                }}
+                className="w-full gap-2 min-h-[48px] justify-start text-rose-600 hover:text-rose-700 hover:border-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/30"
+              >
+                <XCircle className="size-4" /> Cancel Order
+              </Button>
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
 
-// ============================================================================
-// Sub-components
-// ============================================================================
+// ===========================================================================
+// SUB-COMPONENTS
+// ===========================================================================
 
-function MetaRow({ label, value }: { label: string; value: string }) {
+function SkeletonHeader() {
   return (
-    <div className="flex justify-between">
-      <span>{label}</span>
-      <span className="text-foreground">{value}</span>
-    </div>
+    <Card className="overflow-hidden">
+      <CardContent className="p-0">
+        <div className="h-12 skeleton-premium" />
+        <div className="p-6 space-y-3">
+          <div className="h-8 w-1/3 skeleton-premium rounded" />
+          <div className="h-4 w-1/2 skeleton-premium rounded" />
+          <div className="flex gap-2 mt-4">
+            <div className="h-9 w-24 skeleton-premium rounded" />
+            <div className="h-9 w-24 skeleton-premium rounded" />
+            <div className="h-9 w-24 skeleton-premium rounded" />
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
-function TotalRow({
+function PriceRow({
   label,
   value,
   accent,
@@ -1729,16 +2016,17 @@ function TotalRow({
   accent?: "emerald" | "amber";
 }) {
   return (
-    <div className="flex items-center justify-between">
-      <span className="text-muted-foreground">{label}</span>
+    <div className="flex items-center justify-between gap-2">
+      <span className="text-muted-foreground truncate">{label}</span>
       <span
-        className={
+        className={cn(
+          "font-medium shrink-0",
           accent === "emerald"
-            ? "text-emerald-600 font-medium"
+            ? "text-emerald-600 dark:text-emerald-400"
             : accent === "amber"
-              ? "text-amber-600 font-medium"
-              : ""
-        }
+              ? "text-amber-600 dark:text-amber-400"
+              : "text-foreground"
+        )}
       >
         {value}
       </span>
@@ -1746,22 +2034,14 @@ function TotalRow({
   );
 }
 
-function PaymentMethodIcon({ method }: { method: string }) {
-  const Icon =
-    method === "cod" ? Banknote :
-    method === "qr" ? QrCode :
-    method === "upi" ? Smartphone :
-    method === "online" || method === "razorpay" || method === "cashfree" ? CreditCard :
-    Wallet;
-  return <Icon className="size-4 text-muted-foreground" />;
-}
-
-// ----------------------- Timeline -----------------------
+// ---------------------------------------------------------------------------
+// Order Timeline — premium vertical timeline with framer-motion stagger
+// ---------------------------------------------------------------------------
 function OrderTimeline({
   statusHistory,
   currentStatus,
 }: {
-  statusHistory: any[];
+  statusHistory: StatusHistoryEntry[];
   currentStatus: string;
 }) {
   if (!statusHistory || statusHistory.length === 0) {
@@ -1772,66 +2052,63 @@ function OrderTimeline({
     );
   }
 
-  // Show newest first.
+  // Newest first.
   const events = [...statusHistory].reverse();
 
   return (
     <div className="relative">
-      {/* Vertical line */}
-      <div className="absolute left-3.5 top-2 bottom-2 w-0.5 bg-border" />
-      <div className="space-y-4">
+      {/* Vertical connector line */}
+      <div className="absolute left-[14px] top-3 bottom-3 w-0.5 bg-gradient-to-b from-emerald-300 via-border to-border dark:from-emerald-800" />
+      <div className="space-y-5">
         {events.map((h, i) => {
-          const color =
-            h.status === "delivered" ? "bg-emerald-500" :
-            h.status === "cancelled" ? "bg-rose-500" :
-            h.status === "returned" ? "bg-orange-500" :
-            h.status === "pending" ? "bg-amber-500" :
-            h.status === "out_for_delivery" ? "bg-orange-500" :
-            h.status === "packed" ? "bg-teal-700" :
-            h.status === "confirmed" ? "bg-cyan-500" :
-            "bg-emerald-500";
-          const Icon =
-            h.status === "delivered" ? PartyPopper :
-            h.status === "cancelled" ? XCircle :
-            h.status === "pending" ? Clock :
-            h.status === "out_for_delivery" ? Truck :
-            h.status === "packed" ? PackageCheck :
-            h.status === "confirmed" ? CheckCircle2 :
-            h.status === "returned" ? RotateCw :
-            CheckCircle2;
+          const v = STATUS_VISUAL[h.status] || STATUS_VISUAL.pending;
+          const Icon = v.icon;
+          const isLatest = i === 0;
+          const isCurrent = h.status === currentStatus && isLatest;
           return (
             <motion.div
               key={h.id}
               initial={{ opacity: 0, x: -10 }}
               animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: i * 0.05 }}
+              transition={{ delay: i * 0.06, duration: 0.3 }}
               className="flex items-start gap-3 relative"
             >
+              {/* Status icon dot */}
               <div
-                className={`size-7 rounded-full ${color} flex items-center justify-center shrink-0 z-10 ring-4 ring-background`}
+                className={cn(
+                  "size-7 rounded-full flex items-center justify-center shrink-0 z-10 ring-4 ring-background",
+                  v.dot
+                )}
               >
                 <Icon className="size-3.5 text-white" />
               </div>
+
+              {/* Content */}
               <div className="flex-1 min-w-0 pb-1">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-sm font-medium capitalize">
-                    {h.status.replace(/_/g, " ")}
-                  </span>
-                  {i === 0 && (
-                    <Badge className="bg-emerald-100 text-emerald-700 text-[9px]">Latest</Badge>
+                  <span className="text-sm font-semibold">{v.label}</span>
+                  {isCurrent && (
+                    <Badge className="bg-amber-100 text-amber-700 text-[9px] dark:bg-amber-950/50 dark:text-amber-300">
+                      Current
+                    </Badge>
                   )}
-                  {h.status === currentStatus && i === 0 && (
-                    <Badge className="bg-amber-100 text-amber-700 text-[9px]">Current</Badge>
+                  {isLatest && !isCurrent && (
+                    <Badge className="bg-emerald-100 text-emerald-700 text-[9px] dark:bg-emerald-950/50 dark:text-emerald-300">
+                      Latest
+                    </Badge>
                   )}
                 </div>
-                <div className="text-xs text-muted-foreground">{formatDateTime(h.createdAt)}</div>
+                <div className="text-xs text-muted-foreground mt-0.5">
+                  {formatDateTime(h.createdAt)}
+                </div>
                 {h.note && (
-                  <div className="text-xs text-foreground mt-0.5 bg-muted/30 rounded px-2 py-1">
+                  <div className="text-xs text-foreground mt-1 bg-muted/40 dark:bg-muted/20 rounded px-2 py-1 border border-border/40">
                     {h.note}
                   </div>
                 )}
                 {h.createdBy && (
-                  <div className="text-[10px] text-muted-foreground/70 mt-0.5">
+                  <div className="text-[10px] text-muted-foreground/70 mt-1 inline-flex items-center gap-1">
+                    <User className="size-2.5" />
                     by {h.createdBy === "system" ? "System" : "Admin"}
                   </div>
                 )}
@@ -1844,8 +2121,95 @@ function OrderTimeline({
   );
 }
 
-// ----------------------- Prescription Section -----------------------
-function PrescriptionSection({
+// ---------------------------------------------------------------------------
+// Activity Log — chronological feed of all actions
+// ---------------------------------------------------------------------------
+type ActivityItem = {
+  id: string;
+  kind: "status" | "payment" | "note";
+  title: string;
+  description?: string | null;
+  timestamp: string;
+  actor?: string | null;
+};
+
+function ActivityLog({ items }: { items: ActivityItem[] }) {
+  if (items.length === 0) {
+    return (
+      <div className="text-sm text-muted-foreground italic text-center py-6">
+        No activity yet.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3 max-h-[480px] overflow-y-auto scrollbar-premium pr-1">
+      {items.map((item, i) => {
+        const Icon =
+          item.kind === "payment"
+            ? Wallet
+            : item.kind === "note"
+              ? MessageSquare
+              : STATUS_VISUAL[
+                  // Try to resolve the status icon by reverse-mapping the title
+                  // back to a status key. Fall back to Activity.
+                  Object.keys(STATUS_VISUAL).find(
+                    (k) =>
+                      STATUS_VISUAL[k].label.toLowerCase() ===
+                      item.title.replace("Order ", "").toLowerCase()
+                  ) || ""
+                ]?.icon || Activity;
+        const tint =
+          item.kind === "payment"
+            ? "bg-cyan-100 text-cyan-700 dark:bg-cyan-950/50 dark:text-cyan-300"
+            : item.kind === "note"
+              ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300"
+              : "bg-muted text-muted-foreground";
+        return (
+          <motion.div
+            key={item.id}
+            initial={{ opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: Math.min(i * 0.03, 0.3) }}
+            className="flex items-start gap-3"
+          >
+            <div
+              className={cn(
+                "size-8 rounded-full flex items-center justify-center shrink-0",
+                tint
+              )}
+            >
+              <Icon className="size-3.5" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-sm font-medium">{item.title}</span>
+                <span className="text-[10px] text-muted-foreground">
+                  {formatDateTime(item.timestamp)}
+                </span>
+              </div>
+              {item.description && (
+                <div className="text-xs text-muted-foreground mt-0.5 bg-muted/30 dark:bg-muted/20 rounded px-2 py-1 border border-border/30 break-words">
+                  {item.description}
+                </div>
+              )}
+              {item.actor && (
+                <div className="text-[10px] text-muted-foreground/70 mt-0.5">
+                  by {item.actor}
+                </div>
+              )}
+            </div>
+          </motion.div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Prescription Card — image gallery + verify/reject
+// ---------------------------------------------------------------------------
+function PrescriptionCard({
   prescription,
   orderStatus,
   busy,
@@ -1861,12 +2225,24 @@ function PrescriptionSection({
   const [activeIdx, setActiveIdx] = useState(0);
   const [zoom, setZoom] = useState(1);
   const [rotation, setRotation] = useState(0);
+  const [rejectOpen, setRejectOpen] = useState(false);
+  const [rejectReason, setRejectReason] = useState("");
   const images = prescription.images ?? [];
+
+  const isVerified = prescription.status === "verified";
+  const isRejected = prescription.status === "rejected";
+  const isCancelled = orderStatus === "cancelled";
+  const canAct = !isVerified && !isRejected && !isCancelled;
 
   if (images.length === 0) {
     return (
-      <Card>
-        <CardHeader><CardTitle className="text-base">Prescription</CardTitle></CardHeader>
+      <Card className="shadow-premium-sm">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <FileImage className="size-4 text-teal-600 dark:text-teal-400" />
+            Prescription
+          </CardTitle>
+        </CardHeader>
         <CardContent>
           <div className="text-sm text-muted-foreground italic text-center py-6">
             No prescription images attached.
@@ -1875,10 +2251,6 @@ function PrescriptionSection({
       </Card>
     );
   }
-
-  const isVerified = prescription.status === "verified";
-  const isRejected = prescription.status === "rejected";
-  const isCancelled = orderStatus === "cancelled";
 
   function downloadImage(url: string) {
     const a = document.createElement("a");
@@ -1891,21 +2263,47 @@ function PrescriptionSection({
   }
 
   return (
-    <Card>
-      <CardHeader className="flex-row items-center justify-between space-y-0">
+    <Card className="shadow-premium-sm border-teal-200/60 dark:border-teal-900/40">
+      <CardHeader className="pb-3 flex-row items-center justify-between space-y-0">
         <div>
-          <CardTitle className="text-base">Prescription Verification</CardTitle>
-          <div className="text-xs text-muted-foreground mt-0.5">
-            Uploaded {formatDateTime(prescription.createdAt)} · Status:{" "}
-            <span className="font-medium capitalize">{prescription.status.replace(/_/g, " ")}</span>
+          <CardTitle className="text-base flex items-center gap-2">
+            <FileImage className="size-4 text-teal-600 dark:text-teal-400" />
+            Prescription Verification
+          </CardTitle>
+          <div className="text-xs text-muted-foreground mt-1">
+            Uploaded {formatDateTime(prescription.createdAt)}
           </div>
         </div>
-        <FileImage className="size-5 text-teal-600 dark:text-teal-400" />
+        {/* Prescription status badge */}
+        <Badge
+          className={cn(
+            "border",
+            isVerified
+              ? "bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-900/60"
+              : isRejected
+                ? "bg-rose-100 text-rose-700 border-rose-200 dark:bg-rose-950/50 dark:text-rose-300 dark:border-rose-900/60"
+                : "bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-950/50 dark:text-amber-300 dark:border-amber-900/60"
+          )}
+        >
+          <span
+            className={cn(
+              "size-1.5 rounded-full mr-1",
+              isVerified
+                ? "bg-emerald-500"
+                : isRejected
+                  ? "bg-rose-500"
+                  : "bg-amber-500"
+            )}
+          />
+          <span className="capitalize">
+            {prescription.status.replace(/_/g, " ")}
+          </span>
+        </Badge>
       </CardHeader>
       <CardContent className="space-y-3">
         {/* Image viewer */}
         <div className="rounded-lg border bg-muted/30 overflow-hidden relative">
-          <div className="flex items-center justify-center min-h-[300px] max-h-[500px] p-4 overflow-hidden">
+          <div className="flex items-center justify-center min-h-[280px] sm:min-h-[400px] max-h-[500px] p-4 overflow-hidden">
             <img
               src={images[activeIdx]}
               alt={`Prescription ${activeIdx + 1}`}
@@ -1915,6 +2313,7 @@ function PrescriptionSection({
               }}
             />
           </div>
+
           {/* Viewer controls */}
           <div className="absolute top-2 right-2 flex items-center gap-1 bg-background/90 backdrop-blur rounded-lg border p-1">
             <Button
@@ -1927,7 +2326,9 @@ function PrescriptionSection({
             >
               <ZoomOut className="size-3.5" />
             </Button>
-            <span className="text-xs font-medium px-1">{Math.round(zoom * 100)}%</span>
+            <span className="text-xs font-medium px-1">
+              {Math.round(zoom * 100)}%
+            </span>
             <Button
               variant="ghost"
               size="icon"
@@ -1996,7 +2397,7 @@ function PrescriptionSection({
 
         {/* Thumbnail strip */}
         {images.length > 1 && (
-          <div className="flex gap-2 overflow-x-auto pb-1">
+          <div className="flex gap-2 overflow-x-auto scrollbar-premium pb-1">
             {images.map((url, i) => (
               <button
                 key={i}
@@ -2005,11 +2406,18 @@ function PrescriptionSection({
                   setZoom(1);
                   setRotation(0);
                 }}
-                className={`shrink-0 size-16 rounded-md overflow-hidden border-2 ${
-                  i === activeIdx ? "border-emerald-500" : "border-transparent hover:border-emerald-300"
-                }`}
+                className={cn(
+                  "shrink-0 size-16 rounded-md overflow-hidden border-2 transition-premium",
+                  i === activeIdx
+                    ? "border-emerald-500"
+                    : "border-transparent hover:border-emerald-300"
+                )}
               >
-                <img src={url} alt={`Thumb ${i + 1}`} className="size-full object-cover" />
+                <img
+                  src={url}
+                  alt={`Thumb ${i + 1}`}
+                  className="size-full object-cover"
+                />
               </button>
             ))}
           </div>
@@ -2018,8 +2426,8 @@ function PrescriptionSection({
         {/* Customer notes from prescription */}
         {prescription.notes && (
           <div className="rounded-lg bg-amber-50 dark:bg-amber-950/30 p-3">
-            <div className="text-xs font-semibold text-amber-900 dark:text-amber-200 mb-1">
-              Customer Notes
+            <div className="text-xs font-semibold text-amber-900 dark:text-amber-200 mb-1 flex items-center gap-1">
+              <ClipboardList className="size-3.5" /> Customer Notes
             </div>
             <div className="text-sm text-amber-800 dark:text-amber-300 whitespace-pre-wrap">
               {prescription.notes}
@@ -2029,8 +2437,8 @@ function PrescriptionSection({
 
         {/* Status banners */}
         {isVerified && (
-          <div className="rounded-lg bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 p-3 flex items-center gap-2">
-            <ShieldCheck className="size-5 text-emerald-600" />
+          <div className="rounded-lg bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900/50 p-3 flex items-center gap-2">
+            <ShieldCheck className="size-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
             <div>
               <div className="text-sm font-semibold text-emerald-800 dark:text-emerald-200">
                 Prescription Approved
@@ -2042,8 +2450,8 @@ function PrescriptionSection({
           </div>
         )}
         {isRejected && (
-          <div className="rounded-lg bg-rose-50 dark:bg-rose-950/30 border border-rose-200 p-3 flex items-center gap-2">
-            <ShieldX className="size-5 text-rose-600" />
+          <div className="rounded-lg bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900/50 p-3 flex items-center gap-2">
+            <ShieldX className="size-5 text-rose-600 dark:text-rose-400 shrink-0" />
             <div>
               <div className="text-sm font-semibold text-rose-800 dark:text-rose-200">
                 Prescription Rejected
@@ -2056,38 +2464,83 @@ function PrescriptionSection({
         )}
 
         {/* Action buttons */}
-        {!isVerified && !isRejected && !isCancelled && (
-          <div className="grid grid-cols-2 gap-2 pt-2">
+        {canAct && (
+          <div className="grid grid-cols-2 gap-2 pt-1">
             <Button
               className="bg-emerald-600 hover:bg-emerald-700 gap-2 min-h-[44px]"
               disabled={busy}
               onClick={onApprove}
             >
-              {busy ? <Loader2 className="size-4 animate-spin" /> : <ShieldCheck className="size-4" />}
-              Approve Prescription
+              {busy ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <ShieldCheck className="size-4" />
+              )}
+              Approve
             </Button>
             <Button
               variant="destructive"
               className="gap-2 min-h-[44px]"
               disabled={busy}
-              onClick={() => {
-                const reason = prompt("Reason for rejection (required):");
-                if (reason && reason.trim()) {
-                  onReject(reason.trim());
-                }
-              }}
+              onClick={() => setRejectOpen(true)}
             >
-              <ShieldX className="size-4" />
-              Reject Prescription
+              <ShieldX className="size-4" /> Reject
             </Button>
           </div>
         )}
         {isCancelled && !isRejected && (
-          <div className="rounded-lg bg-rose-50 dark:bg-rose-950/30 border border-rose-200 p-3 text-sm text-rose-800 dark:text-rose-200">
+          <div className="rounded-lg bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900/50 p-3 text-sm text-rose-800 dark:text-rose-200">
             Order was cancelled — prescription verification is no longer actionable.
           </div>
         )}
       </CardContent>
+
+      {/* Reject prescription dialog */}
+      <Dialog open={rejectOpen} onOpenChange={setRejectOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ShieldX className="size-5 text-rose-600" />
+              Reject Prescription?
+            </DialogTitle>
+            <DialogDescription>
+              The order will be cancelled and the customer will be notified with
+              the reason.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label>Reason for rejection *</Label>
+            <Textarea
+              rows={3}
+              value={rejectReason}
+              onChange={(e) => setRejectReason(e.target.value)}
+              placeholder="e.g. Prescription is illegible, medication not matching, expired..."
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRejectOpen(false)}>
+              Keep Order
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={busy || !rejectReason.trim()}
+              onClick={() => {
+                onReject(rejectReason.trim());
+                setRejectOpen(false);
+                setRejectReason("");
+              }}
+              className="gap-1.5"
+            >
+              {busy ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <ShieldX className="size-4" />
+              )}
+              Reject & Cancel Order
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }

@@ -83,6 +83,9 @@ model Customer {
   stockAlerts    StockSubscription[]
   reminders      MedicineReminder[]
   refillReminders RefillReminder[]
+  pushSubscriptions PushSubscription[]
+  appNotifLogs   AppNotifLog[]
+  appNotifPref   AppNotifPreference?
 
   @@index([email])
   @@index([phone])
@@ -776,6 +779,108 @@ model StockSubscription {
 
   @@unique([customerId, productId])
   @@index([productId, status])
+  @@index([customerId])
+}
+
+// ---------------------------------------------------------------------------
+// APP NOTIFICATIONS (Web Push) — server-side push delivery to customer
+// devices via the Web Push API + VAPID. Four models back the system:
+//
+//   PushSubscription — per-device push endpoint (browser, PWA, etc.).
+//                      A customer can have many (one per device/browser).
+//   AppNotifTemplate — admin-managed content templates for transactional
+//                      notifications (order_placed, payment_successful, ...).
+//   AppNotifLog       — every push sent (auto + broadcast) is recorded for
+//                      delivery analytics + history.
+//   AppNotifPreference — per-customer master toggle. Default enabled.
+// ---------------------------------------------------------------------------
+
+/// Browser/device push subscriptions for a customer. One customer can have
+/// multiple subscriptions (laptop, phone, PWA install). Each subscription is
+/// uniquely keyed by the Web Push `endpoint` URL returned by the browser's
+/// PushSubscription object. Dead endpoints are auto-pruned by sendPushToCustomer.
+model PushSubscription {
+  id         String   @id @default(cuid())
+  customerId String
+  endpoint   String   @unique @db.VarChar(500) // the FCM/Mozilla/Apple push endpoint URL
+  p256dhKey  String   @db.VarChar(255)         // client P-256 public key (base64url)
+  authKey    String   @db.VarChar(255)         // client auth secret (base64url)
+  userAgent  String?  @db.VarChar(500)         // browser UA at subscription time
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId])
+  @@index([isActive])
+}
+
+/// Admin-managed templates for App (push) notifications. The 18 default
+/// templates mirror the customer email templates so each transactional event
+/// has both an email + a push variant. Variables use the {{var}} syntax.
+model AppNotifTemplate {
+  id          String   @id @default(cuid())
+  key         String   @unique @db.VarChar(80) // e.g. order_placed, payment_successful
+  name        String   @db.VarChar(255)
+  title       String   @db.VarChar(255)         // notification title
+  shortDesc   String?  @db.VarChar(500)         // admin-only description of when it fires
+  fullMessage String   @db.Text                  // body with {{variables}}
+  icon        String?  @db.VarChar(500)         // icon URL (defaults to /icon.png)
+  bannerImage String?  @db.VarChar(500)         // optional large image
+  deepLink    String?  @db.VarChar(500)         // route to open on click (e.g. /account/orders)
+  variables   String?  @db.Text                  // JSON array: ["name","orderNumber"]
+  category    String   @default("transactional") @db.VarChar(40) // transactional | campaign | system
+  priority    String   @default("normal") @db.VarChar(20)        // normal | high
+  isEnabled   Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  logs AppNotifLog[]
+
+  @@index([key])
+  @@index([category])
+  @@index([isEnabled])
+}
+
+/// Log of every push notification dispatched — transactional AND campaign.
+/// Used for the admin History tab + delivery analytics dashboard.
+model AppNotifLog {
+  id           String   @id @default(cuid())
+  customerId   String
+  templateId   String?
+  templateKey  String?  @db.VarChar(80)
+  title        String   @db.VarChar(255)
+  body         String   @db.Text
+  category     String   @default("transactional") @db.VarChar(40)
+  status       String   @default("sent") @db.VarChar(20) // sent | failed | skipped
+  error        String?  @db.Text
+  metadata     String?  @db.Text // JSON: { orderId, amount, ... } for debugging
+  createdAt    DateTime @default(now())
+
+  customer Customer          @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  template AppNotifTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+
+  @@index([customerId])
+  @@index([templateKey])
+  @@index([category])
+  @@index([createdAt])
+  @@index([status])
+}
+
+/// Per-customer master toggle for App notifications. Default enabled (true).
+/// A row is auto-created on first interaction (subscribe / sendAutoNotif).
+/// When enabled=false the customer receives no push notifications at all,
+/// including broadcasts (they explicitly opted out).
+model AppNotifPreference {
+  id         String   @id @default(cuid())
+  customerId String   @unique
+  enabled    Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
   @@index([customerId])
 }
 

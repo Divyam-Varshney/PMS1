@@ -17,6 +17,7 @@ export async function GET(req: Request) {
     where: {
       status: "active",
       visibility: "public",
+      logo: { not: null },
       ...(featuredOnly ? { isFeaturedOnHomepage: true } : {}),
     },
     orderBy: [{ displayOrder: "asc" }, { name: "asc" }],

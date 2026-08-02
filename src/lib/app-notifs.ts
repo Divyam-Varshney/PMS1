@@ -359,10 +359,15 @@ export async function broadcastCampaign(
 
 export interface AppNotifAnalytics {
   range: { days: number; from: string; to: string };
-  totals: { sent: number; failed: number; skipped: number; total: number };
+  totals: { sent: number; failed: number; skipped: number; total: number; delivered: number; opened: number; clicked: number };
+  openRate: number;
+  clickRate: number;
+  deliveryRate: number;
   byDay: Array<{ date: string; sent: number; failed: number; skipped: number }>;
   byTemplate: Array<{ templateKey: string; count: number; sent: number; failed: number }>;
   byCategory: Array<{ category: string; count: number; sent: number; failed: number }>;
+  topCampaigns: Array<{ title: string; sent: number; failed: number; total: number }>;
+  deviceDistribution: Array<{ device: string; count: number }>;
   activeSubscribers: number;
   totalCustomers: number;
   enabledPreferences: number;
@@ -382,23 +387,42 @@ export async function getAnalytics(days = 30): Promise<AppNotifAnalytics> {
         status: true,
         templateKey: true,
         category: true,
+        title: true,
         createdAt: true,
+        sentAt: true,
+        isRead: true,
+        isClicked: true,
       },
     }),
     db.pushSubscription.count({ where: { isActive: true } }),
     db.customer.count({ where: { isActive: true } }),
     db.appNotifPreference.count({ where: { enabled: true } }),
+    db.pushSubscription.findMany({ where: { isActive: true }, select: { userAgent: true } }),
   ]);
 
-  const totals = { sent: 0, failed: 0, skipped: 0, total: logs.length };
+  const totals = { sent: 0, failed: 0, skipped: 0, total: logs.length, delivered: 0, opened: 0, clicked: 0 };
+  const campaignMap = new Map<string, { title: string; sent: number; failed: number; total: number }>();
   const byDayMap = new Map<string, { sent: number; failed: number; skipped: number }>();
   const byTplMap = new Map<string, { count: number; sent: number; failed: number }>();
   const byCatMap = new Map<string, { count: number; sent: number; failed: number }>();
 
   for (const log of logs) {
-    if (log.status === "sent") totals.sent++;
-    else if (log.status === "failed") totals.failed++;
+    if (log.status === "sent") {
+      totals.sent++;
+      totals.delivered++;
+      if (log.isRead) totals.opened++;
+      if (log.isClicked) totals.clicked++;
+    } else if (log.status === "failed") totals.failed++;
     else totals.skipped++;
+
+    // Track campaigns
+    if (log.category === "campaign" && log.title) {
+      const c = campaignMap.get(log.title) || { title: log.title, sent: 0, failed: 0, total: 0 };
+      c.total++;
+      if (log.status === "sent") c.sent++;
+      else if (log.status === "failed") c.failed++;
+      campaignMap.set(log.title, c);
+    }
 
     const day = log.createdAt.toISOString().slice(0, 10);
     const d = byDayMap.get(day) || { sent: 0, failed: 0, skipped: 0 };
@@ -432,9 +456,25 @@ export async function getAnalytics(days = 30): Promise<AppNotifAnalytics> {
     byDay.push({ date: key, ...v });
   }
 
+  // Device distribution from userAgent strings
+  const deviceMap = new Map<string, number>();
+  for (const sub of subscriptions) {
+    const ua = sub.userAgent || "Unknown";
+    let device = "Other";
+    if (ua.includes("Android")) device = "Android";
+    else if (ua.includes("iPhone") || ua.includes("iPad")) device = "iOS";
+    else if (ua.includes("Windows")) device = "Windows";
+    else if (ua.includes("Mac")) device = "macOS";
+    else if (ua.includes("Linux")) device = "Linux";
+    deviceMap.set(device, (deviceMap.get(device) || 0) + 1);
+  }
+
   return {
     range: { days, from: from.toISOString(), to: now.toISOString() },
     totals,
+    openRate: totals.delivered > 0 ? Math.round((totals.opened / totals.delivered) * 100) : 0,
+    clickRate: totals.delivered > 0 ? Math.round((totals.clicked / totals.delivered) * 100) : 0,
+    deliveryRate: totals.total > 0 ? Math.round((totals.delivered / totals.total) * 100) : 0,
     byDay,
     byTemplate: Array.from(byTplMap.entries())
       .map(([k, v]) => ({ templateKey: k, ...v }))
@@ -442,8 +482,92 @@ export async function getAnalytics(days = 30): Promise<AppNotifAnalytics> {
     byCategory: Array.from(byCatMap.entries())
       .map(([k, v]) => ({ category: k, ...v }))
       .sort((a, b) => b.count - a.count),
+    topCampaigns: Array.from(campaignMap.values())
+      .sort((a, b) => b.sent - a.sent)
+      .slice(0, 10),
+    deviceDistribution: Array.from(deviceMap.entries())
+      .map(([device, count]) => ({ device, count }))
+      .sort((a, b) => b.count - a.count),
     activeSubscribers,
     totalCustomers,
     enabledPreferences: enabledPrefs,
   };
+}
+
+
+// ---------------------------------------------------------------------------
+// Retry failed notifications — called periodically or on admin trigger.
+// Finds failed logs with retryCount < 3 and re-sends them.
+// ---------------------------------------------------------------------------
+
+export async function retryFailedNotifications(limit = 50): Promise<{ retried: number; succeeded: number; stillFailed: number }> {
+  const failed = await db.appNotifLog.findMany({
+    where: { status: "failed", retryCount: { lt: 3 }, error: { not: "No active push subscriptions" } },
+    take: limit,
+    orderBy: { createdAt: "desc" },
+  });
+
+  let retried = 0, succeeded = 0, stillFailed = 0;
+
+  for (const log of failed) {
+    retried++;
+    try {
+      // Parse metadata for variables
+      const meta = log.metadata ? JSON.parse(log.metadata) : {};
+      const result = await sendPushToCustomer(log.customerId, {
+        title: log.title,
+        body: log.body,
+        url: meta.url || "/?view=orders",
+        icon: "/icon.png",
+        badge: "/icon.png",
+        tag: `retry-${log.id}`,
+        priority: "normal",
+        data: { ...meta, retry: true },
+      });
+
+      if (result.sent > 0) {
+        succeeded++;
+        await db.appNotifLog.update({
+          where: { id: log.id },
+          data: { status: "sent", sentAt: new Date(), retryCount: { increment: 1 }, error: null },
+        });
+      } else {
+        stillFailed++;
+        await db.appNotifLog.update({
+          where: { id: log.id },
+          data: { retryCount: { increment: 1 } },
+        });
+      }
+    } catch (err) {
+      stillFailed++;
+      await db.appNotifLog.update({
+        where: { id: log.id },
+        data: { retryCount: { increment: 1 } },
+      });
+    }
+  }
+
+  return { retried, succeeded, stillFailed };
+}
+
+// ---------------------------------------------------------------------------
+// Mark notification as read (called when customer opens the app after click)
+// ---------------------------------------------------------------------------
+
+export async function markNotificationRead(logId: string): Promise<void> {
+  await db.appNotifLog.updateMany({
+    where: { id: logId },
+    data: { isRead: true, readAt: new Date() },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Mark notification as clicked (called when customer clicks the notification)
+// ---------------------------------------------------------------------------
+
+export async function markNotificationClicked(logId: string): Promise<void> {
+  await db.appNotifLog.updateMany({
+    where: { id: logId },
+    data: { isClicked: true, clickedAt: new Date(), isRead: true, readAt: new Date() },
+  });
 }

@@ -20,7 +20,46 @@ export interface AppNotifTemplateSeed {
   icon?: string;
   bannerImage?: string;
   deepLink?: string;
-  variables: string[];
+  variables: string[  // Stock Alert
+  {
+    key: "stock_alert",
+    name: "Stock Alert",
+    title: "📦 Stock Alert: {{productName}}",
+    shortDesc: "{{productName}} is running low. Current stock: {{stockCount}} units.",
+    fullMessage: "Stock alert: {{productName}} is running low. Current stock: {{stockCount}} units. Please reorder soon to avoid stockout.",
+    icon: "Package",
+    deepLink: "/?view=shop",
+    variables: ["productName", "stockCount"],
+    category: "system",
+    priority: "high",
+  },
+  // Account Verification
+  {
+    key: "account_verification",
+    name: "Account Verification",
+    title: "✅ Verify Your Account",
+    shortDesc: "Please verify your email to complete registration. OTP: {{otp}}",
+    fullMessage: "Welcome to {{storeName}}! Please verify your email address using OTP: {{otp}}. This code expires in {{expiry}} minutes.",
+    icon: "CheckCircle",
+    deepLink: "/?view=auth",
+    variables: ["customerName", "storeName", "otp", "expiry"],
+    category: "transactional",
+    priority: "high",
+  },
+  // Password Reset
+  {
+    key: "password_reset",
+    name: "Password Reset",
+    title: "🔑 Password Reset Request",
+    shortDesc: "Use OTP {{otp}} to reset your password. Expires in {{expiry}} minutes.",
+    fullMessage: "A password reset was requested for your {{storeName}} account. Use OTP: {{otp}} to reset your password. This code expires in {{expiry}} minutes. If you didn't request this, please ignore.",
+    icon: "Key",
+    deepLink: "/?view=auth",
+    variables: ["customerName", "storeName", "otp", "expiry"],
+    category: "transactional",
+    priority: "urgent",
+  },
+];
   category: "transactional" | "campaign" | "system";
   priority: "normal" | "high";
 }
@@ -292,5 +331,44 @@ export const DEFAULT_APP_NOTIF_TEMPLATES: AppNotifTemplateSeed[] = [
     variables: ["name", "refId", "status"],
     category: "transactional",
     priority: "normal",
+  },
+  // Stock Alert
+  {
+    key: "stock_alert",
+    name: "Stock Alert",
+    title: "📦 Stock Alert: {{productName}}",
+    shortDesc: "{{productName}} is running low. Current stock: {{stockCount}} units.",
+    fullMessage: "Stock alert: {{productName}} is running low. Current stock: {{stockCount}} units. Please reorder soon to avoid stockout.",
+    icon: "Package",
+    deepLink: "/?view=shop",
+    variables: ["productName", "stockCount"],
+    category: "system",
+    priority: "high",
+  },
+  // Account Verification
+  {
+    key: "account_verification",
+    name: "Account Verification",
+    title: "✅ Verify Your Account",
+    shortDesc: "Please verify your email to complete registration. OTP: {{otp}}",
+    fullMessage: "Welcome to {{storeName}}! Please verify your email address using OTP: {{otp}}. This code expires in {{expiry}} minutes.",
+    icon: "CheckCircle",
+    deepLink: "/?view=auth",
+    variables: ["customerName", "storeName", "otp", "expiry"],
+    category: "transactional",
+    priority: "high",
+  },
+  // Password Reset
+  {
+    key: "password_reset",
+    name: "Password Reset",
+    title: "🔑 Password Reset Request",
+    shortDesc: "Use OTP {{otp}} to reset your password. Expires in {{expiry}} minutes.",
+    fullMessage: "A password reset was requested for your {{storeName}} account. Use OTP: {{otp}} to reset your password. This code expires in {{expiry}} minutes. If you didn't request this, please ignore.",
+    icon: "Key",
+    deepLink: "/?view=auth",
+    variables: ["customerName", "storeName", "otp", "expiry"],
+    category: "transactional",
+    priority: "urgent",
   },
 ];

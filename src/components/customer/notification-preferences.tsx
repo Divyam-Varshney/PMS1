@@ -171,7 +171,7 @@ export function NotificationPreferences() {
               {enabled ? <Bell className="size-5" /> : <BellOff className="size-5" />}
             </div>
             <div className="min-w-0">
-              <CardTitle className="text-base">App Notifications</CardTitle>
+              <CardTitle className="text-base">Apps Notification's</CardTitle>
               <CardDescription className="mt-1 text-xs">
                 Get order updates, payment alerts, and exclusive offers as push notifications on your device.
               </CardDescription>

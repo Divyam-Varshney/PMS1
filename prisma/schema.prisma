@@ -856,6 +856,12 @@ model AppNotifLog {
   status       String   @default("sent") @db.VarChar(20) // sent | failed | skipped
   error        String?  @db.Text
   metadata     String?  @db.Text // JSON: { orderId, amount, ... } for debugging
+  isRead       Boolean  @default(false)
+  readAt       DateTime?
+  isClicked    Boolean  @default(false)
+  clickedAt    DateTime?
+  retryCount   Int      @default(0)
+  sentAt       DateTime?
   createdAt    DateTime @default(now())
 
   customer Customer          @relation(fields: [customerId], references: [id], onDelete: Cascade)

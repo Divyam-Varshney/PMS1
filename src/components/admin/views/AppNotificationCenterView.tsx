@@ -110,7 +110,7 @@ export function AppNotificationCenterView() {
   return (
     <div className="p-4 sm:p-6 space-y-6 max-w-7xl mx-auto">
       <PageHeader
-        title="App Notification Center"
+        title="Apps Notification's Center"
         description="Send Web Push notifications to all customers. Transactional templates fire automatically on order + payment events."
       />
 

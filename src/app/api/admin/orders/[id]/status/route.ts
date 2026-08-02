@@ -48,12 +48,26 @@ export async function PATCH(req: Request, { params }: Ctx) {
   });
   if (!order) return notFound("Order not found");
 
-  // Reject invalid transitions
-  if (order.status === "delivered" && body.status !== "returned") {
-    return err("Delivered orders can only be marked as returned", 400);
+  // ── Smart status workflow — prevent invalid transitions ──
+  const VALID_TRANSITIONS: Record<string, string[]> = {
+    pending: ["confirmed", "cancelled"],
+    confirmed: ["packed", "out_for_delivery", "delivered", "cancelled"],
+    packed: ["out_for_delivery", "delivered", "cancelled"],
+    out_for_delivery: ["delivered", "cancelled"],
+    delivered: ["returned"],
+    returned: [],
+    cancelled: [],
+  };
+
+  const allowedNext = VALID_TRANSITIONS[order.status] ?? [];
+  if (order.status === body.status) {
+    return err(`Order is already ${body.status}`, 400);
   }
-  if (order.status === "cancelled") {
-    return err("Cancelled orders cannot change status", 400);
+  if (allowedNext.length === 0) {
+    return err(`Cannot change status of a ${order.status} order (terminal state)`, 400);
+  }
+  if (!allowedNext.includes(body.status)) {
+    return err(`Invalid transition: ${order.status} → ${body.status}. Allowed: ${allowedNext.join(", ")}`, 400);
   }
 
   const note = body.note?.trim() || undefined;

@@ -480,7 +480,6 @@ function PhonePreview({
                 <p className="text-[11px] text-stone-300 mt-0.5 line-clamp-3">{body}</p>
                 {bannerImage && (
                   <div className="mt-2 overflow-hidden rounded-lg">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={bannerImage}
                       alt="Banner"

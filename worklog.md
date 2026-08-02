@@ -7606,3 +7606,114 @@ Three targeted UI/branding improvements for the PMS pharmacy customer site. No b
 - ✅ Stock alert: API 401 (correct — requires auth)
 - ✅ Server stable
 
+
+---
+
+## P36-5 — App Notification System (Web Push) ✅
+
+**Task ID**: P36-5
+**Agent**: app-notification-system
+
+### What was built
+
+A complete Web Push notification system for the PMS pharmacy, enabling both transactional (auto) push notifications on order/payment/prescription events and admin-driven campaign broadcasts.
+
+#### 1. Prisma models (4 new, before ErrorLog)
+- `PushSubscription` — per-device push endpoint (customerId, endpoint@unique, p256dhKey, authKey, userAgent, isActive, timestamps)
+- `AppNotifTemplate` — admin-managed templates (key@unique, title, fullMessage, icon, bannerImage, deepLink, variables JSON, category, priority, isEnabled, timestamps)
+- `AppNotifLog` — every push sent (customerId, templateId, templateKey, title, body, category, status, error, metadata, createdAt)
+- `AppNotifPreference` — per-customer master toggle (customerId@unique, enabled default true, timestamps)
+- Added back-relations to Customer: `pushSubscriptions`, `appNotifLogs`, `appNotifPref`
+- Schema pushed with `bun run db:push --accept-data-loss`
+
+#### 2. Service worker (`public/sw.js`)
+- `install` → skipWaiting
+- `activate` → clients.claim()
+- `push` event → parses JSON payload, shows notification with title/body/icon/image/tag/priority (requireInteraction + renotify for "high")
+- `notificationclick` → focuses existing PMS tab + posts NOTIF_CLICK message to SPA router; opens new tab if none
+- `message` listener for SKIP_WAITING
+
+#### 3. SW registration (`src/components/shared/sw-register.tsx`)
+- Client component, registers `/sw.js` on `requestIdleCallback`
+- Listens for `updatefound` + reloads on activation
+- Forwards `NOTIF_CLICK` messages to a `window.__pmsNavigate` hook (SPA router integration)
+- Rendered in `src/app/layout.tsx` (added import + `<SWRegister />`)
+
+#### 4. Push service (`src/lib/push-service.ts`)
+- `isPushConfigured()` — checks VAPID env vars
+- `getVapidPublicKey()` — returns the public key for `PushManager.subscribe()`
+- `sendPushToCustomer(customerId, payload)` — fans out to all active subs in parallel, **auto-prunes dead endpoints** (404/410 from FCM/Mozilla delete the PushSubscription row), preserves rows on transient errors (429/5xx)
+- Uses `web-push` library with VAPID
+
+#### 5. App notif templates (`src/lib/app-notif-templates.ts`)
+- 18 default templates mirroring customer email templates:
+  `welcome`, `order_placed`, `payment_pending`, `payment_successful`, `payment_failed`, `order_confirmed`, `order_processing`, `order_packed`, `out_for_delivery`, `order_delivered`, `order_cancelled`, `refund_initiated`, `refund_completed`, `prescription_uploaded`, `prescription_under_review`, `prescription_approved`, `prescription_rejected`, `medicine_request_updated`
+- Each has: title, fullMessage (with `{{var}}` interpolation), icon, deepLink, category, priority, variables
+
+#### 6. App notifs service (`src/lib/app-notifs.ts`)
+- `ensureTemplatesSeeded()` — idempotent upsert of all 18 templates (cached in-memory after first call)
+- `getOrCreatePreference(customerId)` — default enabled=true
+- `sendAutoNotification(customerId, templateKey, variables, metadata)` — full pipeline: seed → template lookup → preference check → subscription check → interpolate → send → log to AppNotifLog. Returns `{ sent, status, logId }`. **All failures are caught** — push errors never break the caller (checkout/status/payment).
+- `broadcastCampaign(payload)` — sends to ALL active customers (excluding only those with `enabled=false`). Processes in chunks of 20 for concurrency safety. Creates preference rows for missing customers. Returns aggregate stats.
+- `getAnalytics(days)` — totals, by-day series (filled continuous), by-template breakdown, by-category breakdown, active subscriber + total customer counts
+
+#### 7. API routes
+
+**Customer routes:**
+- `GET /api/push/vapid-public` — returns VAPID public key
+- `POST /api/push/subscribe` — upserts PushSubscription by endpoint, ensures preference exists
+- `POST /api/push/unsubscribe` — deletes subscription (ownership-checked)
+- `GET /api/app-notifs/preferences` — returns preference + active device count
+- `PUT /api/app-notifs/preferences` — updates enabled flag (deactivates subs on disable)
+- `GET /api/app-notifs/history` — last 50 customer notifications
+
+**Admin routes (newsletter permission):**
+- `GET /api/admin/app-notifs/templates` — list templates (lazily seeds defaults)
+- `PUT /api/admin/app-notifs/templates` — edit whitelisted fields (key/name protected)
+- `GET /api/admin/app-notifs/history` — paginated, filterable by status/category/templateKey/customerId
+- `GET /api/admin/app-notifs/analytics?days=N` — aggregated delivery stats
+- `PUT /api/admin/app-notifs/template-toggle` — toggle isEnabled
+- `POST /api/admin/app-notifs/broadcast` — send to ALL active customers
+- `POST /api/admin/app-notifs/generate` — AI-assisted draft generation (topic + tone → title/message/CTA/emoji/priority)
+
+#### 8. Customer notification preferences (`src/components/customer/notification-preferences.tsx`)
+- Card with master toggle + active device count
+- Enable flow: request permission → fetch VAPID key → PushManager.subscribe → POST /subscribe → PUT /preferences
+- Disable flow: SW unsubscribe → POST /unsubscribe → PUT /preferences
+- Detects Push API support (SSR-safe)
+- Privacy + trust messaging
+- Added to `src/components/customer/account-view.tsx` (below the security card)
+
+#### 9. Admin App Notification Center (`src/components/admin/views/AppNotificationCenterView.tsx`)
+- Two tabs:
+  - **Create Campaign**: AI generator (topic + tone → draft), editable compose form (emoji, title, body, CTA, deep link, priority, banner image), live phone preview (Android notification shade mockup with status bar), analytics mini-card (subscriber reach + delivery stats), "Send to ALL Customers" button with result summary
+  - **History**: paginated log with status/category filters, customer name, template key, status badge, error display
+- Registered in `src/app/admin/page.tsx` (dynamic import + `case "app-notification-center"`)
+- Added to `AdminLayout.tsx` nav (Bell icon, Marketing group, below Newsletter, `newsletter` permission) + `TITLE_MAP`
+- Added `"app-notification-center"` to `AdminView` union type in `admin-store.ts`
+
+#### 10. Auto-notification integrations
+- `src/app/api/checkout/route.ts` — `order_placed` push after the email
+- `src/app/api/admin/orders/[id]/status/route.ts` — `order_confirmed` / `order_packed` / `out_for_delivery` / `order_delivered` / `order_cancelled` pushes after the email
+- `src/app/api/admin/orders/[id]/prescription-verify/route.ts` — `prescription_approved` / `prescription_rejected` pushes after the email
+- `src/app/api/admin/orders/[id]/payment/route.ts` — `payment_successful` / `payment_failed` / `refund_completed` pushes (no notification for "pending" — already covered by order_placed)
+
+All integrations wrapped in `.catch()` so push failures never break the order/payment flow.
+
+### Verification
+
+- ✅ Lint: clean (0 errors, 0 warnings) — `bun run lint`
+- ✅ Prisma: schema pushed successfully (4 new models generated)
+- ✅ `/` returns HTTP 200 (homepage renders, SWRegister component present in HTML output)
+- ✅ `/admin` returns HTTP 200
+- ✅ `/sw.js` returns HTTP 200 (service worker accessible)
+- ✅ `GET /api/push/vapid-public` → 200 + returns VAPID public key
+- ✅ All customer push/app-notifs endpoints return 401 when unauthenticated (correct auth guard)
+- ✅ All admin endpoints return 401 when unauthenticated
+- ✅ Admin login → `GET /api/admin/app-notifs/templates` → 200, returned **18 seeded templates** (idempotent seeding verified)
+- ✅ `GET /api/admin/app-notifs/analytics?days=7` → 200, returns full analytics shape (totals/byDay/byTemplate/byCategory/activeSubscribers/totalCustomers)
+- ✅ `POST /api/admin/app-notifs/broadcast` → 200, returned `{totalCustomers:4, targeted:0, skipped:4, sent:0, failed:0, pruned:0, durationMs:977}` — correctly skipped all 4 customers (none have active subscriptions yet, since the system is brand new)
+- ✅ `POST /api/admin/app-notifs/generate` → 200, AI generated a valid notification draft (title, message, CTA, emoji, priority)
+- ✅ `PUT /api/admin/app-notifs/template-toggle` → 200, toggled template isEnabled false then true successfully
+- ✅ `GET /api/admin/app-notifs/history` → 200, returned paginated empty list
+- ✅ Dev server log shows all routes compiled and responded successfully with no errors

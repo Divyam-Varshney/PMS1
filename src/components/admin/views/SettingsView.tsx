@@ -21,7 +21,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
-import { Save, Loader2, Eye, EyeOff, Store, Mail, Percent, FileText, Search, Palette, ShieldCheck, Clock, Sparkles, Bell, Cloud, Brain, Image as ImageIcon } from "lucide-react";
+import { Save, Loader2, Eye, EyeOff, Store, Mail, Percent, FileText, Search, Palette, ShieldCheck, Clock, Sparkles, Bell, Cloud, Brain } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 
@@ -94,7 +94,6 @@ export function SettingsView({ initialSection }: { initialSection?: string }) {
               <TabsTrigger value="general" className="lg:w-full lg:justify-start gap-1.5 btn-premium"><ShieldCheck className="size-3.5" /> Auth</TabsTrigger>
               <TabsTrigger value="storage" className="lg:w-full lg:justify-start gap-1.5 btn-premium"><Cloud className="size-3.5" /> Storage</TabsTrigger>
               <TabsTrigger value="ai" className="lg:w-full lg:justify-start gap-1.5 btn-premium"><Brain className="size-3.5" /> AI</TabsTrigger>
-              <TabsTrigger value="branding" className="lg:w-full lg:justify-start gap-1.5 btn-premium"><ImageIcon className="size-3.5" /> Branding</TabsTrigger>
             </TabsList>
           </div>
 
@@ -107,15 +106,21 @@ export function SettingsView({ initialSection }: { initialSection?: string }) {
               <CardTitle className="text-base">Store Information</CardTitle>
               <CardDescription>Basic details about your pharmacy.</CardDescription>
             </CardHeader>
-            <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Field label="Store Name"><Input value={form["store.name"] || ""} onChange={(e) => set("store.name", e.target.value)} /></Field>
-              <Field label="Tagline"><Input value={form["store.tagline"] || ""} onChange={(e) => set("store.tagline", e.target.value)} /></Field>
-              <Field label="Email"><Input value={form["store.email"] || ""} onChange={(e) => set("store.email", e.target.value)} /></Field>
-              <Field label="Phone"><Input value={form["store.phone"] || ""} onChange={(e) => set("store.phone", e.target.value)} /></Field>
-              <Field label="GST Number"><Input value={form["store.gstNumber"] || ""} onChange={(e) => set("store.gstNumber", e.target.value)} /></Field>
-              <Field label="License Number"><Input value={form["store.licenseNumber"] || ""} onChange={(e) => set("store.licenseNumber", e.target.value)} /></Field>
-              <div className="md:col-span-2">
-                <Field label="Address"><Textarea rows={2} value={form["store.address"] || ""} onChange={(e) => set("store.address", e.target.value)} /></Field>
+            <CardContent className="space-y-4">
+              {/* Website Logo — single master logo */}
+              <div className="rounded-lg border border-border/40 p-4">
+                <BrandingPanel />
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Field label="Store Name"><Input value={form["store.name"] || ""} onChange={(e) => set("store.name", e.target.value)} /></Field>
+                <Field label="Tagline"><Input value={form["store.tagline"] || ""} onChange={(e) => set("store.tagline", e.target.value)} /></Field>
+                <Field label="Email"><Input value={form["store.email"] || ""} onChange={(e) => set("store.email", e.target.value)} /></Field>
+                <Field label="Phone"><Input value={form["store.phone"] || ""} onChange={(e) => set("store.phone", e.target.value)} /></Field>
+                <Field label="GST Number"><Input value={form["store.gstNumber"] || ""} onChange={(e) => set("store.gstNumber", e.target.value)} /></Field>
+                <Field label="License Number"><Input value={form["store.licenseNumber"] || ""} onChange={(e) => set("store.licenseNumber", e.target.value)} /></Field>
+                <div className="md:col-span-2">
+                  <Field label="Address"><Textarea rows={2} value={form["store.address"] || ""} onChange={(e) => set("store.address", e.target.value)} /></Field>
+                </div>
               </div>
             </CardContent>
             <SaveBar onSave={() => save(["store.name", "store.tagline", "store.email", "store.phone", "store.gstNumber", "store.licenseNumber", "store.address"])} />
@@ -626,10 +631,6 @@ export function SettingsView({ initialSection }: { initialSection?: string }) {
           <AiProviderPanel />
         </TabsContent>
 
-        {/* Branding — upload and manage logos, favicons, app icons */}
-        <TabsContent value="branding">
-          <BrandingPanel />
-        </TabsContent>
           </div>
         </div>
       </Tabs>

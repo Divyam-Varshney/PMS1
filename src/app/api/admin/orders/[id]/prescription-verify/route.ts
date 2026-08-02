@@ -27,6 +27,7 @@ import { getAdminFromRequest } from "@/lib/auth";
 import { ok, err, unauthorized, notFound, parseBody } from "@/lib/api";
 import { sendNotification } from "@/lib/notifications";
 import { createAdminNotification } from "@/lib/admin-notifications";
+import { sendAutoNotification } from "@/lib/app-notifs";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -93,6 +94,16 @@ export async function POST(req: Request, { params }: Ctx) {
       }
     }
 
+    // 4. App (Web Push) notification — prescription_approved
+    if (prescription.customer?.id) {
+      await sendAutoNotification(
+        prescription.customer.id,
+        "prescription_approved",
+        { name: prescription.customer.name, refId },
+        { prescriptionId: prescription.id, orderId: id, action: "approve" }
+      ).catch((e) => console.error("[prescription-verify] approve push failed:", e));
+    }
+
     return ok({ action: "approve", prescriptionStatus: "verified" });
   }
 
@@ -155,6 +166,16 @@ export async function POST(req: Request, { params }: Ctx) {
     } catch (e) {
       console.error("[prescription-verify] reject email failed:", e);
     }
+  }
+
+  // 4. App (Web Push) notification — prescription_rejected
+  if (prescription.customer?.id) {
+    await sendAutoNotification(
+      prescription.customer.id,
+      "prescription_rejected",
+      { name: prescription.customer.name, refId, reason },
+      { prescriptionId: prescription.id, orderId: id, action: "reject", reason }
+    ).catch((e) => console.error("[prescription-verify] reject push failed:", e));
   }
 
   // 4. Bell + email notification for the admin team (so the rejection is

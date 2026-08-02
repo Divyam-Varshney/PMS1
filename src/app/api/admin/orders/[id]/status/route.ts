@@ -9,6 +9,7 @@ import { db } from "@/lib/db";
 import { getAdminFromRequest } from "@/lib/auth";
 import { ok, err, unauthorized, notFound, parseBody } from "@/lib/api";
 import { sendOrderNotification } from "@/lib/notifications";
+import { sendAutoNotification } from "@/lib/app-notifs";
 import { awardOrderPoints, clawbackOrderPoints } from "@/lib/loyalty";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -103,6 +104,26 @@ export async function PATCH(req: Request, { params }: Ctx) {
     };
     if (body.status === "cancelled") vars.reason = body.reason || note || "N/A";
     await sendOrderNotification(order.customer, tplKey, vars).catch(() => {});
+
+    // App (Web Push) notification — uses the matching app-notif template key.
+    // Note: app-notif templates use "out_for_delivery" (without the "order_"
+    // prefix) to match the email key; we map the status directly.
+    const APP_NOTIF_STATUS_MAP: Record<string, string> = {
+      confirmed: "order_confirmed",
+      packed: "order_packed",
+      out_for_delivery: "out_for_delivery",
+      delivered: "order_delivered",
+      cancelled: "order_cancelled",
+    };
+    const appTplKey = APP_NOTIF_STATUS_MAP[body.status];
+    if (appTplKey) {
+      await sendAutoNotification(
+        order.customer.id,
+        appTplKey,
+        vars,
+        { orderId: id, orderNumber: order.orderNumber, status: body.status }
+      ).catch((e) => console.error("[order-status] sendAutoNotification failed:", e));
+    }
   }
 
   // Loyalty points — award on delivery, claw back on cancel/return.

@@ -39,7 +39,8 @@ export type AdminView =
   | { name: "backups" }
   | { name: "database" }
   | { name: "error-logs" }
-  | { name: "ai-marketing" };
+  | { name: "ai-marketing" }
+  | { name: "app-notification-center" };
 
 interface AdminState {
   view: AdminView;

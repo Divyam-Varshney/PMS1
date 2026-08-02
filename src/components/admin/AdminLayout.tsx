@@ -60,6 +60,7 @@ import {
   HardDrive,
   Database,
   Sparkles,
+  Bell,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -131,6 +132,7 @@ const NAV_GROUPS: Array<{
       { view: { name: "ai-marketing" }, icon: Sparkles, label: "AI Marketing", permission: "deals" },
       { view: { name: "vouchers" }, icon: Ticket, label: "Vouchers", permission: "vouchers" },
       { view: { name: "newsletter" }, icon: Mailbox, label: "Newsletter", permission: "newsletter" },
+      { view: { name: "app-notification-center" }, icon: Bell, label: "App Notifications", permission: "newsletter" },
       { view: { name: "reviews" }, icon: Star, label: "Reviews", permission: "reviews" },
     ],
   },
@@ -184,6 +186,7 @@ const TITLE_MAP: Record<string, string> = {
   deals: "Today's Deals",
   notifications: "Notifications",
   "notification-templates": "Notification Templates",
+  "app-notification-center": "App Notifications",
   newsletter: "Newsletter",
   settings: "Settings",
   admins: "Admins",

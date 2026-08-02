@@ -44,6 +44,7 @@ import { getInitials, formatDate, formatCurrency } from "@/lib/format";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
 import { ProductImage } from "@/components/shared/product-image";
+import { NotificationPreferences } from "./notification-preferences";
 
 export function AccountView() {
   const { customer, isLoading } = useRequireAuth();
@@ -514,6 +515,11 @@ export function AccountView() {
           <span>Your account is protected with encrypted authentication.</span>
         </div>
       </Card>
+
+      {/* ── App Notification Preferences ─────────────────────────────────── */}
+      <div className="mt-4">
+        <NotificationPreferences />
+      </div>
 
       {/* ── Prescription Refill Reminders ───────────────────────────────── */}
       {refillItems.length > 0 && (

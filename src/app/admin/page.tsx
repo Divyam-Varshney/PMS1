@@ -55,6 +55,7 @@ const DatabaseView = dynamic(() => import("@/components/admin/views/DatabaseView
 const CampaignsView = dynamic(() => import("@/components/admin/views/CampaignsView").then(m => ({ default: m.CampaignsView })), { ssr: false });
 const ErrorLogsView = dynamic(() => import("@/components/admin/views/ErrorLogsView").then(m => ({ default: m.ErrorLogsView })), { ssr: false });
 const AiMarketingView = dynamic(() => import("@/components/admin/views/AiMarketingView").then(m => ({ default: m.AiMarketingView })), { ssr: false });
+const AppNotificationCenterView = dynamic(() => import("@/components/admin/views/AppNotificationCenterView").then(m => ({ default: m.AppNotificationCenterView })), { ssr: false });
 
 interface AdminInfo {
   id: string;
@@ -169,6 +170,8 @@ function AdminContent({ admin }: { admin: AdminInfo }) {
       return <ErrorLogsView />;
     case "ai-marketing":
       return <AiMarketingView />;
+    case "app-notification-center":
+      return <AppNotificationCenterView />;
     default:
       return <DashboardView />;
   }

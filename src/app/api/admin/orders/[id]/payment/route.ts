@@ -9,6 +9,7 @@
 import { db } from "@/lib/db";
 import { getAdminFromRequest } from "@/lib/auth";
 import { ok, err, unauthorized, notFound, parseBody } from "@/lib/api";
+import { sendAutoNotification } from "@/lib/app-notifs";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -58,6 +59,41 @@ export async function PATCH(req: Request, { params }: Ctx) {
       createdBy: admin.id,
     },
   });
+
+  // App (Web Push) notification — map the payment status to its app-notif
+  // template key. We only notify on the meaningful transitions:
+  //   paid     → payment_successful
+  //   failed   → payment_failed
+  //   refunded → refund_completed (refund_initiated is reserved for the
+  //              mid-refund state which this endpoint doesn't currently emit
+  //              — kept available for future hook)
+  // "pending" doesn't warrant a push (the customer already knows from the
+  // order_placed notification that payment is awaited).
+  if (updated.customer) {
+    const PAYMENT_NOTIF_MAP: Record<string, string> = {
+      paid: "payment_successful",
+      failed: "payment_failed",
+      refunded: "refund_completed",
+    };
+    const notifKey = PAYMENT_NOTIF_MAP[body.paymentStatus];
+    if (notifKey) {
+      await sendAutoNotification(
+        updated.customer.id,
+        notifKey,
+        {
+          name: updated.customer.name,
+          orderNumber: updated.orderNumber,
+          amount: updated.grandTotal.toFixed(2),
+        },
+        {
+          orderId: id,
+          orderNumber: updated.orderNumber,
+          paymentStatus: body.paymentStatus,
+          paymentId: body.paymentId || undefined,
+        }
+      ).catch((e) => console.error("[payment] sendAutoNotification failed:", e));
+    }
+  }
 
   // NOTE: Payment updates do NOT create admin bell notifications.
   // The bell only notifies on: new orders, new prescriptions, new manual requests.

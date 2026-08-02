@@ -18,6 +18,7 @@ import { isStoreOpen, getSetting } from "@/lib/settings";
 import { calculateOrderTotals, EngineLineInput } from "@/lib/pricing-engine";
 import { sendOrderNotification } from "@/lib/notifications";
 import { createAdminNotification } from "@/lib/admin-notifications";
+import { sendAutoNotification } from "@/lib/app-notifs";
 import { generateOrderNumber } from "@/lib/format";
 import { PAYMENT_METHOD, PAYMENT_METHOD_LABEL } from "@/lib/constants";
 import { redeemPoints } from "@/lib/loyalty";
@@ -246,6 +247,21 @@ export async function POST(req: Request) {
       paymentMethod: paymentLabel,
     }
   );
+
+  // Send App (Web Push) notification — order_placed.
+  // Skips silently if the customer hasn't subscribed to push on any device
+  // or has disabled notifications in their preferences.
+  await sendAutoNotification(
+    customer.id,
+    "order_placed",
+    {
+      name: customer.name,
+      orderNumber,
+      amount: finalGrandTotal.toFixed(2),
+      paymentMethod: paymentLabel,
+    },
+    { orderId: order.id, orderNumber, amount: finalGrandTotal.toFixed(2) }
+  ).catch((e) => console.error("[checkout] sendAutoNotification failed:", e));
 
   // Create admin notification
   await createAdminNotification({

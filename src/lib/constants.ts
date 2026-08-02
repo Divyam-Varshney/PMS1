@@ -847,43 +847,18 @@ export const DEFAULT_TEMPLATES: Array<{
     channel: "email",
     subject: "Medicine Request Update - Pradeep Medical Store",
     variables: ["name", "reason"],
-    body: `<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /></head>
-<body style="margin:0;padding:0;background-color:#f4f6f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1f2937;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f6f5;padding:24px 0;">
-    <tr><td align="center">
-      <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
-        <tr>
-          <td style="background:linear-gradient(135deg,#059669 0%,#0d9488 100%);padding:24px 32px;text-align:center;">
-            <div style="font-size:22px;font-weight:700;color:#ffffff;letter-spacing:0.3px;"><span style="vertical-align:middle;margin-right:8px;font-size:26px;">&#9888;</span> Pradeep Medical Store</div>
-            <div style="font-size:12px;color:#d1fae5;margin-top:6px;letter-spacing:1px;text-transform:uppercase;">Medicine Request Update</div>
-          </td>
-        </tr>
-        <tr>
-          <td style="padding:32px;">
-            <h1 style="margin:0 0 16px 0;font-size:20px;font-weight:600;color:#111827;">Hello {{name}},</h1>
-            <p style="margin:0 0 24px 0;font-size:15px;line-height:1.65;color:#374151;">We've reviewed your medicine request, but unfortunately we're unable to process it at this time. Please see the reason below:</p>
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#fef2f2;border-left:4px solid #dc2626;border-radius:6px;margin-bottom:24px;">
-              <tr><td style="padding:16px 20px;font-size:14px;color:#991b1b;">
-                <strong>Status:</strong> Rejected<br />
-                <strong>Reason:</strong> {{reason}}
-              </td></tr>
-            </table>
-            <p style="margin:0;font-size:14px;color:#374151;line-height:1.65;">For prescription medicines, please upload a valid prescription. Our pharmacy team is happy to assist you &mdash; call us at +91 99999 99999 for help.</p>
-          </td>
-        </tr>
-        <tr>
-          <td style="background-color:#f9fafb;padding:24px 32px;border-top:1px solid #e5e7eb;">
-            <p style="margin:0 0 8px 0;font-size:13px;color:#4b5563;line-height:1.5;"><strong>Pradeep Medical Store</strong><br />Main Market, Mathura, Uttar Pradesh 281001<br />Phone: +91 99999 99999 | Email: care@pradeepmedical.com</p>
-            <p style="margin:0;font-size:12px;color:#9ca3af;line-height:1.5;">&copy; Pradeep Medical Store. All rights reserved.</p>
-          </td>
-        </tr>
-      </table>
-    </td></tr>
-  </table>
-</body>
-</html>`,
+    body: darkEmailTemplate({
+      eyebrow: "Medicine Request Update",
+      content: `<h1 style="margin:0 0 16px 0;font-size:20px;font-weight:600;color:#f1f5f9;">Hello {{name}},</h1>
+<p style="margin:0 0 24px 0;font-size:15px;line-height:1.65;color:#cbd5e1;">We've reviewed your medicine request, but unfortunately we're unable to process it at this time. Please see the reason below:</p>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#3f1d1d;border-left:4px solid #ef4444;border-radius:8px;margin-bottom:24px;">
+  <tr><td style="padding:16px 20px;font-size:14px;color:#fecaca;">
+    <strong>Status:</strong> Rejected<br />
+    <strong>Reason:</strong> {{reason}}
+  </td></tr>
+</table>
+<p style="margin:0;font-size:14px;color:#cbd5e1;line-height:1.65;">For prescription medicines, please upload a valid prescription. Our pharmacy team is happy to assist you &mdash; call us at +91 99999 99999 for help.</p>`,
+    }),
   },
 
   // ---- Admin Email Templates ----
@@ -898,11 +873,12 @@ export const DEFAULT_TEMPLATES: Array<{
     name: "Admin Alert (General)",
     channel: "email",
     subject: "[PMS Alert] {{title}}",
-    body: `<div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
-  <h2 style="color: #059669;">{{title}}</h2>
-  <p>{{message}}</p>
-  {{details}}
-</div>`,
+    body: darkEmailTemplate({
+      eyebrow: "Admin Alert",
+      content: `<h1 style="margin:0 0 16px 0;font-size:20px;font-weight:600;color:#f1f5f9;">{{title}}</h1>
+<p style="margin:0 0 16px 0;font-size:15px;line-height:1.65;color:#cbd5e1;">{{message}}</p>
+<div style="font-size:14px;color:#94a3b8;line-height:1.65;">{{details}}</div>`,
+    }),
     variables: ["title", "message", "details"],
   },
   {
@@ -910,14 +886,17 @@ export const DEFAULT_TEMPLATES: Array<{
     name: "Admin Alert — New Order",
     channel: "email",
     subject: "[PMS] New Order — {{orderNumber}}",
-    body: `<div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
-  <h2 style="color: #059669;">🛒 New Order Received</h2>
-  <p><strong>Order:</strong> {{orderNumber}}</p>
-  <p><strong>Customer:</strong> {{customerName}}</p>
-  <p><strong>Total:</strong> Rs. {{amount}}</p>
-  <p><strong>Payment Method:</strong> {{paymentMethod}}</p>
-  {{details}}
-</div>`,
+    body: darkEmailTemplate({
+      eyebrow: "New Order Received",
+      content: `<h1 style="margin:0 0 16px 0;font-size:20px;font-weight:600;color:#f1f5f9;">&#128722; New Order Received</h1>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#0f172a;border:1px solid #334155;border-radius:12px;margin-bottom:16px;">
+  <tr><td style="padding:14px 20px;border-bottom:1px solid #334155;font-size:14px;color:#94a3b8;">Order</td><td style="padding:14px 20px;border-bottom:1px solid #334155;font-size:14px;font-weight:600;color:#f1f5f9;text-align:right;">{{orderNumber}}</td></tr>
+  <tr><td style="padding:14px 20px;border-bottom:1px solid #334155;font-size:14px;color:#94a3b8;">Customer</td><td style="padding:14px 20px;border-bottom:1px solid #334155;font-size:14px;font-weight:600;color:#f1f5f9;text-align:right;">{{customerName}}</td></tr>
+  <tr><td style="padding:14px 20px;border-bottom:1px solid #334155;font-size:14px;color:#94a3b8;">Total</td><td style="padding:14px 20px;border-bottom:1px solid #334155;font-size:14px;font-weight:700;color:#10b981;text-align:right;">Rs. {{amount}}</td></tr>
+  <tr><td style="padding:14px 20px;font-size:14px;color:#94a3b8;">Payment Method</td><td style="padding:14px 20px;font-size:14px;font-weight:600;color:#f1f5f9;text-align:right;">{{paymentMethod}}</td></tr>
+</table>
+<div style="font-size:14px;color:#94a3b8;line-height:1.65;">{{details}}</div>`,
+    }),
     variables: ["orderNumber", "customerName", "amount", "paymentMethod", "details"],
   },
   {
@@ -925,12 +904,15 @@ export const DEFAULT_TEMPLATES: Array<{
     name: "Admin Alert — New Prescription",
     channel: "email",
     subject: "[PMS] New Prescription Upload — {{customerName}}",
-    body: `<div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
-  <h2 style="color: #8b5cf6;">📋 New Prescription Uploaded</h2>
-  <p><strong>Customer:</strong> {{customerName}}</p>
-  <p><strong>Ref ID:</strong> {{refId}}</p>
-  {{details}}
-</div>`,
+    body: darkEmailTemplate({
+      eyebrow: "New Prescription Uploaded",
+      content: `<h1 style="margin:0 0 16px 0;font-size:20px;font-weight:600;color:#f1f5f9;">&#128203; New Prescription Uploaded</h1>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#0f172a;border:1px solid #334155;border-radius:12px;margin-bottom:16px;">
+  <tr><td style="padding:14px 20px;border-bottom:1px solid #334155;font-size:14px;color:#94a3b8;">Customer</td><td style="padding:14px 20px;border-bottom:1px solid #334155;font-size:14px;font-weight:600;color:#f1f5f9;text-align:right;">{{customerName}}</td></tr>
+  <tr><td style="padding:14px 20px;font-size:14px;color:#94a3b8;">Ref ID</td><td style="padding:14px 20px;font-size:14px;font-weight:600;color:#f1f5f9;text-align:right;">{{refId}}</td></tr>
+</table>
+<div style="font-size:14px;color:#94a3b8;line-height:1.65;">{{details}}</div>`,
+    }),
     variables: ["customerName", "refId", "details"],
   },
   {
@@ -938,12 +920,15 @@ export const DEFAULT_TEMPLATES: Array<{
     name: "Admin Alert — New Manual Request",
     channel: "email",
     subject: "[PMS] New Manual Medicine Request — {{customerName}}",
-    body: `<div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
-  <h2 style="color: #f59e0b;">📝 New Manual Medicine Request</h2>
-  <p><strong>Customer:</strong> {{customerName}}</p>
-  <p><strong>Ref ID:</strong> {{refId}}</p>
-  {{details}}
-</div>`,
+    body: darkEmailTemplate({
+      eyebrow: "New Manual Medicine Request",
+      content: `<h1 style="margin:0 0 16px 0;font-size:20px;font-weight:600;color:#f1f5f9;">&#128221; New Manual Medicine Request</h1>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#0f172a;border:1px solid #334155;border-radius:12px;margin-bottom:16px;">
+  <tr><td style="padding:14px 20px;border-bottom:1px solid #334155;font-size:14px;color:#94a3b8;">Customer</td><td style="padding:14px 20px;border-bottom:1px solid #334155;font-size:14px;font-weight:600;color:#f1f5f9;text-align:right;">{{customerName}}</td></tr>
+  <tr><td style="padding:14px 20px;font-size:14px;color:#94a3b8;">Ref ID</td><td style="padding:14px 20px;font-size:14px;font-weight:600;color:#f1f5f9;text-align:right;">{{refId}}</td></tr>
+</table>
+<div style="font-size:14px;color:#94a3b8;line-height:1.65;">{{details}}</div>`,
+    }),
     variables: ["customerName", "refId", "details"],
   },
   {
@@ -951,13 +936,16 @@ export const DEFAULT_TEMPLATES: Array<{
     name: "Admin Alert — Order Status Update",
     channel: "email",
     subject: "[PMS] Order {{orderNumber}} — Status changed to {{newStatus}}",
-    body: `<div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
-  <h2 style="color: #0284c7;">📦 Order Status Updated</h2>
-  <p><strong>Order:</strong> {{orderNumber}}</p>
-  <p><strong>Previous Status:</strong> {{oldStatus}}</p>
-  <p><strong>New Status:</strong> {{newStatus}}</p>
-  {{details}}
-</div>`,
+    body: darkEmailTemplate({
+      eyebrow: "Order Status Updated",
+      content: `<h1 style="margin:0 0 16px 0;font-size:20px;font-weight:600;color:#f1f5f9;">&#128230; Order Status Updated</h1>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#0f172a;border:1px solid #334155;border-radius:12px;margin-bottom:16px;">
+  <tr><td style="padding:14px 20px;border-bottom:1px solid #334155;font-size:14px;color:#94a3b8;">Order</td><td style="padding:14px 20px;border-bottom:1px solid #334155;font-size:14px;font-weight:600;color:#f1f5f9;text-align:right;">{{orderNumber}}</td></tr>
+  <tr><td style="padding:14px 20px;border-bottom:1px solid #334155;font-size:14px;color:#94a3b8;">Previous Status</td><td style="padding:14px 20px;border-bottom:1px solid #334155;font-size:14px;font-weight:600;color:#cbd5e1;text-align:right;">{{oldStatus}}</td></tr>
+  <tr><td style="padding:14px 20px;font-size:14px;color:#94a3b8;">New Status</td><td style="padding:14px 20px;font-size:14px;font-weight:700;color:#10b981;text-align:right;">{{newStatus}}</td></tr>
+</table>
+<div style="font-size:14px;color:#94a3b8;line-height:1.65;">{{details}}</div>`,
+    }),
     variables: ["orderNumber", "oldStatus", "newStatus", "details"],
   },
   {
@@ -965,14 +953,102 @@ export const DEFAULT_TEMPLATES: Array<{
     name: "Admin Alert — Payment Update",
     channel: "email",
     subject: "[PMS] Order {{orderNumber}} — Payment {{paymentStatus}}",
-    body: `<div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
-  <h2 style="color: #7c3aed;">💳 Payment Update</h2>
-  <p><strong>Order:</strong> {{orderNumber}}</p>
-  <p><strong>Payment Status:</strong> {{paymentStatus}}</p>
-  <p><strong>Payment Method:</strong> {{paymentMethod}}</p>
-  {{details}}
-</div>`,
+    body: darkEmailTemplate({
+      eyebrow: "Payment Update",
+      content: `<h1 style="margin:0 0 16px 0;font-size:20px;font-weight:600;color:#f1f5f9;">&#128179; Payment Update</h1>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#0f172a;border:1px solid #334155;border-radius:12px;margin-bottom:16px;">
+  <tr><td style="padding:14px 20px;border-bottom:1px solid #334155;font-size:14px;color:#94a3b8;">Order</td><td style="padding:14px 20px;border-bottom:1px solid #334155;font-size:14px;font-weight:600;color:#f1f5f9;text-align:right;">{{orderNumber}}</td></tr>
+  <tr><td style="padding:14px 20px;border-bottom:1px solid #334155;font-size:14px;color:#94a3b8;">Payment Status</td><td style="padding:14px 20px;border-bottom:1px solid #334155;font-size:14px;font-weight:700;color:#10b981;text-align:right;">{{paymentStatus}}</td></tr>
+  <tr><td style="padding:14px 20px;font-size:14px;color:#94a3b8;">Payment Method</td><td style="padding:14px 20px;font-size:14px;font-weight:600;color:#f1f5f9;text-align:right;">{{paymentMethod}}</td></tr>
+</table>
+<div style="font-size:14px;color:#94a3b8;line-height:1.65;">{{details}}</div>`,
+    }),
     variables: ["orderNumber", "paymentStatus", "paymentMethod", "details"],
+  },
+
+  // ---- Payment Email Templates ----
+  // Customer-facing payment lifecycle emails — triggered by the payment route
+  // (src/app/api/admin/orders/[id]/payment/route.ts) as the order's payment
+  // status changes. All use the same dark theme via darkEmailTemplate().
+  {
+    key: "payment_successful",
+    name: "Payment Successful",
+    channel: "email",
+    subject: "\u2705 Payment Received \u2014 Order {{orderNumber}}",
+    variables: ["name", "orderNumber", "orderAmount"],
+    body: darkEmailTemplate({
+      eyebrow: "Payment Received",
+      content: `<h1 style="margin:0 0 16px 0;font-size:20px;font-weight:600;color:#f1f5f9;">Hello {{name}},</h1>
+<p style="margin:0 0 24px 0;font-size:15px;line-height:1.65;color:#cbd5e1;">We've successfully received your payment. Thank you for shopping with Pradeep Medical Store — your order is now being processed.</p>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#0f172a;border-left:4px solid #10b981;border-radius:8px;margin-bottom:24px;">
+  <tr><td style="padding:16px 20px;font-size:14px;color:#d1fae5;">
+    <strong>Order Number:</strong> {{orderNumber}}<br />
+    <strong>Amount Paid:</strong> Rs. {{orderAmount}}<br />
+    <strong>Status:</strong> Payment Received
+  </td></tr>
+</table>
+<p style="margin:0;font-size:14px;color:#cbd5e1;line-height:1.65;">We'll notify you as soon as your order is packed and dispatched. If you have any questions, feel free to reach out to us.</p>`,
+    }),
+  },
+  {
+    key: "payment_failed",
+    name: "Payment Failed",
+    channel: "email",
+    subject: "\u274C Payment Failed \u2014 Order {{orderNumber}}",
+    variables: ["name", "orderNumber", "orderAmount"],
+    body: darkEmailTemplate({
+      eyebrow: "Payment Failed",
+      content: `<h1 style="margin:0 0 16px 0;font-size:20px;font-weight:600;color:#f1f5f9;">Hello {{name}},</h1>
+<p style="margin:0 0 24px 0;font-size:15px;line-height:1.65;color:#cbd5e1;">We were unable to process your payment. No amount has been charged to your account. Please try again or use a different payment method.</p>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#3f1d1d;border-left:4px solid #ef4444;border-radius:8px;margin-bottom:24px;">
+  <tr><td style="padding:16px 20px;font-size:14px;color:#fecaca;">
+    <strong>Order Number:</strong> {{orderNumber}}<br />
+    <strong>Amount:</strong> Rs. {{orderAmount}}<br />
+    <strong>Status:</strong> Payment Failed
+  </td></tr>
+</table>
+<p style="margin:0;font-size:14px;color:#cbd5e1;line-height:1.65;">If you believe this is an error or need help completing your payment, please call us at +91 99999 99999 — we're here to help.</p>`,
+    }),
+  },
+  {
+    key: "refund_initiated",
+    name: "Refund Initiated",
+    channel: "email",
+    subject: "\uD83D\uDCB8 Refund Initiated \u2014 Order {{orderNumber}}",
+    variables: ["name", "orderNumber", "orderAmount"],
+    body: darkEmailTemplate({
+      eyebrow: "Refund Initiated",
+      content: `<h1 style="margin:0 0 16px 0;font-size:20px;font-weight:600;color:#f1f5f9;">Hello {{name}},</h1>
+<p style="margin:0 0 24px 0;font-size:15px;line-height:1.65;color:#cbd5e1;">We've initiated a refund for your order. The amount will be credited back to your original payment method within 5-7 business days, depending on your bank.</p>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#3a2f12;border-left:4px solid #f59e0b;border-radius:8px;margin-bottom:24px;">
+  <tr><td style="padding:16px 20px;font-size:14px;color:#fde68a;">
+    <strong>Order Number:</strong> {{orderNumber}}<br />
+    <strong>Refund Amount:</strong> Rs. {{orderAmount}}<br />
+    <strong>Status:</strong> Refund Initiated
+  </td></tr>
+</table>
+<p style="margin:0;font-size:14px;color:#cbd5e1;line-height:1.65;">If you have any questions about the refund, please contact our support team at care@pradeepmedical.com.</p>`,
+    }),
+  },
+  {
+    key: "refund_completed",
+    name: "Refund Completed",
+    channel: "email",
+    subject: "\u2705 Refund Completed \u2014 Order {{orderNumber}}",
+    variables: ["name", "orderNumber", "orderAmount"],
+    body: darkEmailTemplate({
+      eyebrow: "Refund Completed",
+      content: `<h1 style="margin:0 0 16px 0;font-size:20px;font-weight:600;color:#f1f5f9;">Hello {{name}},</h1>
+<p style="margin:0 0 24px 0;font-size:15px;line-height:1.65;color:#cbd5e1;">Good news! Your refund has been successfully processed. The amount has been credited back to your original payment method.</p>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#0f172a;border-left:4px solid #10b981;border-radius:8px;margin-bottom:24px;">
+  <tr><td style="padding:16px 20px;font-size:14px;color:#d1fae5;">
+    <strong>Order Number:</strong> {{orderNumber}}<br />
+    <strong>Refund Amount:</strong> Rs. {{orderAmount}}<br />
+    <strong>Status:</strong> Refund Completed
+  </td></tr>
+</table>
+<p style="margin:0;font-size:14px;color:#cbd5e1;line-height:1.65;">If you don't see the refund reflected in your account within 3 business days, please contact your bank or reach out to us at care@pradeepmedical.com.</p>`,
+    }),
   },
 ];
 

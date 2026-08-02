@@ -7773,3 +7773,89 @@ Enhanced the AI Marketing Assistant to generate a complete responsive HTML email
   - `htmlEmail` = 4,131 chars, starts with `<!DOCTYPE html>`, contains `<html>`, `<table>` layout.
   - HTML structure verified: contains product image URL, product name, product page URL (`/products/...`), emerald (#10b981/#059669), teal (#0d9488), dark bg (#0f172a, #1e293b), light text (#f1f5f9), "Shop Now" CTA, "Pradeep Medical Store" store name.
   - Prescription disclaimer correctly omitted (Dolo 500 is OTC, not Rx).
+
+---
+
+## P36-3-4 — Templates view fix + email redesign
+
+- **Task ID**: P36-3-4
+- **Agent**: templates-email-redesign
+
+### What I did
+
+#### Task A — NotificationTemplatesView.tsx (3-tab redesign)
+
+Replaced the 4-tab (Customer / Admin / Marketing / WhatsApp) layout with a 3-tab
+(Customer Email / Admin Email / App Notification's) layout:
+
+- **Removed** `marketing` and `whatsapp` from `TemplateCategory`, `TAB_ORDER`,
+  `CHANNEL_META`, and `buckets`. Removed `MARKETING_KEY_PATTERNS` and the
+  marketing/whatsapp categorization branches from `categorize()`.
+- **Removed** `Megaphone` and `MessageSquare` from lucide-react imports;
+  **added** `Bell`.
+- **Added** `"app"` as a new channel category with label "App Notification's",
+  Bell icon, and emerald tint (mirrors the customer email accent).
+- **Added** a separate `useQuery` (`APP_QK = ["admin-app-notif-templates"]`)
+  that hits `/api/admin/app-notifs/templates`, unwraps `{ templates: [...] }`
+  from the API envelope, and maps each row to the email-template shape used by
+  `TemplateCard` (`title → subject`, `fullMessage → body`, `isEnabled →
+  isActive`, JSON-stringified `variables`). Each row is tagged with
+  `_isApp: true` so `categorize()` routes it into the "app" bucket.
+- **Added** an App Notification's SummaryStat card and a `<TabsContent value="app">`.
+- **Updated** the summary grid from 4 cols to 3 cols; tabs from 4 to 3
+  (`grid-cols-3`); card grid bumped to 3 cols on xl screens.
+- **Added** a dedicated `toggleActive(next)` handler in `TemplateCard`. For
+  app-notif rows it PUTs immediately to `/api/admin/app-notifs/template-toggle`
+  (`{id, isEnabled: next}`) so the switch reflects server state in real time;
+  for email rows it stays local (committed on Save).
+- **Updated** `save()` so app-notif rows PUT to `/api/admin/app-notifs/templates`
+  with `{id, title: subject, fullMessage: body, shortDesc: body.slice(0, 500)}`
+  instead of the email PUT endpoint.
+- **Suppressed** the delete button on `_isApp` rows (the seed contract makes
+  them non-deletable from this UI).
+- **Fixed** the app-notifs endpoint: changed
+  `src/app/api/admin/app-notifs/templates/route.ts` GET to return
+  `ok({ templates })` instead of `ok({ items: templates })` so the frontend
+  query can read `result.templates` per the task spec.
+
+#### Task B — Dark-theme redesign of all 27 email templates
+
+In `src/lib/constants.ts`:
+
+- **Added** a `darkEmailTemplate({ eyebrow, content })` helper above
+  `DEFAULT_TEMPLATES`. It produces a full `<!DOCTYPE html>` document with:
+  - `#0f172a` (slate-900) page background + `#1e293b` (slate-800) card body
+  - Emerald→teal gradient header (`#059669 → #0d9488`) with store name +
+    section eyebrow
+  - Inline CSS only (Gmail/Outlook strip `<style>` blocks)
+  - 600px table-based layout (cross-client compatible)
+  - System font stack (no external font loads)
+  - Dark-mode meta tags: `color-scheme`, `supported-color-schemes`,
+    `theme-color` (so email clients that respect OS dark-mode render correctly)
+  - Footer with store contact info on a darker slate band
+- **Replaced** the `body:` HTML of all 23 existing templates with calls to
+  `darkEmailTemplate({...})`. Keys / names / subjects / variables are all
+  unchanged.
+- **Added 4 new payment email templates**:
+  - `payment_successful` — subject `✅ Payment Received — Order {{orderNumber}}`
+  - `payment_failed` — subject `❌ Payment Failed — Order {{orderNumber}}`
+  - `refund_initiated` — subject `💸 Refund Initiated — Order {{orderNumber}}`
+  - `refund_completed` — subject `✅ Refund Completed — Order {{orderNumber}}`
+  Each has variables `[name, orderNumber, orderAmount]` and uses the same dark
+  theme (green status box for success / refund-completed, red box for failed,
+  amber box for refund-initiated).
+
+### Verification result
+
+- ✅ `bun run lint` — clean (0 errors, 0 warnings)
+- ✅ `bunx tsc --noEmit` — no errors in the 3 modified files (other pre-existing
+  errors in unrelated files like `home-view.tsx`, `ai-service.ts` are not
+  affected by this change).
+- ✅ Programmatic template audit (`bunx tsx -e`): all 27 templates
+  (23 redesigned + 4 new) verified to:
+  - Use `#0f172a` + `#1e293b` dark backgrounds
+  - Start with `<!DOCTYPE html>` (full HTML document)
+  - Contain `color-scheme` dark-mode meta tag
+  - Preserve original `key`, `name`, `subject`, `variables`
+- ✅ The 4 new payment templates' subjects render correctly with emoji prefixes
+  (`✅`, `❌`, `💸`) and the em-dash separator.

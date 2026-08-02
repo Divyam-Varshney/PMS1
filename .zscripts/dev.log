@@ -1,0 +1,106 @@
+==========================================
+[2026-08-02 16:01:22] Starting: bun install
+==========================================
+[BUN] Installing dependencies...
+[0.02ms] ".env"
+bun install v1.3.14 (0d9b296a)
+
+$ prisma generate
+Environment variables loaded from .env
+Prisma schema loaded from prisma/schema.prisma
+
+✔ Generated Prisma Client (v6.19.3) to ./node_modules/@prisma/client in 257ms
+
+Start by importing your Prisma Client (See: https://pris.ly/d/importing-client)
+
+Tip: Want to turn off tips and other hints? https://pris.ly/tip-4-nohints
+
+
+Checked 603 installs across 696 packages (no changes) [2.04s]
+==========================================
+[2026-08-02 16:01:24] Completed: bun install
+[LOG] Step: bun install | Duration: 2s
+==========================================
+
+==========================================
+[2026-08-02 16:01:24] Starting: bun run db:push
+==========================================
+[BUN] Setting up database...
+$ node scripts/with-env.mjs prisma db push
+[with-env] DATABASE_URL is SQLite (file:) — overriding with PostgreSQL fallback
+Environment variables loaded from .env
+Prisma schema loaded from prisma/schema.prisma
+Datasource "db": PostgreSQL database "postgres", schema "public" at "aws-1-ap-south-1.pooler.supabase.com:5432"
+
+The database is already in sync with the Prisma schema.
+
+Running generate... (Use --skip-generate to skip the generators)
+[2K[1A[2K[GRunning generate... - Prisma Client
+[2K[1A[2K[G✔ Generated Prisma Client (v6.19.3) to ./node_modules/@prisma/client in 396ms
+
+==========================================
+[2026-08-02 16:01:32] Completed: bun run db:push
+[LOG] Step: bun run db:push | Duration: 8s
+==========================================
+
+==========================================
+[2026-08-02 16:01:32] Starting: Starting Next.js dev server
+==========================================
+[BUN] Starting development server...
+==========================================
+$ node scripts/with-env.mjs next dev --turbo -p 3000
+[2026-08-02 16:01:32] Completed: Starting Next.js dev server
+[LOG] Step: Starting Next.js dev server | Duration: 0s
+==========================================
+
+==========================================
+[2026-08-02 16:01:32] Starting: Waiting for Next.js dev server
+==========================================
+Waiting for Next.js dev server to be ready on localhost:3000...
+[with-env] DATABASE_URL is SQLite (file:) — overriding with PostgreSQL fallback
+⨯ Failed to start server
+Error: listen EADDRINUSE: address already in use :::3000
+    at <unknown> (Error: listen EADDRINUSE: address already in use :::3000)
+    at new Promise (<anonymous>) {
+  code: 'EADDRINUSE',
+  errno: -98,
+  syscall: 'listen',
+  address: '::',
+  port: 3000
+}
+Attention: Next.js now collects completely anonymous telemetry regarding usage.
+This information is used to shape Next.js' roadmap and prioritize features.
+You can learn more, including how to opt-out if you'd not like to participate in this anonymous program, by visiting the following URL:
+https://nextjs.org/telemetry
+
+[?25h
+error: script "dev" exited with code 1
+Attempt 1/60: Next.js dev server not ready yet, waiting...
+Next.js dev server is ready!
+==========================================
+[2026-08-02 16:01:41] Completed: Waiting for Next.js dev server
+[LOG] Step: Waiting for Next.js dev server | Duration: 9s
+==========================================
+
+==========================================
+[2026-08-02 16:01:41] Starting: Health check
+==========================================
+[BUN] Performing health check...
+[BUN] Health check passed
+==========================================
+[2026-08-02 16:01:41] Completed: Health check
+[LOG] Step: Health check | Duration: 0s
+==========================================
+
+==========================================
+[2026-08-02 16:01:41] Starting: Starting mini-services
+==========================================
+Found mini-services directory, scanning for sub-services...
+Mini-services startup completed. Started 0 service(s).
+==========================================
+[2026-08-02 16:01:41] Completed: Starting mini-services
+[LOG] Step: Starting mini-services | Duration: 0s
+==========================================
+
+Next.js dev server is running in background (PID: 1285).
+Use 'kill 1285' to stop it.

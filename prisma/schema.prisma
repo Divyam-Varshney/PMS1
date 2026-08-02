@@ -1,0 +1,925 @@
+// ============================================================================
+// File: prisma/schema.prisma
+// Purpose: Central database schema for PMS — Pradeep Medical Store.
+//          Online pharmacy platform with customer storefront + admin panel.
+// Database: PostgreSQL 15+ — hosted on Supabase (managed).
+// ORM:      Prisma 6.x
+//
+// Design principles:
+//   1. Normalized — no duplicate data storage (product images live ONLY in
+//      ProductImage, not duplicated across Product columns).
+//   2. Indexed — every foreign key and frequently-filtered column has an index.
+//   3. Typed — monetary values use Decimal(10,2) for exact precision; long
+//      text fields use @db.Text to leverage PostgreSQL's native text type.
+//   4. Cascading — child records (OrderItem, CartItem, etc.) are deleted when
+//      their parent is deleted, preventing orphan rows.
+//
+// Connection notes (Supabase):
+//   - DATABASE_URL uses the Supavisor transaction-mode pooler (port 6543) with
+//     ?pgbouncer=true for efficient connection reuse in serverless (Vercel).
+//   - DIRECT_URL uses the session-mode pooler (port 5432) for migrations.
+//   - FK constraints are enforced at the PostgreSQL level (relationMode left at
+//     default) — Supabase Supavisor supports prepared statements in transaction
+//     mode, so no ORM-level emulation is required.
+// ============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider     = "postgresql"
+  url          = env("DATABASE_URL")
+  directUrl    = env("DIRECT_URL")
+}
+
+// ---------------------------------------------------------------------------
+// AUTH & USERS
+// ---------------------------------------------------------------------------
+
+/// Admin users with role-based access. Controls the Admin Panel.
+model Admin {
+  id           String    @id @default(cuid())
+  name         String    @db.VarChar(255)
+  email        String    @unique @db.VarChar(255)
+  phone        String?   @db.VarChar(20)
+  passwordHash String    @db.VarChar(255)
+  role         String    @default("admin") @db.VarChar(30) // admin | super_admin | manager
+  isActive     Boolean   @default(true)
+  /// JSON-encoded array of enabled permission keys. null = all (super_admin).
+  permissions  String?   @db.Text
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([email])
+}
+
+/// Customer accounts. Email is the login identifier. Phone used for WhatsApp.
+model Customer {
+  id              String   @id @default(cuid())
+  name            String   @db.VarChar(255)
+  email           String   @unique @db.VarChar(255)
+  phone           String   @unique @db.VarChar(20)
+  passwordHash    String   @db.VarChar(255)
+  isEmailVerified Boolean  @default(false)
+  isActive        Boolean  @default(true)
+  whatsappOptIn   Boolean  @default(true)
+  /// Loyalty points — 1 point per Rs. 10 spent on delivered orders.
+  loyaltyPoints   Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  addresses      Address[]
+  orders         Order[]
+  prescriptions  Prescription[]
+  manualRequests ManualRequest[]
+  reviews        Review[]
+  cart           Cart?
+  otps           Otp[]
+  notifications  NotificationLog[]
+  wishlist       WishlistItem[]
+  loyaltyTxns    LoyaltyTransaction[]
+  stockAlerts    StockSubscription[]
+  reminders      MedicineReminder[]
+  refillReminders RefillReminder[]
+
+  @@index([email])
+  @@index([phone])
+}
+
+/// Products a customer has saved to their wishlist (favorites).
+model WishlistItem {
+  id         String   @id @default(cuid())
+  customerId String
+  productId  String
+  createdAt  DateTime @default(now())
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  product  Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([customerId, productId])
+  @@index([customerId])
+}
+
+/// Saved delivery addresses for customers.
+model Address {
+  id         String   @id @default(cuid())
+  customerId String
+  label      String   @default("Home") @db.VarChar(30) // Home | Work | Other
+  line1      String   @db.VarChar(255)
+  line2      String?  @db.VarChar(255)
+  city       String   @default("Mathura") @db.VarChar(100)
+  district   String   @default("Mathura") @db.VarChar(100)
+  state      String   @default("Uttar Pradesh") @db.VarChar(100)
+  pincode    String   @db.VarChar(10)
+  locality   String?  @db.VarChar(100) // used for delivery zone lookup
+  phone      String?  @db.VarChar(20)
+  isDefault  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  orders   Order[]
+
+  @@index([customerId])
+}
+
+/// One-time passwords for email/WhatsApp verification flows.
+model Otp {
+  id          String   @id @default(cuid())
+  customerId  String?
+  code        String   @db.VarChar(10)
+  purpose     String   @db.VarChar(20) // register | login | reset
+  channel     String   @default("email") @db.VarChar(20) // email | whatsapp | both
+  expiresAt   DateTime
+  used        Boolean  @default(false)
+  attempts    Int      @default(0)
+  createdAt   DateTime @default(now())
+  /// For registration: stores pending customer data as JSON (not created until verified).
+  pendingData String?  @db.Text
+
+  customer Customer? @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId])
+  @@index([code])
+}
+
+// ---------------------------------------------------------------------------
+// CATALOG: Categories, Brands, Products
+// ---------------------------------------------------------------------------
+
+/// Product categories. Support nested categories via parentId.
+model Category {
+  id           String   @id @default(cuid())
+  name         String   @db.VarChar(255)
+  slug         String   @unique @db.VarChar(255)
+  description  String?  @db.Text
+  image        String?  @db.VarChar(500)
+  parentId     String?
+  displayOrder Int      @default(0)
+  status       String   @default("active") @db.VarChar(20) // active | inactive
+  visibility   String   @default("public") @db.VarChar(20) // public | hidden
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  parent   Category?  @relation("CategoryParent", fields: [parentId], references: [id], onDelete: SetNull)
+  children Category[] @relation("CategoryParent")
+  products Product[]
+
+  @@index([parentId])
+  @@index([slug])
+}
+
+/// Medicine / product brands with logo & featured image support.
+model Brand {
+  id            String   @id @default(cuid())
+  name          String   @db.VarChar(255)
+  slug          String   @unique @db.VarChar(255)
+  description   String?  @db.Text
+  logo          String?  @db.VarChar(500)
+  svgIcon       String?  @db.Text
+  featuredImage String?  @db.VarChar(500)
+  displayMode   String   @default("both") @db.VarChar(20) // logo_only | name_only | both
+  displayOrder  Int      @default(0)
+  isFeaturedOnHomepage Boolean @default(false) // only featured brands show in the homepage marquee
+  status        String   @default("active") @db.VarChar(20)
+  visibility    String   @default("public") @db.VarChar(20)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  products Product[]
+
+  @@index([slug])
+  @@index([isFeaturedOnHomepage])
+}
+
+/// Products (medicines, OTC, wellness, devices). Central catalog entity.
+model Product {
+  id                   String  @id @default(cuid())
+  name                 String  @db.VarChar(255)
+  slug                 String  @unique @db.VarChar(255)
+  sku                  String? @db.VarChar(100)
+  shortDescription     String? @db.VarChar(500)
+  description          String? @db.Text
+  composition          String? @db.VarChar(255)
+  genericName          String? @db.VarChar(255)
+  manufacturer         String? @db.VarChar(255)
+  hsnCode              String? @db.VarChar(20)
+  prescriptionRequired Boolean @default(false)
+  isGeneric            Boolean @default(false)
+
+  brandId    String?
+  categoryId String?
+  unit       String? @db.VarChar(50) // strip, bottle, tube, etc.
+  packSize   String? @db.VarChar(100)
+
+  // Pricing — margin-protected discount model. Decimal for exact precision.
+  mrp             Decimal  @db.Decimal(10, 2)
+  sellingPrice    Decimal  @db.Decimal(10, 2)
+  baseDiscountPct Decimal  @default(0) @db.Decimal(5, 2)
+  maxDiscountPct  Decimal  @default(0) @db.Decimal(5, 2)
+  costPrice       Decimal? @db.Decimal(10, 2)
+  taxPct          Decimal  @default(0) @db.Decimal(5, 2)
+
+  // Inventory
+  stock             Int @default(0)
+  lowStockThreshold Int @default(10)
+
+  // Denormalized primary image cache (mirrors ProductImage.isPrimary=true).
+  // Used by product cards/lists to avoid a JOIN on every catalog query.
+  primaryImage  String? @db.VarChar(500)
+  galleryImages String? @db.Text // JSON array of image URLs (cache)
+
+  // Display
+  displayOrder Int     @default(0)
+  isFeatured   Boolean @default(false)
+  isBestSeller Boolean @default(false)
+  isTrending   Boolean @default(false)
+  status       String  @default("active") @db.VarChar(20)
+  visibility   String  @default("public") @db.VarChar(20)
+
+  // Rating snapshot (updated by trigger/seed when reviews are approved)
+  avgRating   Decimal @default(0) @db.Decimal(3, 2)
+  reviewCount Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  brand       Brand?              @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  category    Category?           @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  orderItems  OrderItem[]
+  cartItems   CartItem[]
+  reviews     Review[]
+  wishlist    WishlistItem[]
+  deals       Deal[]
+  images      ProductImage[]
+  stockAlerts StockSubscription[]
+  refillReminders RefillReminder[]
+
+  @@index([slug])
+  @@index([brandId])
+  @@index([categoryId])
+  @@index([status])
+  @@index([isFeatured])
+  @@index([isBestSeller])
+  // ── Phase 97 (templates-perf): indexes for the home-feed & catalog queries.
+  //   Without these, every home page load (6 parallel queries) scans the full
+  //   Product table — fine at 325 rows today, but it scales O(n) as the
+  //   catalog grows. These composite + single-column indexes cover the most
+  //   common filters and sort orders used by /api/catalog/home-feed and
+  //   /api/catalog/featured.
+  @@index([isTrending])
+  @@index([visibility, status])
+  @@index([avgRating])
+  @@index([baseDiscountPct])
+  @@index([createdAt])
+  @@index([displayOrder])
+}
+
+// ---------------------------------------------------------------------------
+// PRODUCT IMAGES — dedicated table for scalable multi-image management.
+// Single source of truth for all product image metadata. The old redundant
+// columns (primaryImage, galleryImages, thumbnail, featuredImage, zoomImage)
+// on the Product table were removed — this table now holds everything.
+// ---------------------------------------------------------------------------
+
+model ProductImage {
+  id           String   @id @default(cuid())
+  productId    String
+  imagePath    String   @db.VarChar(500)
+  originalName String   @db.VarChar(255)
+  altText      String?  @db.VarChar(255)
+  title        String?  @db.VarChar(255)
+  caption      String?  @db.VarChar(255)
+  description  String?  @db.Text
+  displayOrder Int      @default(0)
+  isPrimary    Boolean  @default(false)
+  width        Int?
+  height       Int?
+  fileSize     Int      @default(0)
+  mimeType     String   @default("image/jpeg") @db.VarChar(50)
+  hash         String?  @db.VarChar(64) // SHA-256 for duplicate detection
+  type         String   @default("image") @db.VarChar(20) // image | video | ar | 360
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+  @@index([isPrimary])
+  @@index([displayOrder])
+}
+
+// ---------------------------------------------------------------------------
+// TODAY'S DEALS (admin-curated promotional discounts on products)
+// ---------------------------------------------------------------------------
+
+model Deal {
+  id            String    @id @default(cuid())
+  title         String    @db.VarChar(255)
+  description   String?   @db.Text
+  productId     String?
+  discountPct   Decimal   @default(0) @db.Decimal(5, 2)
+  originalPrice Decimal?  @db.Decimal(10, 2)
+  dealPrice     Decimal?  @db.Decimal(10, 2)
+  startDate     DateTime?
+  endDate       DateTime?
+  isActive      Boolean   @default(true)
+  displayOrder  Int       @default(0)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  product Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  @@index([isActive])
+  @@index([displayOrder])
+}
+
+// ---------------------------------------------------------------------------
+// CART
+// ---------------------------------------------------------------------------
+
+/// A customer's shopping cart. One per customer.
+model Cart {
+  id          String   @id @default(cuid())
+  customerId  String   @unique
+  voucherCode String?  @db.VarChar(50)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  customer Customer   @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  items    CartItem[]
+
+  @@index([customerId])
+}
+
+/// Line items in a cart.
+model CartItem {
+  id        String   @id @default(cuid())
+  cartId    String
+  productId String
+  quantity  Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  cart    Cart    @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([cartId, productId])
+  @@index([cartId])
+}
+
+// ---------------------------------------------------------------------------
+// ORDERS
+// ---------------------------------------------------------------------------
+
+/// Customer orders. Single source of truth for fulfillment.
+model Order {
+  id          String  @id @default(cuid())
+  orderNumber String  @unique @db.VarChar(50)
+  customerId  String?
+  addressId   String?
+
+  // Snapshot of address (so historical orders don't change)
+  shipName     String  @db.VarChar(255)
+  shipPhone    String  @db.VarChar(20)
+  shipLine1    String  @db.VarChar(255)
+  shipLine2    String? @db.VarChar(255)
+  shipCity     String  @db.VarChar(100)
+  shipDistrict String  @db.VarChar(100)
+  shipState    String  @db.VarChar(100)
+  shipPincode  String  @db.VarChar(10)
+  shipLocality String? @db.VarChar(100)
+
+  // Pricing (all computed via Pricing Engine)
+  itemsTotal      Decimal @default(0) @db.Decimal(10, 2)
+  productDiscount Decimal @default(0) @db.Decimal(10, 2)
+  voucherDiscount Decimal @default(0) @db.Decimal(10, 2)
+  deliveryCharge  Decimal @default(0) @db.Decimal(10, 2)
+  taxTotal        Decimal @default(0) @db.Decimal(10, 2)
+  grandTotal      Decimal @default(0) @db.Decimal(10, 2)
+  roundOff        Decimal @default(0) @db.Decimal(10, 2)
+
+  // Applied voucher snapshot
+  voucherCode           String? @db.VarChar(50)
+  loyaltyPointsRedeemed Int     @default(0)
+  loyaltyDiscount       Decimal @default(0) @db.Decimal(10, 2)
+
+  // Status
+  status         String  @default("pending") @db.VarChar(30)
+  paymentMethod  String  @default("cod") @db.VarChar(30)
+  paymentStatus  String  @default("pending") @db.VarChar(20)
+  paymentId      String? @db.VarChar(255)
+  paymentGateway String? @db.VarChar(50)
+
+  // QR payment screenshot upload
+  paymentScreenshot           String?   @db.VarChar(500)
+  paymentScreenshotUploadedAt DateTime?
+  paymentTxnId                String?   @db.VarChar(100)
+
+  // Source & links
+  source          String  @default("cart") @db.VarChar(30)
+  prescriptionId  String?
+  manualRequestId String?
+  notes           String? @db.Text
+  adminNotes      String? @db.Text
+
+  // Timestamps for each stage (tracking timeline)
+  confirmedAt      DateTime?
+  packedAt         DateTime?
+  outForDeliveryAt DateTime?
+  deliveredAt      DateTime?
+  cancelledAt      DateTime?
+
+  estimatedDelivery DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  customer      Customer?            @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  address       Address?             @relation(fields: [addressId], references: [id])
+  items         OrderItem[]
+  statusHistory OrderStatusHistory[]
+  orderNotes    OrderNote[]
+
+  @@index([customerId])
+  @@index([status])
+  @@index([orderNumber])
+  @@index([createdAt])
+}
+
+/// Line items in an order. Snapshot of product details at purchase time.
+model OrderItem {
+  id                 String   @id @default(cuid())
+  orderId            String
+  productId          String?
+  name               String   @db.VarChar(255)
+  sku                String?  @db.VarChar(100)
+  image              String?  @db.VarChar(500)
+  qty                Int
+  mrp                Decimal  @db.Decimal(10, 2)
+  sellingPrice       Decimal  @db.Decimal(10, 2)
+  appliedDiscountPct Decimal  @default(0) @db.Decimal(5, 2)
+  discountAmount     Decimal  @default(0) @db.Decimal(10, 2)
+  lineTotal          Decimal  @db.Decimal(10, 2)
+  createdAt          DateTime @default(now())
+
+  order   Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product? @relation(fields: [productId], references: [id])
+
+  @@index([orderId])
+}
+
+/// Audit trail of order status changes.
+model OrderStatusHistory {
+  id        String   @id @default(cuid())
+  orderId   String
+  status    String   @db.VarChar(30)
+  note      String?  @db.Text
+  createdBy String?  @db.VarChar(100) // admin id or "system"
+  createdAt DateTime @default(now())
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+}
+
+/// Internal admin notes on an order (separate from the customer-visible
+/// `notes` field). Each note is its own row so it can be edited/deleted
+/// independently, with a timestamp and the admin who wrote it.
+model OrderNote {
+  id         String   @id @default(cuid())
+  orderId    String
+  body       String   @db.Text
+  authorId   String?  @db.VarChar(100)
+  authorName String?  @db.VarChar(120)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@index([createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// PRESCRIPTIONS & MANUAL REQUESTS
+// ---------------------------------------------------------------------------
+
+model Prescription {
+  id               String   @id @default(cuid())
+  customerId       String?
+  images           String   @db.Text // JSON array of image URLs
+  notes            String?  @db.Text
+  status           String   @default("pending") @db.VarChar(30)
+  adminNotes       String?  @db.Text
+  convertedOrderId String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  customer Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
+  @@index([customerId])
+  @@index([status])
+}
+
+model ManualRequest {
+  id               String   @id @default(cuid())
+  customerId       String?
+  medicineList     String   @db.Text
+  notes            String?  @db.Text
+  status           String   @default("pending") @db.VarChar(30)
+  adminNotes       String?  @db.Text
+  convertedOrderId String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  customer Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
+  @@index([customerId])
+  @@index([status])
+}
+
+// ---------------------------------------------------------------------------
+// LOYALTY PROGRAM
+// ---------------------------------------------------------------------------
+
+/// Audit trail of loyalty point earn/redeem transactions per customer.
+model LoyaltyTransaction {
+  id         String   @id @default(cuid())
+  customerId String
+  type       String   @db.VarChar(20) // earn | redeem | adjust
+  points     Int
+  balance    Int
+  reason     String   @db.VarChar(255)
+  orderId    String?
+  createdAt  DateTime @default(now())
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId])
+  @@index([createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// VOUCHER CODES (flat-amount deduction from order total)
+// ---------------------------------------------------------------------------
+
+model Voucher {
+  id               String    @id @default(cuid())
+  code             String    @unique @db.VarChar(50)
+  description      String?   @db.Text
+  amount           Decimal   @db.Decimal(10, 2) // flat Rs. amount to deduct
+  scope            String    @default("cart") @db.VarChar(20) // cart | product | category
+  targetIds        String?   @db.Text // JSON array of productId or categoryId
+  minOrder         Decimal   @default(0) @db.Decimal(10, 2)
+  maxRedemptions   Int       @default(0) // 0 = unlimited
+  usedCount        Int       @default(0)
+  perCustomerLimit Int       @default(0) // 0 = unlimited
+  validFrom        DateTime  @default(now())
+  validTo          DateTime?
+  isActive         Boolean   @default(true)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  usages VoucherUsage[]
+
+  @@index([code])
+  @@index([isActive])
+}
+
+/// Per-customer voucher usage tracking.
+model VoucherUsage {
+  id         String   @id @default(cuid())
+  voucherId  String
+  customerId String?
+  orderId    String?
+  createdAt  DateTime @default(now())
+
+  voucher Voucher @relation(fields: [voucherId], references: [id], onDelete: Cascade)
+
+  @@index([voucherId])
+  @@index([customerId])
+}
+
+// ---------------------------------------------------------------------------
+// SETTINGS (admin-configurable key-value store)
+// ---------------------------------------------------------------------------
+
+model Setting {
+  id        String   @id @default(cuid())
+  key       String   @unique @db.VarChar(100)
+  value     String   @db.Text // JSON-encoded value
+  category  String   @default("general") @db.VarChar(50)
+  updatedAt DateTime @updatedAt
+
+  @@index([key])
+  @@index([category])
+}
+
+// ---------------------------------------------------------------------------
+// NOTIFICATIONS
+// ---------------------------------------------------------------------------
+
+model NotificationTemplate {
+  id        String   @id @default(cuid())
+  key       String   @unique @db.VarChar(100)
+  name      String   @db.VarChar(255)
+  channel   String   @db.VarChar(20) // email | whatsapp
+  subject   String?  @db.VarChar(255)
+  body      String   @db.Text // template with {{variables}}
+  variables String?  @db.Text // JSON array of variable names
+  isActive  Boolean  @default(true)
+  updatedAt DateTime @updatedAt
+
+  @@index([key])
+  @@index([channel])
+}
+
+/// Log of all notifications sent (email/whatsapp).
+model NotificationLog {
+  id          String   @id @default(cuid())
+  customerId  String?
+  recipient   String   @db.VarChar(255) // email or phone
+  channel     String   @db.VarChar(20)
+  subject     String?  @db.VarChar(255)
+  body        String   @db.Text
+  status      String   @default("sent") @db.VarChar(20)
+  templateKey String?  @db.VarChar(100)
+  error       String?  @db.Text
+  createdAt   DateTime @default(now())
+
+  customer Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
+  @@index([customerId])
+  @@index([channel])
+}
+
+// ---------------------------------------------------------------------------
+// DELIVERY (locality-based, single centralized system)
+// ---------------------------------------------------------------------------
+
+model DeliveryZone {
+  id             String   @id @default(cuid())
+  name           String   @db.VarChar(100)
+  localities     String   @default("") @db.Text
+  pincodes       String   @default("") @db.Text
+  charge         Decimal  @default(0) @db.Decimal(10, 2)
+  freeAbove      Decimal? @db.Decimal(10, 2)
+  minOrder       Decimal  @default(0) @db.Decimal(10, 2)
+  estimatedHours Int      @default(24)
+  isActive       Boolean  @default(true)
+  displayOrder   Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([isActive])
+  @@index([displayOrder])
+}
+
+// ---------------------------------------------------------------------------
+// PAYMENT METHODS (modular, admin-managed)
+// ---------------------------------------------------------------------------
+
+model PaymentMethod {
+  id           String   @id @default(cuid())
+  key          String   @unique @db.VarChar(50)
+  label        String   @db.VarChar(100)
+  description  String?  @db.Text
+  icon         String?  @db.VarChar(50)
+  gateway      String?  @db.VarChar(50)
+  config       String?  @db.Text // JSON (gateway credentials — server-side only)
+  displayOrder Int      @default(0)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([isActive])
+  @@index([displayOrder])
+}
+
+// ---------------------------------------------------------------------------
+// REVIEWS
+// ---------------------------------------------------------------------------
+
+model Review {
+  id           String    @id @default(cuid())
+  productId    String
+  customerId   String?
+  authorName   String    @db.VarChar(255)
+  rating       Int       @default(5)
+  title        String?   @db.VarChar(255)
+  body         String?   @db.Text
+  status       String    @default("pending") @db.VarChar(20) // pending | approved | rejected
+  createdAt    DateTime  @default(now())
+  adminReply   String?   @db.Text
+  adminReplyAt DateTime?
+  adminReplyBy String?   @db.VarChar(100)
+
+  product  Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  customer Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
+  @@index([productId])
+  @@index([customerId])
+  @@index([status])
+}
+
+// ---------------------------------------------------------------------------
+// ADMIN NOTIFICATIONS (real-time alerts for new orders, prescriptions, etc.)
+// ---------------------------------------------------------------------------
+
+model AdminNotification {
+  id           String   @id @default(cuid())
+  type         String   @db.VarChar(50)
+  title        String   @db.VarChar(255)
+  message      String   @db.Text
+  refId        String?  @db.VarChar(100)
+  refType      String?  @db.VarChar(30)
+  customerName String?  @db.VarChar(255)
+  isRead       Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
+  @@index([isRead])
+  @@index([type])
+  @@index([createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// NEWSLETTER SUBSCRIBERS
+// ---------------------------------------------------------------------------
+
+model NewsletterSubscriber {
+  id        String   @id @default(cuid())
+  email     String   @unique @db.VarChar(255)
+  name      String?  @db.VarChar(255)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@index([email])
+}
+
+// ---------------------------------------------------------------------------
+// BACK-IN-STOCK SUBSCRIPTIONS
+// ---------------------------------------------------------------------------
+
+model StockSubscription {
+  id         String    @id @default(cuid())
+  customerId String
+  productId  String
+  email      String    @db.VarChar(255)
+  status     String    @default("active") @db.VarChar(20) // active | notified | cancelled
+  createdAt  DateTime  @default(now())
+  notifiedAt DateTime?
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  product  Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([customerId, productId])
+  @@index([productId, status])
+  @@index([customerId])
+}
+
+// ---------------------------------------------------------------------------
+// ERROR LOGS — automatic error capture for production troubleshooting
+// ---------------------------------------------------------------------------
+
+model ErrorLog {
+  id          String    @id @default(cuid())
+  timestamp   DateTime  @default(now())
+  severity    String    @default("error") @db.VarChar(20) // info | warning | error | critical
+  module      String?   @db.VarChar(100)  // e.g. "checkout", "auth", "product-detail"
+  endpoint    String?   @db.VarChar(500)  // API route or page URL
+  method      String?   @db.VarChar(10)   // GET | POST | PUT | DELETE
+  message     String    @db.Text
+  stack       String?   @db.Text          // stack trace (dev mode only)
+  userAgent   String?   @db.VarChar(500)
+  ipAddress   String?   @db.VarChar(45)
+  userId      String?   @db.VarChar(100)  // customer or admin ID
+  userEmail   String?   @db.VarChar(255)
+  requestUrl  String?   @db.VarChar(500)
+  statusCode  Int?
+  status      String    @default("open") @db.VarChar(20) // open | resolved | ignored
+
+  @@index([timestamp])
+  @@index([severity])
+  @@index([status])
+  @@index([module])
+}
+
+// ---------------------------------------------------------------------------
+// CAMPAIGNS / LANDING PAGES — admin-managed promotional pages
+// ---------------------------------------------------------------------------
+
+model Campaign {
+  id             String    @id @default(cuid())
+  title          String    @db.VarChar(255)
+  slug           String    @unique @db.VarChar(255)
+  type           String    @default("landing") @db.VarChar(50) // landing | offer | brand | category | festival | flash-sale | seasonal
+  status         String    @default("draft") @db.VarChar(20) // draft | published | scheduled | expired
+  bannerImage    String?   @db.VarChar(500)
+  heroTitle      String?   @db.VarChar(255)
+  heroSubtitle   String?   @db.Text
+  heroCtaText    String?   @db.VarChar(100)
+  heroCtaLink    String?   @db.VarChar(255)
+  promoText      String?   @db.Text
+  // Featured product IDs (JSON array) — the admin selects products to feature
+  productIds     String?   @db.Text // JSON array of product IDs
+  // Featured category IDs (JSON array)
+  categoryIds    String?   @db.Text // JSON array of category IDs
+  // SEO
+  seoTitle       String?   @db.VarChar(255)
+  metaDescription String?  @db.Text
+  // Scheduling
+  startDate      DateTime?
+  endDate        DateTime?
+  // Display
+  displayOrder   Int       @default(0)
+  // Metadata
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([status])
+  @@index([type])
+  @@index([slug])
+}
+
+// ---------------------------------------------------------------------------
+// HEALTH BUNDLES — curated combo packs of complementary products.
+// Admin-managed (CRUD via admin panel). Each bundle has a theme, emoji,
+// gradient, and a list of product IDs.
+// ---------------------------------------------------------------------------
+model HealthBundle {
+  id           String   @id @default(cuid())
+  title        String   @db.VarChar(255)
+  description  String?  @db.Text
+  emoji        String   @default("📦") @db.VarChar(10)
+  gradient     String   @default("from-emerald-50 to-teal-100") @db.VarChar(100)
+  accentColor  String   @default("text-emerald-700") @db.VarChar(50)
+  productIds   String   @db.Text
+  discountPct  Decimal  @default(0) @db.Decimal(5, 2)
+  displayOrder Int      @default(0)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([isActive])
+  @@index([displayOrder])
+}
+
+// ---------------------------------------------------------------------------
+// MEDICINE REMINDERS — customer-created reminders to take medicines on
+// schedule. Each reminder has a frequency (daily / twice-daily / weekly /
+// custom), a list of times (JSON array of "HH:MM" strings), and an optional
+// end date. The UI is the MedicineRemindersView accessible from the account
+// page. This is a passive record — actual push notifications require a
+// separate scheduler service (future enhancement).
+// ---------------------------------------------------------------------------
+
+model MedicineReminder {
+  id           String   @id @default(cuid())
+  customerId   String
+  productName  String   @db.VarChar(255)
+  dosage       String?  @db.VarChar(100) // e.g., "1 tablet"
+  frequency    String   @db.VarChar(50)  // daily | twice-daily | weekly | custom
+  times        String   @db.Text // JSON array of "HH:MM" strings: ["08:00", "20:00"]
+  startDate    DateTime @default(now())
+  endDate      DateTime?
+  isActive     Boolean  @default(true)
+  lastReminder DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId])
+  @@index([isActive])
+}
+
+// ---------------------------------------------------------------------------
+// PRESCRIPTION REFILL REMINDERS — auto-created when an order containing a
+// prescriptionRequired product is delivered/completed. Tracks the next
+// estimated refill date based on the days supply (default 25 days). The
+// customer can also manually create a refill reminder. The UI is shown in
+// the account page (Refill Reminders section).
+// ---------------------------------------------------------------------------
+
+model RefillReminder {
+  id             String   @id @default(cuid())
+  customerId     String
+  productId      String
+  orderId        String?  // the order that contained this Rx product
+  lastOrdered    DateTime
+  nextRefillDate DateTime // calculated: lastOrdered + daysSupply
+  daysSupply     Int      @default(30) // estimated days per pack
+  isActive       Boolean  @default(true)
+  notifiedAt     DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  product  Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([customerId])
+  @@index([isActive])
+  @@index([nextRefillDate])
+}

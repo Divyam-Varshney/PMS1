@@ -1,0 +1,749 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+/* PMS - Pradeep Medical Store theme: emerald (health/trust) + teal accents.
+   Deliberately avoids indigo/blue per brand guidelines. */
+:root {
+  --radius: 0.75rem;
+  --background: oklch(0.99 0.005 145);
+  --foreground: oklch(0.18 0.02 160);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.18 0.02 160);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.18 0.02 160);
+  /* Emerald 600 */
+  --primary: oklch(0.55 0.13 160);
+  --primary-foreground: oklch(0.99 0.005 145);
+  /* Soft emerald tint */
+  --secondary: oklch(0.96 0.02 155);
+  --secondary-foreground: oklch(0.3 0.05 160);
+  --muted: oklch(0.97 0.01 150);
+  --muted-foreground: oklch(0.5 0.02 155);
+  /* Teal accent */
+  --accent: oklch(0.93 0.04 170);
+  --accent-foreground: oklch(0.28 0.06 170);
+  --destructive: oklch(0.58 0.22 25);
+  --border: oklch(0.92 0.01 155);
+  --input: oklch(0.92 0.01 155);
+  --ring: oklch(0.55 0.13 160);
+  --chart-1: oklch(0.55 0.13 160);
+  --chart-2: oklch(0.6 0.11 180);
+  --chart-3: oklch(0.7 0.13 145);
+  --chart-4: oklch(0.65 0.16 90);
+  --chart-5: oklch(0.6 0.18 50);
+  --sidebar: oklch(0.99 0.005 145);
+  --sidebar-foreground: oklch(0.18 0.02 160);
+  --sidebar-primary: oklch(0.55 0.13 160);
+  --sidebar-primary-foreground: oklch(0.99 0.005 145);
+  --sidebar-accent: oklch(0.95 0.03 160);
+  --sidebar-accent-foreground: oklch(0.3 0.05 160);
+  --sidebar-border: oklch(0.92 0.01 155);
+  --sidebar-ring: oklch(0.55 0.13 160);
+}
+
+.dark {
+  --background: oklch(0.16 0.015 160);
+  --foreground: oklch(0.97 0.005 150);
+  --card: oklch(0.21 0.02 160);
+  --card-foreground: oklch(0.97 0.005 150);
+  --popover: oklch(0.21 0.02 160);
+  --popover-foreground: oklch(0.97 0.005 150);
+  --primary: oklch(0.7 0.14 160);
+  --primary-foreground: oklch(0.16 0.015 160);
+  --secondary: oklch(0.27 0.03 160);
+  --secondary-foreground: oklch(0.97 0.005 150);
+  --muted: oklch(0.25 0.02 160);
+  --muted-foreground: oklch(0.7 0.02 155);
+  --accent: oklch(0.3 0.05 170);
+  --accent-foreground: oklch(0.95 0.02 170);
+  --destructive: oklch(0.65 0.2 25);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 12%);
+  --ring: oklch(0.7 0.14 160);
+  --chart-1: oklch(0.7 0.14 160);
+  --chart-2: oklch(0.65 0.12 180);
+  --chart-3: oklch(0.75 0.14 145);
+  --chart-4: oklch(0.7 0.17 90);
+  --chart-5: oklch(0.65 0.19 50);
+  --sidebar: oklch(0.19 0.02 160);
+  --sidebar-foreground: oklch(0.97 0.005 150);
+  --sidebar-primary: oklch(0.7 0.14 160);
+  --sidebar-primary-foreground: oklch(0.16 0.015 160);
+  --sidebar-accent: oklch(0.27 0.03 160);
+  --sidebar-accent-foreground: oklch(0.95 0.02 170);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.7 0.14 160);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+    -webkit-tap-highlight-color: transparent;
+    scroll-behavior: smooth;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  /* Premium text selection — emerald tint matches brand */
+  ::selection {
+    background-color: oklch(0.55 0.13 160 / 0.2);
+    color: oklch(0.18 0.02 160);
+  }
+  /* Global premium scrollbar */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: oklch(0.97 0.01 150);
+  }
+  ::-webkit-scrollbar-thumb {
+    background: oklch(0.55 0.13 160 / 0.35);
+    border-radius: 9999px;
+    border: 2px solid oklch(0.97 0.01 150);
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: oklch(0.55 0.13 160 / 0.55);
+  }
+  .dark ::-webkit-scrollbar-track {
+    background: oklch(0.21 0.02 160);
+  }
+  .dark ::-webkit-scrollbar-thumb {
+    background: oklch(0.7 0.14 160 / 0.35);
+    border-color: oklch(0.21 0.02 160);
+  }
+  .dark ::selection {
+    background-color: oklch(0.7 0.14 160 / 0.3);
+    color: oklch(0.97 0.005 150);
+  }
+  /* Focus-visible ring for keyboard navigation — accessibility */
+  :focus-visible {
+    outline: 2px solid oklch(0.55 0.13 160);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+}
+
+/* Custom scrollbar for premium feel */
+@layer utilities {
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: var(--muted-foreground);
+    opacity: 0.3;
+    border-radius: 9999px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background: var(--primary);
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  /* Global overflow-wrap safety net: ensures very long product names (e.g.,
+     "The Derma Co 10% Vitamin C Face Serum with 5% Niacinamide...")
+     never break the layout by overflowing their container. Combined with
+     `line-clamp-*` + `break-words` utility classes on individual elements. */
+  .break-anywhere {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+  /* Safe area for mobile bottom nav */
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .pt-safe {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+}
+
+/* Hide number input arrows */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* =========================================================================
+   ADMIN PANEL — PREMIUM STYLING (Phase 2: E2, E7, E8)
+   ========================================================================= */
+
+/* E2: Gradient accent headers */
+.gradient-accent-header {
+  background: linear-gradient(135deg, rgba(5, 150, 105, 0.05) 0%, rgba(20, 184, 166, 0.05) 100%);
+  border-bottom: 1px solid hsl(var(--border));
+}
+
+/* E7: Dark mode — the admin toggle adds/removes the `dark` class on <html>.
+   The dark theme variables are defined in tailwind.config.ts via the
+   `dark:` variant (oklch values). No CSS needed here. */
+
+/* E8: Responsive table cards — tables transform into stacked cards on mobile */
+@media (max-width: 640px) {
+  .responsive-table thead {
+    display: none;
+  }
+  .responsive-table tr {
+    display: block;
+    margin-bottom: 0.75rem;
+    border: 1px solid hsl(var(--border));
+    border-radius: 0.5rem;
+    padding: 0.75rem;
+  }
+  .responsive-table td {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.35rem 0;
+    border: none;
+    text-align: right;
+  }
+  .responsive-table td::before {
+    content: attr(data-label);
+    font-weight: 600;
+    text-align: left;
+    color: hsl(var(--muted-foreground));
+    font-size: 0.75rem;
+  }
+}
+
+/* Premium scrollbar styling */
+.admin-scroll::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.admin-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.admin-scroll::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground) / 0.3);
+  border-radius: 3px;
+}
+.admin-scroll::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground) / 0.5);
+}
+
+/* E5: Stagger fade-in animation for list items */
+.stagger-item {
+  animation: stagger-fade 0.3s ease-out forwards;
+  opacity: 0;
+}
+@keyframes stagger-fade {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* =========================================================================
+   PREMIUM MICRO-INTERACTIONS
+   ========================================================================= */
+
+/* Shimmer / shine animation for loading states */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.shimmer {
+  background: linear-gradient(90deg, transparent 25%, rgba(255,255,255,0.4) 50%, transparent 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+/* Premium focus ring animation */
+@keyframes focus-ring {
+  0% { box-shadow: 0 0 0 0 oklch(0.55 0.13 160 / 0.3); }
+  70% { box-shadow: 0 0 0 6px oklch(0.55 0.13 160 / 0.1); }
+  100% { box-shadow: 0 0 0 0 oklch(0.55 0.13 160 / 0); }
+}
+
+/* Subtle pulse animation for notification badges */
+@keyframes badge-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.1); }
+}
+.animate-badge-pulse {
+  animation: badge-pulse 2s ease-in-out infinite;
+}
+
+/* Smooth gradient text effect */
+.gradient-text {
+  background: linear-gradient(135deg, oklch(0.55 0.13 160), oklch(0.65 0.15 180));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Glassmorphism utility */
+.glass {
+  background: oklch(1 0 0 / 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid oklch(0.92 0.01 155);
+}
+
+/* ============================================================================
+   Homepage Marquee — infinite horizontal scroll for Trusted Brands
+   ============================================================================ */
+@keyframes marquee-scroll {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+.animate-marquee {
+  animation: marquee-scroll 60s linear infinite;
+}
+
+.animate-marquee:hover {
+  animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-marquee {
+    animation: none;
+  }
+}
+
+/* Gradient fade mask for marquee edges */
+.marquee-mask {
+  -webkit-mask-image: linear-gradient(to right, transparent, black 5%, black 95%, transparent);
+  mask-image: linear-gradient(to right, transparent, black 5%, black 95%, transparent);
+}
+
+/* ============================================================================
+   PREMIUM DESIGN SYSTEM — Phase 88
+   Unified spacing, shadows, transitions, and polish tokens for the
+   customer portal. Makes every page feel cohesive, modern, and premium.
+   ============================================================================ */
+
+/* ── Premium shadows — softer, larger, more natural than Tailwind defaults ── */
+.shadow-premium-sm {
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.04), 0 1px 3px 0 rgba(0, 0, 0, 0.06);
+}
+.shadow-premium {
+  box-shadow: 0 2px 4px -1px rgba(0, 0, 0, 0.04), 0 4px 12px -2px rgba(0, 0, 0, 0.06);
+}
+.shadow-premium-lg {
+  box-shadow: 0 4px 8px -2px rgba(0, 0, 0, 0.05), 0 12px 28px -4px rgba(0, 0, 0, 0.10);
+}
+.shadow-premium-xl {
+  box-shadow: 0 8px 16px -4px rgba(0, 0, 0, 0.06), 0 20px 48px -8px rgba(0, 0, 0, 0.14);
+}
+.shadow-emerald-glow {
+  box-shadow: 0 4px 12px -2px rgba(5, 150, 105, 0.15), 0 8px 24px -4px rgba(5, 150, 105, 0.10);
+}
+
+/* ── Premium transitions — smooth but not slow ── */
+.transition-premium {
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.transition-premium-slow {
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ── Premium card hover — subtle lift + shadow + border tint ── */
+.card-premium-hover {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.card-premium-hover:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.08), 0 4px 12px -2px rgba(0, 0, 0, 0.04);
+  border-color: rgba(5, 150, 105, 0.3);
+}
+
+/* ── Premium section spacing — consistent vertical rhythm ── */
+.section-premium {
+  margin-bottom: 3rem;
+}
+@media (min-width: 768px) {
+  .section-premium {
+    margin-bottom: 4rem;
+  }
+}
+
+/* ── Premium button styles — softer radius, better shadow ── */
+.btn-premium {
+  border-radius: 0.625rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.btn-premium:active {
+  transform: scale(0.97);
+}
+
+/* ── Premium scrollbar — thin, subtle, emerald accent on hover ── */
+.scrollbar-premium::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.scrollbar-premium::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scrollbar-premium::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.12);
+  border-radius: 9999px;
+}
+.scrollbar-premium::-webkit-scrollbar-thumb:hover {
+  background: rgba(5, 150, 105, 0.4);
+}
+
+/* ── Premium focus ring — accessible + elegant ── */
+.focus-premium:focus-visible {
+  outline: 2px solid rgba(5, 150, 105, 0.5);
+  outline-offset: 2px;
+  border-radius: 0.375rem;
+}
+
+/* ── Premium gradient backgrounds — for section headers, banners ── */
+.bg-premium-gradient {
+  background: linear-gradient(135deg, rgba(5, 150, 105, 0.03) 0%, rgba(20, 184, 166, 0.03) 100%);
+}
+.bg-premium-gradient-emerald {
+  background: linear-gradient(135deg, rgba(5, 150, 105, 0.08) 0%, rgba(20, 184, 166, 0.05) 100%);
+}
+
+/* ── Premium text gradient — for special headings ── */
+.text-gradient-premium {
+  background: linear-gradient(135deg, oklch(0.45 0.13 160), oklch(0.50 0.11 180));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ── Premium skeleton shimmer — smoother loading state ── */
+@keyframes premium-shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.skeleton-premium {
+  background: linear-gradient(90deg,
+    rgba(0, 0, 0, 0.04) 25%,
+    rgba(0, 0, 0, 0.08) 50%,
+    rgba(0, 0, 0, 0.04) 75%
+  );
+  background-size: 200% 100%;
+  animation: premium-shimmer 1.8s ease-in-out infinite;
+}
+
+/* ── Premium image hover zoom — for product cards ── */
+.img-zoom-premium {
+  overflow: hidden;
+}
+.img-zoom-premium img {
+  transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.img-zoom-premium:hover img {
+  transform: scale(1.06);
+}
+
+/* ── Premium badge — rounded pill with subtle shadow ── */
+.badge-premium {
+  border-radius: 9999px;
+  font-weight: 600;
+  font-size: 0.625rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+/* ── Premium divider — subtle gradient line ── */
+.divider-premium {
+  height: 1px;
+  background: linear-gradient(to right, transparent, rgba(0, 0, 0, 0.08), transparent);
+}
+
+/* ── Premium empty state — centered, elegant ── */
+.empty-state-premium {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem 1.5rem;
+  text-align: center;
+}
+
+/* ── Smooth page transitions ── */
+@keyframes page-enter {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-page-enter {
+  animation: page-enter 0.3s ease-out;
+}
+
+/* ── Premium section header — consistent eyebrow + title + action ── */
+.section-header-premium {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+@media (min-width: 768px) {
+  .section-header-premium {
+    margin-bottom: 1.5rem;
+  }
+}
+
+/* ============================================================================
+   ADMIN PANEL — PREMIUM TOKENS (Task #2)
+   Targeted admin design system: consistent cards, dark mode contrast fixes,
+   table row hover, bulk action bar, and stat-card polish. Uses the
+   emerald/teal/amber palette only — no indigo or blue.
+   ============================================================================ */
+
+/* Admin base card — consistent radius + soft border + premium shadow.
+   Use on the wrapper Card for filters, tables, dialog bodies. */
+.admin-card {
+  border-radius: 0.75rem;
+  border-color: hsl(var(--border) / 0.7);
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.04), 0 1px 3px 0 rgba(0, 0, 0, 0.05);
+}
+.dark .admin-card {
+  border-color: hsl(var(--border));
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.25), 0 2px 6px 0 rgba(0, 0, 0, 0.18);
+}
+
+/* Admin stat card — for the 4-up KPI strip on products/dashboard.
+   Premium shadow, subtle hover lift, consistent padding. */
+.admin-stat-card {
+  border-radius: 0.75rem;
+  border-color: hsl(var(--border) / 0.7);
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.04), 0 1px 3px 0 rgba(0, 0, 0, 0.05);
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+              box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+              border-color 0.2s ease;
+}
+.admin-stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px -2px rgba(0, 0, 0, 0.08), 0 2px 6px -1px rgba(0, 0, 0, 0.04);
+  border-color: hsl(var(--primary) / 0.3);
+}
+
+/* Admin table row hover — soft emerald tint, smooth transition.
+   Applied directly on <TableRow> via className. */
+.admin-table-row {
+  transition: background-color 0.15s ease;
+}
+.admin-table-row:hover {
+  background-color: hsl(var(--primary) / 0.04);
+}
+.dark .admin-table-row:hover {
+  background-color: hsl(var(--primary) / 0.10);
+}
+
+/* Admin bulk action bar — prominent, premium shadow, animated slide-in. */
+.admin-bulk-bar {
+  border-radius: 0.75rem;
+  border: 1px solid hsl(var(--primary) / 0.35);
+  background: linear-gradient(135deg, hsl(var(--primary) / 0.08) 0%, hsl(var(--primary) / 0.04) 100%);
+  box-shadow: 0 4px 12px -2px hsl(var(--primary) / 0.15), 0 2px 4px -1px rgba(0, 0, 0, 0.04);
+  animation: admin-bulk-slide 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+@keyframes admin-bulk-slide {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Admin search input — more prominent with premium shadow + ring. */
+.admin-search {
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px 0 rgba(0, 0, 0, 0.03);
+}
+.admin-search:focus-visible {
+  box-shadow: 0 0 0 3px hsl(var(--primary) / 0.15), 0 1px 3px 0 rgba(0, 0, 0, 0.05);
+  border-color: hsl(var(--primary) / 0.5);
+}
+
+/* Admin nav item — cleaner active state with left accent bar. */
+.admin-nav-active {
+  background-color: hsl(var(--primary) / 0.10);
+  color: hsl(var(--primary));
+  font-weight: 600;
+  box-shadow: inset 2px 0 0 0 hsl(var(--primary));
+}
+.dark .admin-nav-active {
+  background-color: hsl(var(--primary) / 0.15);
+  color: hsl(var(--primary-foreground) / 0.95);
+}
+
+/* Admin section label — uppercase, tracked, subtle. */
+.admin-section-label {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: hsl(var(--muted-foreground));
+}
+
+/* ── Dark mode contrast fixes for status badges ──
+   Many admin badges use `bg-amber-100 text-amber-700` etc. without `dark:`
+   variants, causing washed-out text in dark mode. These overrides ensure
+   readable contrast in both themes. */
+.dark .admin-badge-amber {
+  background-color: oklch(0.30 0.06 70) !important;
+  color: oklch(0.92 0.05 75) !important;
+  border-color: oklch(0.40 0.07 70 / 0.5) !important;
+}
+.dark .admin-badge-emerald {
+  background-color: oklch(0.30 0.06 160) !important;
+  color: oklch(0.92 0.05 160) !important;
+  border-color: oklch(0.40 0.07 160 / 0.5) !important;
+}
+.dark .admin-badge-rose {
+  background-color: oklch(0.32 0.08 25) !important;
+  color: oklch(0.93 0.05 25) !important;
+  border-color: oklch(0.42 0.09 25 / 0.5) !important;
+}
+.dark .admin-badge-stone {
+  background-color: oklch(0.32 0.01 160) !important;
+  color: oklch(0.90 0.01 160) !important;
+  border-color: oklch(0.42 0.01 160 / 0.5) !important;
+}
+.dark .admin-badge-cyan {
+  background-color: oklch(0.30 0.06 180) !important;
+  color: oklch(0.92 0.05 180) !important;
+  border-color: oklch(0.40 0.07 180 / 0.5) !important;
+}
+.dark .admin-badge-purple {
+  background-color: oklch(0.32 0.06 320) !important;
+  color: oklch(0.92 0.05 320) !important;
+  border-color: oklch(0.42 0.07 320 / 0.5) !important;
+}
+.dark .admin-badge-teal {
+  background-color: oklch(0.30 0.06 175) !important;
+  color: oklch(0.92 0.05 175) !important;
+  border-color: oklch(0.40 0.07 175 / 0.5) !important;
+}
+.dark .admin-badge-orange {
+  background-color: oklch(0.32 0.07 55) !important;
+  color: oklch(0.93 0.05 55) !important;
+  border-color: oklch(0.42 0.08 55 / 0.5) !important;
+}
+.dark .admin-badge-lime {
+  background-color: oklch(0.32 0.07 130) !important;
+  color: oklch(0.93 0.05 130) !important;
+  border-color: oklch(0.42 0.08 130 / 0.5) !important;
+}
+
+/* ── Admin settings sidebar nav (vertical tabs) — premium look ── */
+.admin-settings-tab {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.5rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: hsl(var(--muted-foreground));
+  transition: all 0.15s ease;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+.admin-settings-tab:hover {
+  background-color: hsl(var(--accent));
+  color: hsl(var(--accent-foreground));
+}
+.admin-settings-tab[data-active="true"] {
+  background-color: hsl(var(--primary) / 0.10);
+  color: hsl(var(--primary));
+  font-weight: 600;
+  border-color: hsl(var(--primary) / 0.25);
+}
+.dark .admin-settings-tab[data-active="true"] {
+  background-color: hsl(var(--primary) / 0.18);
+  color: hsl(var(--primary-foreground));
+}
+
+/* ── Admin empty state premium — polished look with icon container ── */
+.admin-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem 1.5rem;
+  text-align: center;
+  border-radius: 0.75rem;
+  border: 2px dashed hsl(var(--border));
+  background: hsl(var(--muted) / 0.3);
+}
+
+/* ── Admin category hierarchy — indentation guide line ── */
+.admin-hierarchy-line {
+  position: relative;
+}
+.admin-hierarchy-line::before {
+  content: "";
+  position: absolute;
+  left: 0.5rem;
+  top: 0;
+  bottom: 50%;
+  width: 1px;
+  background-color: hsl(var(--border));
+}
+.admin-hierarchy-line::after {
+  content: "";
+  position: absolute;
+  left: 0.5rem;
+  top: 50%;
+  width: 0.75rem;
+  height: 1px;
+  background-color: hsl(var(--border));
+}

@@ -20,7 +20,13 @@ export interface AppNotifTemplateSeed {
   icon?: string;
   bannerImage?: string;
   deepLink?: string;
-  variables: string[  // Stock Alert
+  variables?: string[];
+  category?: string;
+  priority?: "low" | "normal" | "high" | "urgent";
+}
+
+export const DEFAULT_APP_NOTIF_TEMPLATES: AppNotifTemplateSeed[] = [
+  // Stock Alert
   {
     key: "stock_alert",
     name: "Stock Alert",
@@ -59,15 +65,6 @@ export interface AppNotifTemplateSeed {
     category: "transactional",
     priority: "urgent",
   },
-];
-  category: "transactional" | "campaign" | "system";
-  priority: "normal" | "high";
-}
-
-// Default icon — the PMS capsule. Same on every platform for consistency.
-const ICON = "/icon.png";
-
-export const DEFAULT_APP_NOTIF_TEMPLATES: AppNotifTemplateSeed[] = [
   // 1. WELCOME — sent on registration (currently invoked manually by the
   //    register flow if desired; mainly used as the canonical first push).
   {

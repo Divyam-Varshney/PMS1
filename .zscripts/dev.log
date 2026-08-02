@@ -104,3 +104,106 @@ Mini-services startup completed. Started 0 service(s).
 
 Next.js dev server is running in background (PID: 1285).
 Use 'kill 1285' to stop it.
+==========================================
+[2026-08-02 18:05:49] Starting: bun install
+==========================================
+[BUN] Installing dependencies...
+[0.05ms] ".env"
+bun install v1.3.14 (0d9b296a)
+
+$ prisma generate
+Environment variables loaded from .env
+Prisma schema loaded from prisma/schema.prisma
+
+✔ Generated Prisma Client (v6.19.3) to ./node_modules/@prisma/client in 272ms
+
+Start by importing your Prisma Client (See: https://pris.ly/d/importing-client)
+
+Tip: Interested in query caching in just a few lines of code? Try Accelerate today! https://pris.ly/tip-3-accelerate
+
+
+Checked 614 installs across 708 packages (no changes) [1.71s]
+==========================================
+[2026-08-02 18:05:51] Completed: bun install
+[LOG] Step: bun install | Duration: 2s
+==========================================
+
+==========================================
+[2026-08-02 18:05:51] Starting: bun run db:push
+==========================================
+[BUN] Setting up database...
+$ node scripts/with-env.mjs prisma db push
+Environment variables loaded from .env
+Prisma schema loaded from prisma/schema.prisma
+Datasource "db": PostgreSQL database "neondb", schema "public" at "ep-wispy-frog-azxkuo88.c-3.ap-southeast-1.aws.neon.tech"
+
+The database is already in sync with the Prisma schema.
+
+Running generate... (Use --skip-generate to skip the generators)
+[2K[1A[2K[GRunning generate... - Prisma Client
+[2K[1A[2K[G✔ Generated Prisma Client (v6.19.3) to ./node_modules/@prisma/client in 262ms
+
+==========================================
+[2026-08-02 18:05:54] Completed: bun run db:push
+[LOG] Step: bun run db:push | Duration: 3s
+==========================================
+
+==========================================
+[2026-08-02 18:05:54] Starting: Starting Next.js dev server
+==========================================
+[BUN] Starting development server...
+==========================================
+$ node scripts/with-env.mjs next dev --turbo -p 3000
+[2026-08-02 18:05:54] Completed: Starting Next.js dev server
+[LOG] Step: Starting Next.js dev server | Duration: 0s
+==========================================
+
+==========================================
+[2026-08-02 18:05:54] Starting: Waiting for Next.js dev server
+==========================================
+Waiting for Next.js dev server to be ready on localhost:3000...
+Next.js dev server is ready!
+==========================================
+[2026-08-02 18:05:55] Completed: Waiting for Next.js dev server
+[LOG] Step: Waiting for Next.js dev server | Duration: 1s
+==========================================
+
+==========================================
+[2026-08-02 18:05:55] Starting: Health check
+==========================================
+[BUN] Performing health check...
+[BUN] Health check passed
+==========================================
+[2026-08-02 18:05:55] Completed: Health check
+[LOG] Step: Health check | Duration: 0s
+==========================================
+
+==========================================
+[2026-08-02 18:05:55] Starting: Starting mini-services
+==========================================
+Found mini-services directory, scanning for sub-services...
+Mini-services startup completed. Started 0 service(s).
+==========================================
+[2026-08-02 18:05:55] Completed: Starting mini-services
+[LOG] Step: Starting mini-services | Duration: 0s
+==========================================
+
+Next.js dev server is running in background (PID: 5803).
+Use 'kill 5803' to stop it.
+⨯ Failed to start server
+Error: listen EADDRINUSE: address already in use :::3000
+    at <unknown> (Error: listen EADDRINUSE: address already in use :::3000)
+    at new Promise (<anonymous>) {
+  code: 'EADDRINUSE',
+  errno: -98,
+  syscall: 'listen',
+  address: '::',
+  port: 3000
+}
+Attention: Next.js now collects completely anonymous telemetry regarding usage.
+This information is used to shape Next.js' roadmap and prioritize features.
+You can learn more, including how to opt-out if you'd not like to participate in this anonymous program, by visiting the following URL:
+https://nextjs.org/telemetry
+
+[?25h
+error: script "dev" exited with code 1

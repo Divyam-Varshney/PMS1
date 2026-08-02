@@ -1,0 +1,791 @@
+     1→// ============================================================================
+     2→// File: src/components/admin/AdminLayout.tsx
+     3→// Purpose: Admin shell — premium redesigned sidebar + topbar with:
+     4→//   A1: Collapsible sidebar groups (expand/collapse nav sections)
+     5→//   A2: Sidebar search filter (quick-search nav items)
+     6→//   A3: Breadcrumb navigation (Dashboard > Orders > Detail)
+     7→//   A4: Command palette (Cmd+K quick-jump to any page)
+     8→//   A5: Sticky table headers (applied via Table component wrapper)
+     9→//   A6: Page transition animations (framer-motion fade/slide)
+    10→// ============================================================================
+    11→
+    12→"use client";
+    13→
+    14→import { useState, useEffect, ReactNode, useMemo } from "react";
+    15→import {
+    16→  Sidebar,
+    17→  SidebarContent,
+    18→  SidebarFooter,
+    19→  SidebarGroup,
+    20→  SidebarGroupLabel,
+    21→  SidebarHeader,
+    22→  SidebarInset,
+    23→  SidebarMenu,
+    24→  SidebarMenuButton,
+    25→  SidebarMenuItem,
+    26→  SidebarProvider,
+    27→  SidebarTrigger,
+    28→} from "@/components/ui/sidebar";
+    29→import {
+    30→  LayoutDashboard,
+    31→  Package,
+    32→  Tags,
+    33→  FolderTree,
+    34→  ShoppingCart,
+    35→  FileImage,
+    36→  ClipboardList,
+    37→  Users,
+    38→  Ticket,
+    39→  Star,
+    40→  Megaphone,
+    41→  Truck,
+    42→  CreditCard,
+    43→  BarChart3,
+    44→  FileText,
+    45→  Settings,
+    46→  UserCog,
+    47→  LogOut,
+    48→  Store,
+    49→  Loader2,
+    50→  ChevronDown,
+    51→  ChevronRight,
+    52→  Mailbox,
+    53→  Flame,
+    54→  Search,
+    55→  Command,
+    56→  Clock,
+    57→  Sun,
+    58→  Moon,
+    59→  ScrollText,
+    60→  HardDrive,
+    61→  Database,
+    62→  Sparkles,
+    63→} from "lucide-react";
+    64→import { Badge } from "@/components/ui/badge";
+    65→import { Button } from "@/components/ui/button";
+    66→import { Input } from "@/components/ui/input";
+    67→import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+    68→import {
+    69→  DropdownMenu,
+    70→  DropdownMenuContent,
+    71→  DropdownMenuItem,
+    72→  DropdownMenuLabel,
+    73→  DropdownMenuSeparator,
+    74→  DropdownMenuTrigger,
+    75→} from "@/components/ui/dropdown-menu";
+    76→import {
+    77→  Dialog,
+    78→  DialogContent,
+    79→  DialogTitle,
+    80→} from "@/components/ui/dialog";
+    81→import { Switch } from "@/components/ui/switch";
+    82→import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+    83→import { useAdminStore, AdminView } from "./admin-store";
+    84→import { AdminNotificationBell } from "./AdminNotificationBell";
+    85→import { api, run } from "./api";
+    86→import { getInitials } from "@/lib/format";
+    87→import { useQuery, useQueryClient } from "@tanstack/react-query";
+    88→import { hasPermission } from "@/lib/permissions";
+    89→import { AdminPermissionKey } from "@/lib/constants";
+    90→import { motion, AnimatePresence } from "framer-motion";
+    91→
+    92→interface AdminInfo {
+    93→  id: string;
+    94→  name: string;
+    95→  email: string;
+    96→  role: string;
+    97→  phone?: string | null;
+    98→  permissions?: string | null;
+    99→}
+   100→
+   101→// ---------------------------------------------------------------------------
+   102→// NAV GROUPS — all admin navigation items with icons + permission keys
+   103→// ---------------------------------------------------------------------------
+   104→const NAV_GROUPS: Array<{
+   105→  label: string;
+   106→  items: Array<{ view: AdminView; icon: any; label: string; permission: AdminPermissionKey }>;
+   107→}> = [
+   108→  {
+   109→    label: "Catalog",
+   110→    items: [
+   111→      { view: { name: "products" }, icon: Package, label: "Products", permission: "products" },
+   112→      { view: { name: "brands" }, icon: Tags, label: "Brands", permission: "brands" },
+   113→      { view: { name: "categories" }, icon: FolderTree, label: "Categories", permission: "categories" },
+   114→    ],
+   115→  },
+   116→  {
+   117→    label: "Sales",
+   118→    items: [
+   119→      { view: { name: "orders" }, icon: ShoppingCart, label: "Orders", permission: "orders" },
+   120→      { view: { name: "prescriptions" }, icon: FileImage, label: "Prescriptions", permission: "orders" },
+   121→      { view: { name: "manual-requests" }, icon: ClipboardList, label: "Manual Requests", permission: "orders" },
+   122→      { view: { name: "customers" }, icon: Users, label: "Customers", permission: "customers" },
+   123→    ],
+   124→  },
+   125→  {
+   126→    label: "Marketing",
+   127→    items: [
+   128→      { view: { name: "offers" }, icon: Megaphone, label: "Offers & Banners", permission: "offers" },
+   129→      { view: { name: "deals" }, icon: Flame, label: "Today's Deals", permission: "deals" },
+   130→      { view: { name: "campaigns" }, icon: Megaphone, label: "Campaigns", permission: "deals" },
+   131→      { view: { name: "ai-marketing" }, icon: Sparkles, label: "AI Marketing", permission: "deals" },
+   132→      { view: { name: "vouchers" }, icon: Ticket, label: "Vouchers", permission: "vouchers" },
+   133→      { view: { name: "newsletter" }, icon: Mailbox, label: "Newsletter", permission: "newsletter" },
+   134→      { view: { name: "reviews" }, icon: Star, label: "Reviews", permission: "reviews" },
+   135→    ],
+   136→  },
+   137→  {
+   138→    label: "Operations",
+   139→    items: [
+   140→      { view: { name: "delivery-zones" }, icon: Truck, label: "Delivery Zones", permission: "delivery-zones" },
+   141→      { view: { name: "payment-methods" }, icon: CreditCard, label: "Payment Methods", permission: "payment-methods" },
+   142→      { view: { name: "reports" }, icon: BarChart3, label: "Reports", permission: "reports" },
+   143→    ],
+   144→  },
+   145→  {
+   146→    label: "System",
+   147→    items: [
+   148→      { view: { name: "backups" }, icon: HardDrive, label: "Backups", permission: "settings" },
+   149→      { view: { name: "database" }, icon: Database, label: "Database", permission: "settings" },
+   150→      { view: { name: "notification-templates" }, icon: FileText, label: "Templates", permission: "templates" },
+   151→      { view: { name: "settings" }, icon: Settings, label: "Settings", permission: "settings" },
+   152→      { view: { name: "admins" }, icon: UserCog, label: "Admins", permission: "admins" },
+   153→      { view: { name: "error-logs" }, icon: ScrollText, label: "Error Logs", permission: "settings" },
+   154→    ],
+   155→  },
+   156→];
+   157→
+   158→// Flatten all nav items for the command palette + sidebar search
+   159→const ALL_NAV_ITEMS = [
+   160→  { view: { name: "dashboard" } as AdminView, icon: LayoutDashboard, label: "Dashboard", group: "Overview" },
+   161→  ...NAV_GROUPS.flatMap((g) => g.items.map((i) => ({ ...i, group: g.label }))),
+   162→];
+   163→
+   164→// Title map for breadcrumbs
+   165→const TITLE_MAP: Record<string, string> = {
+   166→  dashboard: "Dashboard",
+   167→  products: "Products",
+   168→  "product-edit": "Edit Product",
+   169→  brands: "Brands",
+   170→  categories: "Categories",
+   171→  orders: "Orders",
+   172→  "order-detail": "Order Detail",
+   173→  prescriptions: "Prescriptions",
+   174→  "prescription-detail": "Prescription Detail",
+   175→  "manual-requests": "Manual Requests",
+   176→  "manual-request-detail": "Manual Request Detail",
+   177→  customers: "Customers",
+   178→  "customer-detail": "Customer Detail",
+   179→  vouchers: "Vouchers",
+   180→  "delivery-zones": "Delivery Zones",
+   181→  "payment-methods": "Payment Methods",
+   182→  reviews: "Reviews",
+   183→  offers: "Offers & Banners",
+   184→  deals: "Today's Deals",
+   185→  notifications: "Notifications",
+   186→  "notification-templates": "Notification Templates",
+   187→  newsletter: "Newsletter",
+   188→  settings: "Settings",
+   189→  admins: "Admins",
+   190→  reports: "Reports",
+   191→  backups: "Backups",
+   192→  database: "Database",
+   193→  campaigns: "Campaigns",
+   194→  "error-logs": "Error Logs",
+   195→  "ai-marketing": "AI Marketing",
+   196→};
+   197→
+   198→// Breadcrumb parent map (child → parent view name)
+   199→const BREADCRUMB_PARENT: Record<string, string> = {
+   200→  "product-edit": "products",
+   201→  "order-detail": "orders",
+   202→  "prescription-detail": "prescriptions",
+   203→  "manual-request-detail": "manual-requests",
+   204→  "customer-detail": "customers",
+   205→  "notification-templates": "notifications",
+   206→};
+   207→
+   208→function roleLabel(role: string) {
+   209→  return role === "super_admin" ? "Super Admin" : role.charAt(0).toUpperCase() + role.slice(1);
+   210→}
+   211→
+   212→// ---------------------------------------------------------------------------
+   213→// A2: SIDEBAR SEARCH FILTER
+   214→// ---------------------------------------------------------------------------
+   215→
+   216→function SidebarSearch({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+   217→  return (
+   218→    <div className="px-3 pb-2">
+   219→      <div className="relative">
+   220→        <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+   221→        <Input
+   222→          placeholder="Search navigation..."
+   223→          value={value}
+   224→          onChange={(e) => onChange(e.target.value)}
+   225→          className="h-8 border-border/60 bg-muted/40 pl-8 text-xs admin-search focus-visible:ring-1 focus-visible:ring-primary/30"
+   226→        />
+   227→      </div>
+   228→    </div>
+   229→  );
+   230→}
+   231→
+   232→// ---------------------------------------------------------------------------
+   233→// A1: COLLAPSIBLE SIDEBAR GROUPS + NAV LIST
+   234→// ---------------------------------------------------------------------------
+   235→
+   236→function NavList({ admin, searchQuery }: { admin: AdminInfo; searchQuery: string }) {
+   237→  const view = useAdminStore((s) => s.view);
+   238→  const navigate = useAdminStore((s) => s.navigate);
+   239→  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+   240→
+   241→  // Fetch lightweight badge counts
+   242→  const { data: counts } = useQuery({
+   243→    queryKey: ["admin-counts"],
+   244→    queryFn: () => api.get<{ pendingOrders: number; lowStock: number; pendingPrescriptions: number; pendingManualRequests: number; unreadNotifications: number }>("/api/admin/counts"),
+   245→    refetchInterval: 30 * 1000,
+   246→  });
+   247→
+   248→  const badgeFor = (viewName: string): number | null => {
+   249→    if (!counts) return null;
+   250→    switch (viewName) {
+   251→      case "orders": return counts.pendingOrders || null;
+   252→      case "products": return counts.lowStock || null;
+   253→      case "prescriptions": return counts.pendingPrescriptions || null;
+   254→      case "manual-requests": return counts.pendingManualRequests || null;
+   255→      default: return null;
+   256→    }
+   257→  };
+   258→
+   259→  const toggleGroup = (label: string) => {
+   260→    setCollapsedGroups((prev) => {
+   261→      const next = new Set(prev);
+   262→      if (next.has(label)) next.delete(label);
+   263→      else next.add(label);
+   264→      return next;
+   265→    });
+   266→  };
+   267→
+   268→  const isVisible = (item: { permission: AdminPermissionKey }) => hasPermission(admin, item.permission);
+   269→
+   270→  // When searching, show all items flat (ignore group collapse)
+   271→  const isSearching = searchQuery.trim().length > 0;
+   272→  const query = searchQuery.toLowerCase().trim();
+   273→
+   274→  const visibleGroups = NAV_GROUPS.map((g) => ({
+   275→    ...g,
+   276→    items: g.items.filter((item) => {
+   277→      if (!isVisible(item)) return false;
+   278→      if (!isSearching) return true;
+   279→      return item.label.toLowerCase().includes(query);
+   280→    }),
+   281→  })).filter((g) => g.items.length > 0);
+   282→
+   283→  // Dashboard is always visible (if permitted)
+   284→  const showDashboard = hasPermission(admin, "dashboard") && (!isSearching || "dashboard".includes(query));
+   285→
+   286→  return (
+   287→    <SidebarContent>
+   288→      {/* Dashboard — always at top, outside groups */}
+   289→      {showDashboard && (
+   290→        <SidebarGroup>
+   291→          <SidebarMenu>
+   292→            <SidebarMenuItem>
+   293→              <SidebarMenuButton
+   294→                isActive={view.name === "dashboard"}
+   295→                onClick={() => navigate({ name: "dashboard" })}
+   296→                tooltip="Dashboard"
+   297→                className="transition-premium"
+   298→              >
+   299→                <LayoutDashboard />
+   300→                <span>Dashboard</span>
+   301→              </SidebarMenuButton>
+   302→            </SidebarMenuItem>
+   303→          </SidebarMenu>
+   304→        </SidebarGroup>
+   305→      )}
+   306→
+   307→      {/* Collapsible nav groups */}
+   308→      {visibleGroups.map((g) => {
+   309→        const isCollapsed = collapsedGroups.has(g.label) && !isSearching;
+   310→        return (
+   311→          <Collapsible
+   312→            key={g.label}
+   313→            open={!isCollapsed}
+   314→            // When searching, all groups are forced open so matches are visible.
+   315→            // Don't call toggleGroup during search — it would silently mutate
+   316→            // the collapsed state and cause unexpected expand/collapse when the
+   317→            // search is cleared.
+   318→            onOpenChange={() => !isSearching && toggleGroup(g.label)}
+   319→          >
+   320→            <SidebarGroup>
+   321→              <CollapsibleTrigger asChild>
+   322→                <SidebarGroupLabel className="cursor-pointer select-none hover:bg-sidebar-accent/60 transition-colors admin-section-label">
+   323→                  <span>{g.label}</span>
+   324→                  <ChevronRight className={`ml-auto size-3.5 transition-transform ${isCollapsed ? "" : "rotate-90"}`} />
+   325→                </SidebarGroupLabel>
+   326→              </CollapsibleTrigger>
+   327→              <CollapsibleContent>
+   328→                <SidebarMenu>
+   329→                  {g.items.map((item) => {
+   330→                    const isActive =
+   331→                      view.name === item.view.name ||
+   332→                      (item.view.name === "products" && view.name === "product-edit") ||
+   333→                      (item.view.name === "orders" && view.name === "order-detail") ||
+   334→                      (item.view.name === "prescriptions" && view.name === "prescription-detail") ||
+   335→                      (item.view.name === "manual-requests" && view.name === "manual-request-detail") ||
+   336→                      (item.view.name === "customers" && view.name === "customer-detail");
+   337→                    return (
+   338→                      <SidebarMenuItem key={item.label}>
+   339→                        <SidebarMenuButton
+   340→                          isActive={isActive}
+   341→                          onClick={() => navigate(item.view)}
+   342→                          tooltip={item.label}
+   343→                          className="transition-premium"
+   344→                        >
+   345→                          <item.icon />
+   346→                          <span>{item.label}</span>
+   347→                          {badgeFor(item.view.name) !== null && (
+   348→                            <Badge className="ml-auto h-5 min-w-5 justify-center px-1.5 text-[10px] font-bold bg-amber-500 text-white hover:bg-amber-500 animate-badge-pulse">
+   349→                              {badgeFor(item.view.name)}
+   350→                            </Badge>
+   351→                          )}
+   352→                        </SidebarMenuButton>
+   353→                      </SidebarMenuItem>
+   354→                    );
+   355→                  })}
+   356→                </SidebarMenu>
+   357→              </CollapsibleContent>
+   358→            </SidebarGroup>
+   359→          </Collapsible>
+   360→        );
+   361→      })}
+   362→
+   363→      {/* No results when searching */}
+   364→      {isSearching && visibleGroups.length === 0 && !showDashboard && (
+   365→        <div className="px-4 py-8 text-center text-xs text-muted-foreground">
+   366→          No navigation items match “{searchQuery}”
+   367→        </div>
+   368→      )}
+   369→    </SidebarContent>
+   370→  );
+   371→}
+   372→
+   373→// ---------------------------------------------------------------------------
+   374→// A3: BREADCRUMB NAVIGATION
+   375→// ---------------------------------------------------------------------------
+   376→
+   377→function Breadcrumbs({ viewName, navigate }: { viewName: string; navigate: (v: AdminView) => void }) {
+   378→  const crumbs: Array<{ label: string; view?: AdminView }> = [];
+   379→
+   380→  // Always start with Dashboard
+   381→  crumbs.push({ label: "Dashboard", view: { name: "dashboard" } });
+   382→
+   383→  // Add parent if this is a detail page
+   384→  const parentName = BREADCRUMB_PARENT[viewName];
+   385→  if (parentName) {
+   386→    crumbs.push({ label: TITLE_MAP[parentName] || parentName, view: { name: parentName } as AdminView });
+   387→  }
+   388→
+   389→  // Add current page (not clickable)
+   390→  const currentLabel = TITLE_MAP[viewName] || viewName;
+   391→  if (viewName !== "dashboard") {
+   392→    crumbs.push({ label: currentLabel });
+   393→  }
+   394→
+   395→  return (
+   396→    <nav className="flex items-center gap-1 text-sm text-muted-foreground min-w-0">
+   397→      {crumbs.map((crumb, i) => {
+   398→        const isLast = i === crumbs.length - 1;
+   399→        return (
+   400→          <span key={i} className="flex items-center gap-1 min-w-0">
+   401→            {i > 0 && <ChevronRight className="size-3.5 shrink-0 text-muted-foreground/50" />}
+   402→            {crumb.view && !isLast ? (
+   403→              <button
+   404→                onClick={() => navigate(crumb.view!)}
+   405→                className="hover:text-foreground transition-colors truncate"
+   406→              >
+   407→                {crumb.label}
+   408→              </button>
+   409→            ) : (
+   410→              <span className={`truncate ${isLast ? "font-semibold text-foreground" : ""}`}>
+   411→                {crumb.label}
+   412→              </span>
+   413→            )}
+   414→          </span>
+   415→        );
+   416→      })}
+   417→    </nav>
+   418→  );
+   419→}
+   420→
+   421→// ---------------------------------------------------------------------------
+   422→// A4: COMMAND PALETTE (Cmd+K)
+   423→// ---------------------------------------------------------------------------
+   424→
+   425→function CommandPalette({ open, onOpenChange, navigate }: { open: boolean; onOpenChange: (v: boolean) => void; navigate: (v: AdminView) => void }) {
+   426→  const [query, setQuery] = useState("");
+   427→
+   428→  const filtered = useMemo(() => {
+   429→    if (!query.trim()) return ALL_NAV_ITEMS;
+   430→    const q = query.toLowerCase();
+   431→    return ALL_NAV_ITEMS.filter((item) => item.label.toLowerCase().includes(q));
+   432→  }, [query]);
+   433→
+   434→  const handleSelect = (view: AdminView) => {
+   435→    navigate(view);
+   436→    onOpenChange(false);
+   437→    setQuery("");
+   438→  };
+   439→
+   440→  return (
+   441→    <Dialog open={open} onOpenChange={onOpenChange}>
+   442→      <DialogContent className="p-0 gap-0 overflow-hidden max-w-lg shadow-premium-xl">
+   443→        {/* Accessibility: DialogTitle is required by Radix Dialog for screen
+   444→            reader support. Rendered visually-hidden (sr-only). */}
+   445→        <DialogTitle className="sr-only">Command palette</DialogTitle>
+   446→        <div className="flex items-center border-b border-border/70 px-4 bg-premium-gradient">
+   447→          <Search className="size-4 mr-3 text-muted-foreground shrink-0" />
+   448→          <Input
+   449→            autoFocus
+   450→            placeholder="Type a command or search..."
+   451→            value={query}
+   452→            onChange={(e) => setQuery(e.target.value)}
+   453→            aria-label="Search navigation items"
+   454→            className="h-12 border-0 px-0 focus-visible:ring-0 text-sm bg-transparent"
+   455→            onKeyDown={(e) => {
+   456→              if (e.key === "Enter" && filtered.length > 0) {
+   457→                handleSelect(filtered[0].view);
+   458→              }
+   459→            }}
+   460→          />
+   461→          <kbd className="ml-2 shrink-0 rounded border bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground font-mono">ESC</kbd>
+   462→        </div>
+   463→        <div className="max-h-80 overflow-y-auto p-2 scrollbar-premium">
+   464→          {filtered.length === 0 ? (
+   465→            <div className="px-3 py-8 text-center text-sm text-muted-foreground">
+   466→              No results found
+   467→            </div>
+   468→          ) : (
+   469→            filtered.map((item) => (
+   470→              <button
+   471→                key={item.label}
+   472→                onClick={() => handleSelect(item.view)}
+   473→                className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm hover:bg-accent transition-premium text-left"
+   474→              >
+   475→                <span className="flex size-7 items-center justify-center rounded-md bg-primary/10 text-primary shrink-0">
+   476→                  <item.icon className="size-3.5" />
+   477→                </span>
+   478→                <span className="flex-1 font-medium">{item.label}</span>
+   479→                <span className="text-[10px] text-muted-foreground uppercase tracking-wide">{item.group}</span>
+   480→              </button>
+   481→            ))
+   482→          )}
+   483→        </div>
+   484→      </DialogContent>
+   485→    </Dialog>
+   486→  );
+   487→}
+   488→
+   489→// ---------------------------------------------------------------------------
+   490→// STORE OPEN TOGGLE
+   491→// ---------------------------------------------------------------------------
+   492→
+   493→function StoreOpenToggle() {
+   494→  const qc = useQueryClient();
+   495→  const { data, isLoading } = useQuery({
+   496→    queryKey: ["admin-store-status"],
+   497→    queryFn: () => api.get<{ open: boolean; openStatus: boolean }>("/api/admin/settings/store-status"),
+   498→  });
+   499→
+   500→  async function toggle(next: boolean) {
+   501→    const r = await run(
+   502→      () => api.patch("/api/admin/settings/store-status", { openStatus: next }),
+   503→      { success: next ? "Store opened" : "Store closed", error: "Failed to toggle" }
+   504→    );
+   505→    if (r) {
+   506→      qc.invalidateQueries({ queryKey: ["admin-store-status"] });
+   507→    }
+   508→  }
+   509→
+   510→  const isOpen = !!data?.openStatus;
+   511→  return (
+   512→    <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-colors ${isOpen ? "border-emerald-200/60 bg-emerald-50/50 dark:bg-emerald-950/20 dark:border-emerald-800/40" : "border-border bg-muted/30"}`}>
+   513→      <Store className={`size-4 ${isOpen ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"}`} />
+   514→      <div className="flex-1 min-w-0">
+   515→        <div className="text-xs font-medium">Store Status</div>
+   516→        <div className={`text-[11px] ${isOpen ? "text-emerald-700 dark:text-emerald-300" : "text-muted-foreground"}`}>
+   517→          {isLoading ? "Loading…" : data?.open ? "Open for orders" : "Closed"}
+   518→        </div>
+   519→      </div>
+   520→      <Switch
+   521→        checked={isOpen}
+   522→        disabled={isLoading}
+   523→        onCheckedChange={toggle}
+   524→        aria-label="Toggle store open/close"
+   525→      />
+   526→    </div>
+   527→  );
+   528→}
+   529→
+   530→// ---------------------------------------------------------------------------
+   531→// SIDEBAR FOOTER
+   532→// ---------------------------------------------------------------------------
+   533→
+   534→function SidebarFooterArea({ admin, onLogout }: { admin: AdminInfo; onLogout: () => void }) {
+   535→  return (
+   536→    <SidebarFooter>
+   537→      <StoreOpenToggle />
+   538→      <SidebarMenu>
+   539→        <SidebarMenuItem>
+   540→          <DropdownMenu>
+   541→            <DropdownMenuTrigger asChild>
+   542→              <SidebarMenuButton size="lg" className="data-[state=open]:bg-sidebar-accent transition-premium">
+   543→                <Avatar className="size-8 ring-1 ring-primary/15">
+   544→                  <AvatarFallback className="bg-primary/15 text-primary text-xs font-semibold">
+   545→                    {getInitials(admin.name)}
+   546→                  </AvatarFallback>
+   547→                </Avatar>
+   548→                <div className="grid text-left text-sm leading-tight">
+   549→                  <span className="truncate font-semibold">{admin.name}</span>
+   550→                  <span className="truncate text-xs text-muted-foreground">{admin.email}</span>
+   551→                </div>
+   552→                <ChevronDown className="ml-auto size-4" />
+   553→              </SidebarMenuButton>
+   554→            </DropdownMenuTrigger>
+   555→            <DropdownMenuContent side="top" align="start" className="w-60 shadow-premium-xl">
+   556→              <DropdownMenuLabel>
+   557→                <div className="flex flex-col">
+   558→                  <span className="font-semibold">{admin.name}</span>
+   559→                  <span className="text-xs font-normal text-muted-foreground">{admin.email}</span>
+   560→                  <Badge variant="outline" className="mt-1.5 w-fit bg-primary/10 text-primary border-primary/20">
+   561→                    {roleLabel(admin.role)}
+   562→                  </Badge>
+   563→                </div>
+   564→              </DropdownMenuLabel>
+   565→              <DropdownMenuSeparator />
+   566→              <DropdownMenuItem onClick={onLogout} className="text-destructive focus:text-destructive focus:bg-destructive/5">
+   567→                <LogOut className="size-4 mr-2" /> Sign out
+   568→              </DropdownMenuItem>
+   569→            </DropdownMenuContent>
+   570→          </DropdownMenu>
+   571→        </SidebarMenuItem>
+   572→      </SidebarMenu>
+   573→    </SidebarFooter>
+   574→  );
+   575→}
+   576→
+   577→// ---------------------------------------------------------------------------
+   578→// MAIN ADMIN LAYOUT
+   579→// ---------------------------------------------------------------------------
+   580→
+   581→export function AdminLayout({
+   582→  admin,
+   583→  onLogout,
+   584→  children,
+   585→}: {
+   586→  admin: AdminInfo;
+   587→  onLogout: () => void;
+   588→  children: ReactNode;
+   589→}) {
+   590→  const view = useAdminStore((s) => s.view);
+   591→  const navigate = useAdminStore((s) => s.navigate);
+   592→  const back = useAdminStore((s) => s.back);
+   593→  const canGoBack = useAdminStore((s) => s.canGoBack());
+   594→
+   595→  // A2: Sidebar search state
+   596→  const [searchQuery, setSearchQuery] = useState("");
+   597→
+   598→  // A4: Command palette state
+   599→  const [cmdOpen, setCmdOpen] = useState(false);
+   600→
+   601→  // A4: Keyboard shortcut listener (Cmd+K / Ctrl+K)
+   602→  useEffect(() => {
+   603→    const handler = (e: KeyboardEvent) => {
+   604→      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+   605→        e.preventDefault();
+   606→        setCmdOpen((v) => !v);
+   607→      }
+   608→    };
+   609→    window.addEventListener("keydown", handler);
+   610→    return () => window.removeEventListener("keydown", handler);
+   611→  }, []);
+   612→
+   613→  // E7: Restore saved dark mode preference on mount
+   614→  useEffect(() => {
+   615→    const savedTheme = localStorage.getItem("admin-theme");
+   616→    if (savedTheme === "dark") {
+   617→      document.documentElement.classList.add("dark");
+   618→    }
+   619→  }, []);
+   620→
+   621→  // Current date for the topbar widget (B6: date widget)
+   622→  const today = new Date();
+   623→  const dateStr = today.toLocaleDateString("en-IN", { weekday: "short", day: "2-digit", month: "short" });
+   624→
+   625→  return (
+   626→    <SidebarProvider>
+   627→      <Sidebar collapsible="icon">
+   628→        <SidebarHeader>
+   629→          <div className="flex items-center gap-2.5 px-2 py-3">
+   630→            <div className="relative shrink-0">
+   631→              <img src="/logo.png" alt="PMS" className="size-9 rounded-lg object-cover ring-1 ring-primary/10 shadow-premium-sm" />
+   632→            </div>
+   633→            <div className="min-w-0">
+   634→              <div className="text-sm font-semibold leading-tight truncate">Admin Panel</div>
+   635→              <div className="text-[11px] text-muted-foreground truncate">PMS Console</div>
+   636→            </div>
+   637→          </div>
+   638→        </SidebarHeader>
+   639→
+   640→        {/* A2: Sidebar Search Filter */}
+   641→        <SidebarSearch value={searchQuery} onChange={setSearchQuery} />
+   642→
+   643→        <NavList admin={admin} searchQuery={searchQuery} />
+   644→        <SidebarFooterArea admin={admin} onLogout={onLogout} />
+   645→      </Sidebar>
+   646→
+   647→      <SidebarInset>
+   648→        {/* Topbar with breadcrumbs + command palette trigger + date widget */}
+   649→        <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-border/70 bg-background/95 backdrop-blur-md px-4 shadow-premium-sm">
+   650→          <SidebarTrigger />
+   651→
+   652→          {/* A3: Breadcrumb Navigation */}
+   653→          <div className="flex-1 min-w-0">
+   654→            <Breadcrumbs viewName={view.name} navigate={navigate} />
+   655→          </div>
+   656→
+   657→          {/* A4: Command palette trigger button */}
+   658→          <Button
+   659→            variant="outline"
+   660→            size="sm"
+   661→            onClick={() => setCmdOpen(true)}
+   662→            className="hidden sm:flex gap-1.5 text-muted-foreground hover:text-foreground transition-premium"
+   663→          >
+   664→            <Command className="size-3.5" />
+   665→            <span className="text-xs">Search</span>
+   666→            <kbd className="ml-1 rounded border bg-muted px-1 py-0.5 text-[9px] font-mono">⌘K</kbd>
+   667→          </Button>
+   668→
+   669→          {/* B6: Date widget */}
+   670→          <div className="hidden md:flex items-center gap-1.5 text-xs text-muted-foreground">
+   671→            <Clock className="size-3.5" />
+   672→            <span>{dateStr}</span>
+   673→          </div>
+   674→
+   675→          {/* E7: Dark mode toggle — `relative` on the button is required so the
+   676→              absolutely-positioned Moon icon anchors to the button, not the
+   677→              sticky header ancestor. */}
+   678→          <Button
+   679→            variant="ghost"
+   680→            size="icon"
+   681→            className="relative size-8 hover:bg-accent transition-premium"
+   682→            onClick={() => {
+   683→              const isDark = document.documentElement.classList.contains("dark");
+   684→              if (isDark) {
+   685→                document.documentElement.classList.remove("dark");
+   686→                localStorage.setItem("admin-theme", "light");
+   687→              } else {
+   688→                document.documentElement.classList.add("dark");
+   689→                localStorage.setItem("admin-theme", "dark");
+   690→              }
+   691→            }}
+   692→            title="Toggle dark mode"
+   693→          >
+   694→            <Sun className="size-4 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
+   695→            <Moon className="absolute size-4 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+   696→            <span className="sr-only">Toggle theme</span>
+   697→          </Button>
+   698→
+   699→          <AdminNotificationBell />
+   700→
+   701→          {/* Mobile back button */}
+   702→          {canGoBack && (
+   703→            <Button
+   704→              variant="ghost"
+   705→              size="sm"
+   706→              onClick={back}
+   707→              className="sm:hidden text-muted-foreground"
+   708→            >
+   709→              Back
+   710→            </Button>
+   711→          )}
+   712→
+   713→          {/* Role badge (desktop) */}
+   714→          <Badge variant="outline" className="hidden md:flex bg-primary/10 text-primary border-primary/20 font-medium">
+   715→            {roleLabel(admin.role)}
+   716→          </Badge>
+   717→
+   718→          <Button variant="outline" size="sm" onClick={onLogout} className="hidden md:flex transition-premium">
+   719→            <LogOut className="size-4" />
+   720→          </Button>
+   721→          <Button variant="ghost" size="icon" className="md:hidden" onClick={onLogout}>
+   722→            <LogOut className="size-4" />
+   723→          </Button>
+   724→        </header>
+   725→
+   726→        {/* A6: Page transition animations — the key includes the view name AND
+   727→            any id field so navigating between two records of the same type
+   728→            (e.g. order-detail → different order-detail) re-triggers the
+   729→            fade/slide animation. Covers all detail views: product-edit,
+   730→            order-detail, prescription-detail, manual-request-detail,
+   731→            customer-detail. */}
+   732→        <main className="flex-1 p-4 md:p-6 max-w-[1600px] w-full mx-auto">
+   733→          <AnimatePresence mode="wait">
+   734→            <motion.div
+   735→              key={view.name + ("id" in view ? (view as any).id ?? "" : "")}
+   736→              initial={{ opacity: 0, y: 8 }}
+   737→              animate={{ opacity: 1, y: 0 }}
+   738→              exit={{ opacity: 0, y: -8 }}
+   739→              transition={{ duration: 0.2, ease: "easeOut" }}
+   740→              className="animate-page-enter"
+   741→            >
+   742→              {children}
+   743→            </motion.div>
+   744→          </AnimatePresence>
+   745→        </main>
+   746→      </SidebarInset>
+   747→
+   748→      {/* A4: Command Palette Dialog */}
+   749→      <CommandPalette open={cmdOpen} onOpenChange={setCmdOpen} navigate={navigate} />
+   750→    </SidebarProvider>
+   751→  );
+   752→}
+   753→
+   754→/** Wrapper to fetch admin from /me on mount; renders children only when logged in. */
+   755→export function AdminGuard({
+   756→  onLoggedOut,
+   757→  children,
+   758→}: {
+   759→  onLoggedOut: () => void;
+   760→  children: (admin: AdminInfo) => ReactNode;
+   761→}) {
+   762→  const [admin, setAdmin] = useState<AdminInfo | null>(null);
+   763→  const [loading, setLoading] = useState(true);
+   764→
+   765→  useEffect(() => {
+   766→    let mounted = true;
+   767→    api
+   768→      .get<AdminInfo>("/api/admin-auth/me")
+   769→      .then((a) => mounted && setAdmin(a))
+   770→      .catch(() => mounted && onLoggedOut())
+   771→      .finally(() => mounted && setLoading(false));
+   772→    return () => {
+   773→      mounted = false;
+   774→    };
+   775→  }, [onLoggedOut]);
+   776→
+   777→  if (loading) {
+   778→    return (
+   779→      <div className="min-h-screen flex items-center justify-center bg-background">
+   780→        <Loader2 className="size-8 animate-spin text-primary" />
+   781→      </div>
+   782→    );
+   783→  }
+   784→  if (!admin) return null;
+   785→  return <>{children(admin)}</>;
+   786→}
+   787→
+   788→export async function doLogout() {
+   789→  await run(() => api.post("/api/admin-auth/logout"), { success: "Signed out" });
+   790→}
+   791→

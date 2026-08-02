@@ -379,7 +379,7 @@ export function ShopView() {
                   c.id === categoryId ? "bg-accent font-medium text-foreground" : "text-muted-foreground hover:bg-accent/60"
                 }`}
               >
-                <span className="truncate">{c.name}</span>
+                <span className="break-words text-left leading-tight">{c.name}</span>
               </button>
             ))}
           </div>
@@ -424,7 +424,7 @@ export function ShopView() {
                       className="size-5 shrink-0 rounded-sm object-contain"
                     />
                   )}
-                  <span className="truncate">{b.name}</span>
+                  <span className="break-words text-left leading-tight">{b.name}</span>
                 </button>
               );
             })}
@@ -524,38 +524,6 @@ export function ShopView() {
               }`}
             >
               <List className="size-4" />
-            </button>
-          </div>
-
-          {/* Page mode toggle — infinite scroll vs classic pagination. */}
-          <div className="flex items-center rounded-md border bg-card p-0.5" role="group" aria-label="Page mode">
-            <button
-              type="button"
-              onClick={() => setPageMode("infinite")}
-              aria-label="Infinite scroll"
-              aria-pressed={pageMode === "infinite"}
-              title="Auto-load more products as you scroll"
-              className={`flex size-7 items-center justify-center rounded-sm transition-colors ${
-                pageMode === "infinite"
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              <LoaderCircle className="size-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => setPageMode("pages")}
-              aria-label="Pages"
-              aria-pressed={pageMode === "pages"}
-              title="Use classic Previous / Next pagination"
-              className={`flex size-7 items-center justify-center rounded-sm transition-colors ${
-                pageMode === "pages"
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              <span className="text-[10px] font-bold leading-none">Pg</span>
             </button>
           </div>
 

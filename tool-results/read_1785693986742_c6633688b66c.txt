@@ -1,0 +1,735 @@
+     1→// ============================================================================
+     2→// File: src/components/customer/account-view.tsx
+     3→// Purpose: Customer account dashboard. Profile summary, savings tracker,
+     4→//          quick stats, recent activity, buy-again, quick actions, refills.
+     5→// Role: Hub for the logged-in customer.
+     6→// ============================================================================
+     7→
+     8→"use client";
+     9→
+    10→import { useRequireAuth } from "./use-require-auth";
+    11→import { Button } from "@/components/ui/button";
+    12→import { Card } from "@/components/ui/card";
+    13→import { Badge } from "@/components/ui/badge";
+    14→import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+    15→import {
+    16→  Package,
+    17→  MapPin,
+    18→  FileText,
+    19→  Heart,
+    20→  LogOut,
+    21→  ChevronRight,
+    22→  ShieldCheck,
+    23→  Mail,
+    24→  Phone,
+    25→  CheckCircle2,
+    26→  ShoppingBag,
+    27→  BellRing,
+    28→  User as UserIcon,
+    29→  Repeat,
+    30→  PiggyBank,
+    31→  Award,
+    32→  Truck,
+    33→  Clock,
+    34→  FileText as RxIcon,
+    35→  ClipboardList,
+    36→  AlarmClock,
+    37→  RefreshCw,
+    38→  Clock3,
+    39→} from "lucide-react";
+    40→import { useUI } from "@/lib/store";
+    41→import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
+    42→import { api, qk, UnifiedHistoryResponse } from "./api";
+    43→import { getInitials, formatDate, formatCurrency } from "@/lib/format";
+    44→import { toast } from "sonner";
+    45→import { motion } from "framer-motion";
+    46→import { ProductImage } from "@/components/shared/product-image";
+    47→
+    48→export function AccountView() {
+    49→  const { customer, isLoading } = useRequireAuth();
+    50→  const navigate = useUI((s) => s.navigate);
+    51→  const qc = useQueryClient();
+    52→
+    53→  // Wishlist count for the stats card (declared before any early return so
+    54→  // hook order stays stable across renders).
+    55→  const { data: wishlist } = useQuery({
+    56→    queryKey: qk.wishlist,
+    57→    queryFn: () => api<{ items: { id: string }[] } | null>("/api/wishlist").catch(() => null),
+    58→    enabled: !!customer,
+    59→  });
+    60→  const wishlistCount = wishlist?.items?.length ?? 0;
+    61→
+    62→  // Stock alert subscription count
+    63→  const { data: stockAlerts } = useQuery({
+    64→    queryKey: qk.stockAlerts,
+    65→    queryFn: () => api<{ items: { id: string }[] } | null>("/api/stock-subscriptions").catch(() => null),
+    66→    enabled: !!customer,
+    67→  });
+    68→  const stockAlertCount = stockAlerts?.items?.length ?? 0;
+    69→
+    70→  // Active medicine reminders count (for the account dashboard stat card)
+    71→  const { data: remindersData } = useQuery({
+    72→    queryKey: qk.reminders,
+    73→    queryFn: () => api<{ items: { id: string; isActive: boolean }[] } | null>("/api/customer/reminders").catch(() => null),
+    74→    enabled: !!customer,
+    75→  });
+    76→  const activeRemindersCount = (remindersData?.items ?? []).filter((r) => r.isActive).length;
+    77→
+    78→  // Prescription refill reminders — upcoming + overdue count for the dashboard card.
+    79→  const { data: refillData } = useQuery({
+    80→    queryKey: qk.refillReminders,
+    81→    queryFn: () => api<{ items: any[] } | null>("/api/customer/refill-reminders").catch(() => null),
+    82→    enabled: !!customer,
+    83→  });
+    84→  const refillItems = refillData?.items ?? [];
+    85→  const refillDueCount = refillItems.filter((r) => {
+    86→    const due = new Date(r.nextRefillDate).getTime();
+    87→    const now = Date.now();
+    88→    const sevenDays = 7 * 24 * 60 * 60 * 1000;
+    89→    return due - now <= sevenDays; // due within 7 days OR overdue
+    90→  }).length;
+    91→
+    92→  // Snooze mutation — postpones nextRefillDate by 7 days via PATCH.
+    93→  const snoozeMutation = useMutation({
+    94→    mutationFn: (id: string) =>
+    95→      api.patch(`/api/customer/refill-reminders/${id}`, { snoozeDays: 7 }),
+    96→    onSuccess: () => {
+    97→      qc.invalidateQueries({ queryKey: qk.refillReminders });
+    98→      toast.success("Snoozed 7 days", {
+    99→        description: "We'll remind you again next week.",
+   100→      });
+   101→    },
+   102→    onError: (e: Error) => toast.error(e.message),
+   103→  });
+   104→
+   105→  // Frequently reordered products (Buy Again)
+   106→  const { data: buyAgainData } = useQuery({
+   107→    queryKey: ["customer", "frequently-reordered"],
+   108→    queryFn: () => api<{ items: any[] } | null>("/api/customer/frequently-reordered").catch(() => null),
+   109→    enabled: !!customer,
+   110→  });
+   111→  const buyAgainItems = (buyAgainData?.items ?? []).slice(0, 4);
+   112→
+   113→  // Customer stats (savings, total spent, items purchased)
+   114→  const { data: stats } = useQuery({
+   115→    queryKey: ["customer", "stats"],
+   116→    queryFn: () => api<{
+   117→      totalSavings: number;
+   118→      totalSpent: number;
+   119→      totalOrders: number;
+   120→      avgOrderValue: number;
+   121→      totalItemsPurchased: number;
+   122→      loyaltyPoints: number;
+   123→      loyaltyPointsValue: number;
+   124→    } | null>("/api/customer/stats").catch(() => null),
+   125→    enabled: !!customer,
+   126→  });
+   127→
+   128→  // Recent activity — last 3 items (orders / prescriptions / requests) for the
+   129→  // dashboard preview. Uses the unified history endpoint so all types show.
+   130→  const { data: recentHistory, isLoading: recentLoading } = useQuery({
+   131→    queryKey: qk.history,
+   132→    queryFn: () => api<UnifiedHistoryResponse | null>("/api/customer/history").catch(() => null),
+   133→    enabled: !!customer,
+   134→    staleTime: 30 * 1000,
+   135→  });
+   136→  const recentItems = (recentHistory?.items ?? []).slice(0, 3);
+   137→
+   138→  // -- Loading state — premium skeleton dashboard.
+   139→  if (isLoading) {
+   140→    return <AccountSkeleton />;
+   141→  }
+   142→
+   143→  if (!customer) {
+   144→    // useRequireAuth handles redirect in an effect
+   145→    return null;
+   146→  }
+   147→
+   148→  const onLogout = async () => {
+   149→    await api.post("/api/auth/logout");
+   150→    qc.invalidateQueries({ queryKey: qk.me });
+   151→    qc.invalidateQueries({ queryKey: qk.cart });
+   152→    toast.success("Logged out");
+   153→    navigate({ name: "home" });
+   154→  };
+   155→
+   156→  const me = customer;
+   157→
+   158→  // Each quick-link gets a distinct color theme so the icons are visually
+   159→  // distinguishable at a glance. The palette stays in the emerald/teal/amber
+   160→  // family — no indigo or blue.
+   161→  const links = [
+   162→    {
+   163→      label: "My Orders",
+   164→      description: "View and track your past orders",
+   165→      icon: Package,
+   166→      onClick: () => navigate({ name: "orders" }),
+   167→      stat: me._count?.orders ?? 0,
+   168→      tint: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300",
+   169→    },
+   170→    {
+   171→      label: "Addresses",
+   172→      description: "Manage your saved delivery addresses",
+   173→      icon: MapPin,
+   174→      onClick: () => navigate({ name: "addresses" }),
+   175→      stat: customer.addresses?.length ?? 0,
+   176→      tint: "bg-cyan-100 text-cyan-700 dark:bg-cyan-950/40 dark:text-cyan-300",
+   177→    },
+   178→    {
+   179→      label: "My Wishlist",
+   180→      description: "Your saved products, ready to reorder",
+   181→      icon: Heart,
+   182→      onClick: () => navigate({ name: "wishlist" }),
+   183→      stat: wishlistCount,
+   184→      tint: "bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300",
+   185→    },
+   186→    {
+   187→      label: "Stock Alerts",
+   188→      description: "Get notified when out-of-stock items return",
+   189→      icon: BellRing,
+   190→      onClick: () => navigate({ name: "stock-alerts" }),
+   191→      stat: stockAlertCount,
+   192→      tint: "bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300",
+   193→    },
+   194→    {
+   195→      label: "Medicine Reminders",
+   196→      description: "Schedule daily medicine reminders",
+   197→      icon: AlarmClock,
+   198→      onClick: () => navigate({ name: "reminders" }),
+   199→      stat: activeRemindersCount,
+   200→      tint: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300",
+   201→    },
+   202→    {
+   203→      label: "Profile & Settings",
+   204→      description: "Update name, phone, and account details",
+   205→      icon: UserIcon,
+   206→      onClick: () => navigate({ name: "profile" }),
+   207→      tint: "bg-teal-100 text-teal-700 dark:bg-teal-950/40 dark:text-teal-300",
+   208→    },
+   209→    {
+   210→      label: "Upload Prescription",
+   211→      description: "Send a new prescription to our pharmacist",
+   212→      icon: FileText,
+   213→      onClick: () => navigate({ name: "prescription" }),
+   214→      tint: "bg-violet-100 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300",
+   215→    },
+   216→    {
+   217→      label: "Request Medicines",
+   218→      description: "Can't find it? Type and request",
+   219→      icon: ShoppingBag,
+   220→      onClick: () => navigate({ name: "manual-request" }),
+   221→      tint: "bg-teal-100 text-teal-700 dark:bg-teal-950/40 dark:text-teal-300",
+   222→    },
+   223→  ];
+   224→
+   225→  return (
+   226→    <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-8">
+   227→      {/* Section heading */}
+   228→      <div className="mb-5 flex flex-col gap-1">
+   229→        <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">My Account</h1>
+   230→        <p className="text-sm text-muted-foreground">
+   231→          Manage your orders, addresses, prescriptions, and reminders.
+   232→        </p>
+   233→      </div>
+   234→
+   235→      {/* ── Profile summary ─────────────────────────────────────────────── */}
+   236→      <Card className="mb-4 gap-4 overflow-hidden rounded-xl border-border/50 bg-linear-to-br from-emerald-600 to-teal-700 p-5 text-primary-foreground shadow-premium sm:p-6">
+   237→        <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+   238→          <Avatar className="size-16 border-2 border-white/30 shadow-premium-sm">
+   239→            <AvatarFallback className="bg-white/20 text-lg font-bold text-white">
+   240→              {getInitials(customer.name)}
+   241→            </AvatarFallback>
+   242→          </Avatar>
+   243→          <div className="flex-1">
+   244→            <h2 className="text-xl font-bold sm:text-2xl">{customer.name}</h2>
+   245→            <p className="mt-1 flex items-center gap-1.5 text-sm text-emerald-50">
+   246→              <Mail className="size-3.5" /> {customer.email}
+   247→            </p>
+   248→            <p className="flex items-center gap-1.5 text-sm text-emerald-50">
+   249→              <Phone className="size-3.5" /> {customer.phone}
+   250→            </p>
+   251→          </div>
+   252→        </div>
+   253→
+   254→        <div className="flex flex-wrap items-center gap-2">
+   255→          {customer.isEmailVerified ? (
+   256→            <Badge className="bg-white/20 text-white hover:bg-white/20">
+   257→              <CheckCircle2 className="size-3" /> Verified account
+   258→            </Badge>
+   259→          ) : (
+   260→            <Badge className="bg-amber-400/30 text-amber-100">Email not verified</Badge>
+   261→          )}
+   262→          {me.createdAt && (
+   263→            <Badge className="bg-white/20 text-white hover:bg-white/20">
+   264→              Member since {formatDate(me.createdAt)}
+   265→            </Badge>
+   266→          )}
+   267→        </div>
+   268→      </Card>
+   269→
+   270→      {/* ── Savings Tracker — prominent card showing total money saved ──── */}
+   271→      {stats && stats.totalSavings > 0 && (
+   272→        <Card className="mb-4 overflow-hidden rounded-xl border-emerald-200 bg-gradient-to-br from-emerald-50 to-teal-50 p-4 shadow-premium-sm dark:border-emerald-800 dark:from-emerald-950/30 dark:to-teal-950/30 sm:p-5">
+   273→          <div className="flex items-center gap-4">
+   274→            <div className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-lg shadow-emerald-500/20">
+   275→              <PiggyBank className="size-6" />
+   276→            </div>
+   277→            <div className="min-w-0 flex-1">
+   278→              <p className="text-xs font-medium uppercase tracking-wide text-emerald-700 dark:text-emerald-400">
+   279→                Total Savings
+   280→              </p>
+   281→              <p className="text-2xl font-bold text-emerald-700 dark:text-emerald-300">
+   282→                {formatCurrency(stats.totalSavings)}
+   283→              </p>
+   284→              <p className="text-[11px] text-muted-foreground">
+   285→                Across {stats.totalOrders} orders · {stats.totalItemsPurchased} items purchased
+   286→              </p>
+   287→            </div>
+   288→            <div className="hidden shrink-0 flex-col items-end gap-1 sm:flex">
+   289→              <Badge className="gap-1 bg-emerald-100 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-300">
+   290→                <Award className="size-3" />
+   291→                {stats.loyaltyPoints} pts
+   292→              </Badge>
+   293→              <span className="text-[10px] text-muted-foreground">
+   294→                Worth {formatCurrency(stats.loyaltyPointsValue)}
+   295→              </span>
+   296→            </div>
+   297→          </div>
+   298→        </Card>
+   299→      )}
+   300→
+   301→      {/* ── Quick stats — color-coded to match the quick-link tiles below ── */}
+   302→      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+   303→        <StatCard
+   304→          icon={Package}
+   305→          label="Orders"
+   306→          value={me._count?.orders ?? 0}
+   307→          tint="bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
+   308→          onClick={() => navigate({ name: "orders" })}
+   309→        />
+   310→        <StatCard
+   311→          icon={Heart}
+   312→          label="Wishlist"
+   313→          value={wishlistCount}
+   314→          tint="bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300"
+   315→          onClick={() => navigate({ name: "wishlist" })}
+   316→        />
+   317→        <StatCard
+   318→          icon={BellRing}
+   319→          label="Stock Alerts"
+   320→          value={stockAlertCount}
+   321→          tint="bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300"
+   322→          onClick={() => navigate({ name: "stock-alerts" })}
+   323→        />
+   324→        <StatCard
+   325→          icon={FileText}
+   326→          label="Prescriptions"
+   327→          value={me._count?.prescriptions ?? 0}
+   328→          tint="bg-violet-100 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300"
+   329→          onClick={() => navigate({ name: "prescription" })}
+   330→        />
+   331→      </div>
+   332→
+   333→      {/* ── Recent Activity — latest 3 orders/prescriptions/requests ────── */}
+   334→      <Card className="mb-4 gap-3 rounded-xl border-border/50 p-4 shadow-premium-sm sm:p-5">
+   335→        <div className="flex items-center justify-between">
+   336→          <h2 className="flex items-center gap-2 text-base font-semibold">
+   337→            <Clock className="size-5 text-primary" /> Recent Activity
+   338→          </h2>
+   339→          <Button
+   340→            variant="ghost"
+   341→            size="sm"
+   342→            onClick={() => navigate({ name: "orders" })}
+   343→            className="gap-1 text-xs text-muted-foreground"
+   344→          >
+   345→            View all <ChevronRight className="size-3" />
+   346→          </Button>
+   347→        </div>
+   348→
+   349→        {recentLoading ? (
+   350→          <div className="space-y-2">
+   351→            {[1, 2, 3].map((i) => (
+   352→              <div
+   353→                key={i}
+   354→                className="flex items-center gap-3 rounded-lg border border-border/50 p-2.5"
+   355→              >
+   356→                <div className="size-9 shrink-0 rounded-lg skeleton-premium" />
+   357→                <div className="flex-1 space-y-1.5">
+   358→                  <div className="h-3.5 w-2/5 skeleton-premium rounded" />
+   359→                  <div className="h-3 w-3/4 skeleton-premium rounded" />
+   360→                </div>
+   361→                <div className="size-7 skeleton-premium rounded" />
+   362→              </div>
+   363→            ))}
+   364→          </div>
+   365→        ) : recentItems.length === 0 ? (
+   366→          <p className="rounded-lg border border-dashed border-border/60 p-4 text-center text-xs text-muted-foreground">
+   367→            No recent activity yet. Your orders, prescriptions, and requests will show here.
+   368→          </p>
+   369→        ) : (
+   370→          <div className="space-y-2">
+   371→            {recentItems.map((item) => {
+   372→              const isOrder = item.type === "order";
+   373→              const isRx = item.type === "prescription";
+   374→              const iconTint = isOrder
+   375→                ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
+   376→                : isRx
+   377→                  ? "bg-violet-100 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300"
+   378→                  : "bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300";
+   379→              const Icon = isOrder ? Package : isRx ? RxIcon : ClipboardList;
+   380→              return (
+   381→                <motion.button
+   382→                  key={`${item.type}-${item.id}`}
+   383→                  whileHover={{ x: 2 }}
+   384→                  onClick={() =>
+   385→                    isOrder
+   386→                      ? navigate({ name: "track-order", orderId: item.id })
+   387→                      : navigate({ name: "orders" })
+   388→                  }
+   389→                  className="flex w-full items-center gap-3 rounded-lg border border-border/50 p-2.5 text-left transition-colors hover:bg-accent/50"
+   390→                >
+   391→                  <div className={`flex size-9 shrink-0 items-center justify-center rounded-lg ${iconTint}`}>
+   392→                    <Icon className="size-4" />
+   393→                  </div>
+   394→                  <div className="min-w-0 flex-1">
+   395→                    <p className="truncate text-sm font-medium">{item.number}</p>
+   396→                    <p className="text-xs text-muted-foreground">
+   397→                      {formatDate(item.date)} · {item.statusLabel}
+   398→                    </p>
+   399→                  </div>
+   400→                  {isOrder && (
+   401→                    <Badge variant="outline" className="shrink-0 gap-1 text-[10px]">
+   402→                      <Truck className="size-3" />
+   403→                      {item.status === "delivered" ? "Delivered" : "Track"}
+   404→                    </Badge>
+   405→                  )}
+   406→                  <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+   407→                </motion.button>
+   408→              );
+   409→            })}
+   410→          </div>
+   411→        )}
+   412→      </Card>
+   413→
+   414→      {/* ── Quick actions — color-coded tiles in a responsive grid ─────── */}
+   415→      <Card className="gap-1 rounded-xl border-border/50 p-2 shadow-premium-sm">
+   416→        <div className="px-2 pt-2 pb-1">
+   417→          <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+   418→            Quick Actions
+   419→          </h2>
+   420→        </div>
+   421→        <div className="grid gap-1 sm:grid-cols-2">
+   422→          {links.map((link) => {
+   423→            const Icon = link.icon;
+   424→            return (
+   425→              <motion.button
+   426→                key={link.label}
+   427→                whileHover={{ x: 2 }}
+   428→                onClick={link.onClick}
+   429→                className="flex w-full items-center gap-3 rounded-lg p-3 text-left transition-colors hover:bg-accent"
+   430→              >
+   431→                <div className={`flex size-10 shrink-0 items-center justify-center rounded-xl ${link.tint}`}>
+   432→                  <Icon className="size-5" />
+   433→                </div>
+   434→                <div className="min-w-0 flex-1">
+   435→                  <p className="text-sm font-semibold">{link.label}</p>
+   436→                  <p className="truncate text-xs text-muted-foreground">{link.description}</p>
+   437→                </div>
+   438→                {link.stat !== undefined && link.stat > 0 && (
+   439→                  <Badge variant="secondary">{link.stat}</Badge>
+   440→                )}
+   441→                <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+   442→              </motion.button>
+   443→            );
+   444→          })}
+   445→        </div>
+   446→      </Card>
+   447→
+   448→      {/* ── Buy Again — frequently reordered products ───────────────────── */}
+   449→      {buyAgainItems.length > 0 && (
+   450→        <Card className="mt-4 gap-3 rounded-xl border-border/50 p-4 shadow-premium-sm sm:p-5">
+   451→          <div className="flex items-center justify-between">
+   452→            <h2 className="flex items-center gap-2 text-base font-semibold">
+   453→              <Repeat className="size-5 text-primary" /> Buy Again
+   454→            </h2>
+   455→            <Button
+   456→              variant="ghost"
+   457→              size="sm"
+   458→              onClick={() => navigate({ name: "orders" })}
+   459→              className="gap-1 text-xs text-muted-foreground"
+   460→            >
+   461→              View all orders <ChevronRight className="size-3" />
+   462→            </Button>
+   463→          </div>
+   464→          <p className="text-xs text-muted-foreground">
+   465→            Products you&apos;ve ordered before — tap to view details and reorder.
+   466→          </p>
+   467→          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+   468→            {buyAgainItems.map((p) => (
+   469→              <motion.button
+   470→                key={p.id}
+   471→                whileHover={{ y: -2 }}
+   472→                onClick={() => navigate({ name: "product", productId: p.id, slug: p.slug })}
+   473→                className="group flex flex-col gap-1.5 rounded-lg border border-border/50 p-2 text-left transition-colors hover:border-primary/40 hover:bg-accent/50"
+   474→              >
+   475→                <div className="relative">
+   476→                  <ProductImage
+   477→                    name={p.name}
+   478→                    brandName={p.brand?.name ?? null}
+   479→                    primaryImage={p.primaryImage}
+   480→                    size="md"
+   481→                    className="!h-16 !w-full rounded-md"
+   482→                  />
+   483→                  {p.stock <= 0 && (
+   484→                    <div className="absolute inset-0 flex items-center justify-center rounded-md bg-foreground/40 backdrop-grayscale">
+   485→                      <span className="rounded bg-rose-600 px-1.5 py-0.5 text-[9px] font-bold uppercase text-white">
+   486→                        Out of stock
+   487→                      </span>
+   488→                    </div>
+   489→                  )}
+   490→                </div>
+   491→                <p className="line-clamp-2 break-words text-xs font-medium leading-tight">{p.name}</p>
+   492→                {p.brand && (
+   493→                  <p className="truncate text-[10px] text-muted-foreground">{p.brand.name}</p>
+   494→                )}
+   495→                <div className="flex items-center justify-between">
+   496→                  <span className="text-xs font-bold text-foreground">
+   497→                    {formatCurrency(p.sellingPrice)}
+   498→                  </span>
+   499→                  {p.timesOrdered > 0 && (
+   500→                    <Badge variant="secondary" className="text-[9px]">
+   501→                      ×{p.timesOrdered}
+   502→                    </Badge>
+   503→                  )}
+   504→                </div>
+   505→              </motion.button>
+   506→            ))}
+   507→          </div>
+   508→        </Card>
+   509→      )}
+   510→
+   511→      <Card className="mt-4 gap-2 rounded-xl border-border/50 p-4 shadow-premium-sm">
+   512→        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+   513→          <ShieldCheck className="size-5 text-emerald-600" />
+   514→          <span>Your account is protected with encrypted authentication.</span>
+   515→        </div>
+   516→      </Card>
+   517→
+   518→      {/* ── Prescription Refill Reminders ───────────────────────────────── */}
+   519→      {refillItems.length > 0 && (
+   520→        <Card className="mt-4 gap-3 rounded-xl border-border/50 p-4 shadow-premium-sm sm:p-5">
+   521→          <div className="flex items-center justify-between">
+   522→            <h2 className="flex items-center gap-2 text-base font-semibold">
+   523→              <RefreshCw className="size-5 text-primary" /> Prescription Refills
+   524→            </h2>
+   525→            {refillDueCount > 0 && (
+   526→              <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100 dark:bg-amber-950/40 dark:text-amber-300">
+   527→                {refillDueCount} due soon
+   528→              </Badge>
+   529→            )}
+   530→          </div>
+   531→          <p className="text-xs text-muted-foreground">
+   532→            We&apos;ll remind you when your prescription medicines are about to run out.
+   533→          </p>
+   534→          <div className="space-y-2">
+   535→            {refillItems.slice(0, 5).map((r) => {
+   536→              const due = new Date(r.nextRefillDate);
+   537→              const now = new Date();
+   538→              const diffMs = due.getTime() - now.getTime();
+   539→              const diffDays = Math.ceil(diffMs / (24 * 60 * 60 * 1000));
+   540→              const isOverdue = diffDays < 0;
+   541→              const isDueSoon = diffDays >= 0 && diffDays <= 7;
+   542→              const tint = isOverdue
+   543→                ? "border-rose-200 bg-rose-50 dark:border-rose-900/40 dark:bg-rose-950/20"
+   544→                : isDueSoon
+   545→                  ? "border-amber-200 bg-amber-50 dark:border-amber-900/40 dark:bg-amber-950/20"
+   546→                  : "border-emerald-200 bg-emerald-50/60 dark:border-emerald-900/40 dark:bg-emerald-950/10";
+   547→              const label = isOverdue
+   548→                ? "Refill now"
+   549→                : isDueSoon
+   550→                  ? `Refill in ${Math.max(0, diffDays)}d`
+   551→                  : `Refill in ${diffDays}d`;
+   552→              const labelTint = isOverdue
+   553→                ? "text-rose-700 dark:text-rose-300"
+   554→                : isDueSoon
+   555→                  ? "text-amber-700 dark:text-amber-300"
+   556→                  : "text-emerald-700 dark:text-emerald-300";
+   557→              return (
+   558→                <motion.div
+   559→                  key={r.id}
+   560→                  initial={{ opacity: 0, y: 4 }}
+   561→                  animate={{ opacity: 1, y: 0 }}
+   562→                  className={`flex items-center gap-3 rounded-lg border p-2.5 ${tint}`}
+   563→                >
+   564→                  <div className="min-w-0 flex-1">
+   565→                    <p className="truncate text-sm font-medium">
+   566→                      {r.product?.name ?? "Prescription medicine"}
+   567→                    </p>
+   568→                    <p className="text-[11px] text-muted-foreground">
+   569→                      Last ordered {formatDate(r.lastOrdered)} · Next refill {formatDate(r.nextRefillDate)}
+   570→                    </p>
+   571→                  </div>
+   572→                  <Badge variant="outline" className={`shrink-0 text-[10px] ${labelTint}`}>
+   573→                    {label}
+   574→                  </Badge>
+   575→                  <Button
+   576→                    size="sm"
+   577→                    variant="ghost"
+   578→                    onClick={() => snoozeMutation.mutate(r.id)}
+   579→                    disabled={snoozeMutation.isPending}
+   580→                    className="shrink-0 gap-1 text-xs"
+   581→                    title="Snooze 7 days"
+   582→                  >
+   583→                    <Clock3 className="size-3.5" /> Snooze
+   584→                  </Button>
+   585→                  <Button
+   586→                    size="sm"
+   587→                    variant="outline"
+   588→                    onClick={() =>
+   589→                      r.product &&
+   590→                      navigate({ name: "product", productId: r.product.id, slug: r.product.slug })
+   591→                    }
+   592→                    className="shrink-0 gap-1 text-xs"
+   593→                  >
+   594→                    <ShoppingBag className="size-3.5" /> Reorder
+   595→                  </Button>
+   596→                </motion.div>
+   597→              );
+   598→            })}
+   599→          </div>
+   600→        </Card>
+   601→      )}
+   602→
+   603→      <Button
+   604→        onClick={onLogout}
+   605→        variant="outline"
+   606→        className="mt-4 w-full gap-2 text-destructive hover:bg-destructive/5 hover:text-destructive"
+   607→      >
+   608→        <LogOut className="size-4" /> Logout
+   609→      </Button>
+   610→
+   611→      <p className="mt-6 text-center text-xs text-muted-foreground">
+   612→        Pradeep Medical Store • Licensed Pharmacy in Mathura
+   613→      </p>
+   614→    </div>
+   615→  );
+   616→}
+   617→
+   618→// ---------------------------------------------------------------------------
+   619→// Stat card — small KPI tile with icon + value + label.
+   620→// ---------------------------------------------------------------------------
+   621→function StatCard({
+   622→  icon: Icon,
+   623→  label,
+   624→  value,
+   625→  tint,
+   626→  onClick,
+   627→}: {
+   628→  icon: typeof Package;
+   629→  label: string;
+   630→  value: number;
+   631→  tint: string;
+   632→  onClick: () => void;
+   633→}) {
+   634→  return (
+   635→    <button
+   636→      onClick={onClick}
+   637→      className="flex flex-col items-start gap-1.5 rounded-xl border border-border/50 bg-card p-4 text-left shadow-premium-sm transition-all hover:border-primary/40 hover:shadow-premium active:scale-[0.98]"
+   638→    >
+   639→      <div className={`flex size-8 items-center justify-center rounded-lg ${tint}`}>
+   640→        <Icon className="size-4" />
+   641→      </div>
+   642→      <span className="text-2xl font-bold leading-none">{value}</span>
+   643→      <span className="text-xs text-muted-foreground">{label}</span>
+   644→    </button>
+   645→  );
+   646→}
+   647→
+   648→// ---------------------------------------------------------------------------
+   649→// AccountSkeleton — premium shimmer skeleton shown while auth + initial
+   650→// queries resolve. Mirrors the real layout (profile → stats → recent → links)
+   651→// so the page never visually jumps on load.
+   652→// ---------------------------------------------------------------------------
+   653→export function AccountSkeleton() {
+   654→  return (
+   655→    <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-8">
+   656→      <div className="mb-5 space-y-2">
+   657→        <div className="h-7 w-32 skeleton-premium rounded" />
+   658→        <div className="h-4 w-72 skeleton-premium rounded" />
+   659→      </div>
+   660→
+   661→      {/* Profile skeleton */}
+   662→      <div className="mb-4 rounded-xl border border-border/50 bg-linear-to-br from-emerald-600 to-teal-700 p-5 text-primary-foreground shadow-premium sm:p-6">
+   663→        <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+   664→          <div className="size-16 rounded-full bg-white/20" />
+   665→          <div className="flex-1 space-y-2">
+   666→            <div className="h-6 w-44 rounded bg-white/20" />
+   667→            <div className="h-4 w-60 rounded bg-white/15" />
+   668→            <div className="h-4 w-48 rounded bg-white/15" />
+   669→          </div>
+   670→        </div>
+   671→        <div className="mt-4 flex gap-2">
+   672→          <div className="h-6 w-28 rounded-full bg-white/15" />
+   673→          <div className="h-6 w-32 rounded-full bg-white/15" />
+   674→        </div>
+   675→      </div>
+   676→
+   677→      {/* Stats grid skeleton */}
+   678→      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+   679→        {[1, 2, 3, 4].map((i) => (
+   680→          <div
+   681→            key={i}
+   682→            className="flex flex-col gap-2 rounded-xl border border-border/50 bg-card p-4 shadow-premium-sm"
+   683→          >
+   684→            <div className="size-8 rounded-lg skeleton-premium" />
+   685→            <div className="h-7 w-12 skeleton-premium rounded" />
+   686→            <div className="h-3 w-16 skeleton-premium rounded" />
+   687→          </div>
+   688→        ))}
+   689→      </div>
+   690→
+   691→      {/* Recent activity skeleton */}
+   692→      <div className="mb-4 rounded-xl border border-border/50 bg-card p-4 shadow-premium-sm sm:p-5">
+   693→        <div className="mb-3 h-5 w-40 skeleton-premium rounded" />
+   694→        <div className="space-y-2">
+   695→          {[1, 2, 3].map((i) => (
+   696→            <div
+   697→              key={i}
+   698→              className="flex items-center gap-3 rounded-lg border border-border/50 p-2.5"
+   699→            >
+   700→              <div className="size-9 shrink-0 rounded-lg skeleton-premium" />
+   701→              <div className="flex-1 space-y-1.5">
+   702→                <div className="h-3.5 w-2/5 skeleton-premium rounded" />
+   703→                <div className="h-3 w-3/4 skeleton-premium rounded" />
+   704→              </div>
+   705→              <div className="size-7 skeleton-premium rounded" />
+   706→            </div>
+   707→          ))}
+   708→        </div>
+   709→      </div>
+   710→
+   711→      {/* Quick actions skeleton */}
+   712→      <div className="rounded-xl border border-border/50 bg-card p-2 shadow-premium-sm">
+   713→        <div className="px-2 pt-3 pb-2">
+   714→          <div className="h-3.5 w-24 skeleton-premium rounded" />
+   715→        </div>
+   716→        <div className="grid gap-1 sm:grid-cols-2">
+   717→          {[1, 2, 3, 4, 5, 6].map((i) => (
+   718→            <div
+   719→              key={i}
+   720→              className="flex items-center gap-3 rounded-lg p-3"
+   721→            >
+   722→              <div className="size-10 shrink-0 rounded-xl skeleton-premium" />
+   723→              <div className="flex-1 space-y-1.5">
+   724→                <div className="h-3.5 w-2/5 skeleton-premium rounded" />
+   725→                <div className="h-3 w-3/4 skeleton-premium rounded" />
+   726→              </div>
+   727→              <div className="size-4 skeleton-premium rounded" />
+   728→            </div>
+   729→          ))}
+   730→        </div>
+   731→      </div>
+   732→    </div>
+   733→  );
+   734→}
+   735→

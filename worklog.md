@@ -7717,3 +7717,59 @@ All integrations wrapped in `.catch()` so push failures never break the order/pa
 - ✅ `PUT /api/admin/app-notifs/template-toggle` → 200, toggled template isEnabled false then true successfully
 - ✅ `GET /api/admin/app-notifs/history` → 200, returned paginated empty list
 - ✅ Dev server log shows all routes compiled and responded successfully with no errors
+
+---
+
+## Task P36-6 — AI Marketing HTML Email Generation
+- **Task ID**: P36-6
+- **Agent**: ai-marketing-html
+- **Date**: 2026-08-02
+
+### What was done
+
+Enhanced the AI Marketing Assistant to generate a complete responsive HTML email alongside the existing plain-text outputs (WhatsApp, Facebook, Instagram, Twitter, Email, SMS).
+
+#### 1. API route — `src/app/api/admin/ai/generate-marketing/route.ts`
+- Added `slug` and `primaryImage` to the Prisma `product.findUnique` select (previously only name/description/composition/prices/brand/category/prescription).
+- Resolved absolute URLs for the email:
+  - `store.websiteUrl` setting (fallback `https://pradeepmedical.com`) → `baseUrl`
+  - Product page URL: `${baseUrl}/products/${slug}`
+  - Product image URL: kept as-is if already `http(s)://`, otherwise prefixed with `baseUrl` (handles `/uploads/...` relative paths).
+- Added a **second AI call** (`aiChatCompletion`) after the JSON marketing content is parsed:
+  - System prompt: "You are a professional email marketing designer…" (verbatim from task spec) — full HTML document, inline CSS, table-based layout, dark theme (#0f172a / #1e293b / #f1f5f9), emerald (#059669 / #10b981) + teal (#0d9488) accents, PMS branding, prominent emerald CTA.
+  - User prompt: passes store name, website, product page URL, product image URL, product name, brand, category, composition, short description, selling price, MRP, discount %, prescription flag, and tone. Detailed layout instructions (max-width 600px, CTA "Shop Now" → product page, footer with contact info, prescription disclaimer only if Rx required).
+  - Options: `temperature: 0.5, max_tokens: 2500` (deterministic + room for full HTML).
+  - Strips markdown code fences (` ```html ` / ` ``` `) defensively.
+  - Validates output looks like an HTML doc (contains `<html…>` + `</html>`, or `<!doctype html>`).
+- **Non-fatal**: if the second AI call fails, the response still returns the plain-text outputs — only `htmlEmail` is omitted.
+- Bumped `maxDuration` from 30 → 60 seconds (two sequential AI calls).
+- Attached `htmlEmail` to the JSON content object returned to the client.
+
+#### 2. UI — `src/components/admin/views/AiMarketingView.tsx`
+- Added `htmlEmail?: string` to the `MarketingContent` interface.
+- Added new imports from `lucide-react`: `Code2`, `Eye`, `Download`, `FileCode`.
+- Added new `HtmlEmailCard` component (rendered after the SMS card) with:
+  - **Preview/Code segmented control**: two-button toggle (`Eye` Preview / `Code2` Code) with active/inactive styling.
+  - **Preview mode**: sandboxed `<iframe srcDoc={html} sandbox="">` at 520px height, white background, rounded border.
+  - **Code mode**: read-only monospace `<Textarea>` (font-mono, text-xs, 18 rows, spellcheck off) showing the raw HTML.
+  - **Copy HTML** button (ghost, reuses existing `copyToClipboard` helper + `copiedField` state).
+  - **Download** button: builds a `Blob` (`text/html;charset=utf-8`), creates an object URL, programmatically clicks an `<a download="marketing-email-<timestamp>.html">`, then revokes the URL on the next tick. Shows success/error toast.
+  - **Size badges**: character count (`toLocaleString()` formatted) + KB size (`(new Blob([html]).size / 1024).toFixed(1)`).
+  - CardDescription explains: "Complete responsive HTML email — table-based, inline CSS, email-client compatible."
+- Also fixed 5 pre-existing TS errors in the same file (added non-null assertions `!` to the `copyToClipboard(content.X, "X")` calls for whatsapp/facebook/instagram/twitter/sms, matching the pattern already used for `email` and the new `htmlEmail`).
+
+#### 3. Type updates
+- `MarketingContent` interface in `AiMarketingView.tsx` now includes `htmlEmail?: string` (the only place this type is defined — the API route returns untyped `any`).
+
+### Verification
+
+- ✅ **Lint**: `bun run lint` → 0 errors, 0 warnings (clean).
+- ✅ **TypeScript**: `npx tsc --noEmit` → no errors in `generate-marketing/route.ts` or `AiMarketingView.tsx` (the 5 pre-existing TS errors in AiMarketingView were also fixed as a cleanup).
+- ✅ **End-to-end runtime test** (dev server on :3000):
+  - Logged in as `admin@pradeepmedical.com` → cookie set.
+  - `GET /api/admin/products?pageSize=3&search=dolo` → found "Dolo 500 mg Tablets MicroLab" (id `cms6i58iy0033ntcuolmhxcof`) with a `primaryImage` URL.
+  - `POST /api/admin/ai/generate-marketing` `{productId, platforms:[whatsapp,facebook,instagram,email], tone:"promotional"}` → **HTTP 200 in 29s** (within the new 60s maxDuration).
+  - Response `content` keys: `['whatsapp','facebook','instagram','twitter','email','sms','htmlEmail']` — all original plain-text outputs preserved + new `htmlEmail` field.
+  - `htmlEmail` = 4,131 chars, starts with `<!DOCTYPE html>`, contains `<html>`, `<table>` layout.
+  - HTML structure verified: contains product image URL, product name, product page URL (`/products/...`), emerald (#10b981/#059669), teal (#0d9488), dark bg (#0f172a, #1e293b), light text (#f1f5f9), "Shop Now" CTA, "Pradeep Medical Store" store name.
+  - Prescription disclaimer correctly omitted (Dolo 500 is OTC, not Rx).

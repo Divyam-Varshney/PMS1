@@ -459,6 +459,58 @@ export const DEFAULT_SETTINGS: Record<string, { value: any; category: string }> 
 };
 
 /// Notification template defaults. Seeded into NotificationTemplate table.
+///
+/// All template bodies are generated through `darkEmailTemplate()` so they
+/// share a consistent premium DARK theme:
+///   • Slate-900 page background (#0f172a) + slate-800 card (#1e293b)
+///   • Emerald→teal gradient header (#059669 → #0d9488) with store name
+///   • Inline CSS only (Gmail/Outlook strip <style> blocks)
+///   • Table-based 600px layout — the most reliable pattern for cross-client
+///     rendering across Gmail / Outlook / Apple Mail / Yahoo
+///   • System font stack so no external font loads are required
+///   • Dark-mode meta tags (color-scheme + supported-color-schemes + theme-color)
+///     so email clients that respect OS dark-mode preferences render correctly
+///   • Footer with store contact info on a darker slate band
+/// All {{variables}} are replaced at send time by renderTemplate().
+function darkEmailTemplate(opts: { eyebrow: string; content: string }): string {
+  return `<!DOCTYPE html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="dark" />
+  <meta name="supported-color-schemes" content="dark" />
+  <meta name="theme-color" content="#0f172a" />
+  <title>${opts.eyebrow}</title>
+</head>
+<body style="margin:0;padding:0;background-color:#0f172a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#e2e8f0;-webkit-font-smoothing:antialiased;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#0f172a;padding:24px 0;">
+    <tr><td align="center">
+      <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background-color:#1e293b;border:1px solid #334155;border-radius:16px;overflow:hidden;box-shadow:0 10px 30px rgba(0,0,0,0.35);">
+        <tr>
+          <td style="background:linear-gradient(135deg,#059669 0%,#0d9488 100%);padding:28px 32px;text-align:center;">
+            <div style="font-size:22px;font-weight:700;color:#ffffff;letter-spacing:0.3px;"><span style="vertical-align:middle;margin-right:8px;font-size:26px;">&#128138;</span> Pradeep Medical Store</div>
+            <div style="font-size:12px;color:#d1fae5;margin-top:6px;letter-spacing:1.5px;text-transform:uppercase;">${opts.eyebrow}</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:32px;">
+            ${opts.content}
+          </td>
+        </tr>
+        <tr>
+          <td style="background-color:#0f172a;padding:24px 32px;border-top:1px solid #334155;">
+            <p style="margin:0 0 8px 0;font-size:13px;color:#cbd5e1;line-height:1.5;"><strong style="color:#10b981;">Pradeep Medical Store</strong><br />Main Market, Mathura, Uttar Pradesh 281001<br />Phone: +91 99999 99999 &middot; Email: care@pradeepmedical.com</p>
+            <p style="margin:0;font-size:12px;color:#64748b;line-height:1.5;">&copy; Pradeep Medical Store. All rights reserved.</p>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+}
+
 export const DEFAULT_TEMPLATES: Array<{
   key: string;
   name: string;
@@ -478,43 +530,18 @@ export const DEFAULT_TEMPLATES: Array<{
     channel: "email",
     subject: "Your PMS Registration OTP - {{otp}}",
     variables: ["name", "otp", "expiry"],
-    body: `<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /></head>
-<body style="margin:0;padding:0;background-color:#f4f6f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1f2937;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f6f5;padding:24px 0;">
-    <tr><td align="center">
-      <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
-        <tr>
-          <td style="background:linear-gradient(135deg,#059669 0%,#0d9488 100%);padding:24px 32px;text-align:center;">
-            <div style="font-size:22px;font-weight:700;color:#ffffff;letter-spacing:0.3px;"><span style="vertical-align:middle;margin-right:8px;font-size:26px;">&#128138;</span> Pradeep Medical Store</div>
-            <div style="font-size:12px;color:#d1fae5;margin-top:6px;letter-spacing:1px;text-transform:uppercase;">Verify Your Email</div>
-          </td>
-        </tr>
-        <tr>
-          <td style="padding:32px;">
-            <h1 style="margin:0 0 16px 0;font-size:20px;font-weight:600;color:#111827;">Hello {{name}},</h1>
-            <p style="margin:0 0 16px 0;font-size:15px;line-height:1.65;color:#374151;">Welcome to Pradeep Medical Store! Please use the OTP below to verify your email address and complete your registration.</p>
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:24px 0;">
-              <tr><td align="center" style="background-color:#ecfdf5;border:1px dashed #059669;border-radius:8px;padding:20px;">
-                <div style="font-size:32px;font-weight:700;letter-spacing:8px;color:#059669;">{{otp}}</div>
-                <div style="font-size:12px;color:#6b7280;margin-top:8px;text-transform:uppercase;letter-spacing:1px;">Your Verification Code</div>
-              </td></tr>
-            </table>
-            <p style="margin:0;font-size:14px;color:#374151;line-height:1.65;">This OTP is valid for <strong>{{expiry}} minutes</strong>. If you did not request this, please ignore this email.</p>
-          </td>
-        </tr>
-        <tr>
-          <td style="background-color:#f9fafb;padding:24px 32px;border-top:1px solid #e5e7eb;">
-            <p style="margin:0 0 8px 0;font-size:13px;color:#4b5563;line-height:1.5;"><strong>Pradeep Medical Store</strong><br />Main Market, Mathura, Uttar Pradesh 281001<br />Phone: +91 99999 99999 | Email: care@pradeepmedical.com</p>
-            <p style="margin:0;font-size:12px;color:#9ca3af;line-height:1.5;">&copy; Pradeep Medical Store. All rights reserved.</p>
-          </td>
-        </tr>
-      </table>
-    </td></tr>
-  </table>
-</body>
-</html>`,
+    body: darkEmailTemplate({
+      eyebrow: "Verify Your Email",
+      content: `<h1 style="margin:0 0 16px 0;font-size:20px;font-weight:600;color:#f1f5f9;">Hello {{name}},</h1>
+<p style="margin:0 0 16px 0;font-size:15px;line-height:1.65;color:#cbd5e1;">Welcome to Pradeep Medical Store! Please use the OTP below to verify your email address and complete your registration.</p>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:24px 0;">
+  <tr><td align="center" style="background-color:#0f172a;border:1px dashed #10b981;border-radius:12px;padding:20px;">
+    <div style="font-size:32px;font-weight:700;letter-spacing:8px;color:#10b981;">{{otp}}</div>
+    <div style="font-size:12px;color:#94a3b8;margin-top:8px;text-transform:uppercase;letter-spacing:1px;">Your Verification Code</div>
+  </td></tr>
+</table>
+<p style="margin:0;font-size:14px;color:#cbd5e1;line-height:1.65;">This OTP is valid for <strong style="color:#10b981;">{{expiry}} minutes</strong>. If you did not request this, please ignore this email.</p>`,
+    }),
   },
   {
     key: "login_otp",
@@ -522,43 +549,18 @@ export const DEFAULT_TEMPLATES: Array<{
     channel: "email",
     subject: "Your PMS Login OTP - {{otp}}",
     variables: ["name", "otp", "expiry"],
-    body: `<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /></head>
-<body style="margin:0;padding:0;background-color:#f4f6f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1f2937;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f6f5;padding:24px 0;">
-    <tr><td align="center">
-      <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
-        <tr>
-          <td style="background:linear-gradient(135deg,#059669 0%,#0d9488 100%);padding:24px 32px;text-align:center;">
-            <div style="font-size:22px;font-weight:700;color:#ffffff;letter-spacing:0.3px;"><span style="vertical-align:middle;margin-right:8px;font-size:26px;">&#128274;</span> Pradeep Medical Store</div>
-            <div style="font-size:12px;color:#d1fae5;margin-top:6px;letter-spacing:1px;text-transform:uppercase;">Login Verification</div>
-          </td>
-        </tr>
-        <tr>
-          <td style="padding:32px;">
-            <h1 style="margin:0 0 16px 0;font-size:20px;font-weight:600;color:#111827;">Hello {{name}},</h1>
-            <p style="margin:0 0 16px 0;font-size:15px;line-height:1.65;color:#374151;">Use the OTP below to securely log in to your Pradeep Medical Store account.</p>
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:24px 0;">
-              <tr><td align="center" style="background-color:#ecfdf5;border:1px dashed #059669;border-radius:8px;padding:20px;">
-                <div style="font-size:32px;font-weight:700;letter-spacing:8px;color:#059669;">{{otp}}</div>
-                <div style="font-size:12px;color:#6b7280;margin-top:8px;text-transform:uppercase;letter-spacing:1px;">Your Login Code</div>
-              </td></tr>
-            </table>
-            <p style="margin:0;font-size:14px;color:#374151;line-height:1.65;">This OTP is valid for <strong>{{expiry}} minutes</strong>. If you did not attempt to log in, please secure your account and contact us immediately.</p>
-          </td>
-        </tr>
-        <tr>
-          <td style="background-color:#f9fafb;padding:24px 32px;border-top:1px solid #e5e7eb;">
-            <p style="margin:0 0 8px 0;font-size:13px;color:#4b5563;line-height:1.5;"><strong>Pradeep Medical Store</strong><br />Main Market, Mathura, Uttar Pradesh 281001<br />Phone: +91 99999 99999 | Email: care@pradeepmedical.com</p>
-            <p style="margin:0;font-size:12px;color:#9ca3af;line-height:1.5;">&copy; Pradeep Medical Store. All rights reserved.</p>
-          </td>
-        </tr>
-      </table>
-    </td></tr>
-  </table>
-</body>
-</html>`,
+    body: darkEmailTemplate({
+      eyebrow: "Login Verification",
+      content: `<h1 style="margin:0 0 16px 0;font-size:20px;font-weight:600;color:#f1f5f9;">Hello {{name}},</h1>
+<p style="margin:0 0 16px 0;font-size:15px;line-height:1.65;color:#cbd5e1;">Use the OTP below to securely log in to your Pradeep Medical Store account.</p>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:24px 0;">
+  <tr><td align="center" style="background-color:#0f172a;border:1px dashed #10b981;border-radius:12px;padding:20px;">
+    <div style="font-size:32px;font-weight:700;letter-spacing:8px;color:#10b981;">{{otp}}</div>
+    <div style="font-size:12px;color:#94a3b8;margin-top:8px;text-transform:uppercase;letter-spacing:1px;">Your Login Code</div>
+  </td></tr>
+</table>
+<p style="margin:0;font-size:14px;color:#cbd5e1;line-height:1.65;">This OTP is valid for <strong style="color:#10b981;">{{expiry}} minutes</strong>. If you did not attempt to log in, please secure your account and contact us immediately.</p>`,
+    }),
   },
   {
     key: "order_confirmed",
@@ -566,42 +568,17 @@ export const DEFAULT_TEMPLATES: Array<{
     channel: "email",
     subject: "Order Confirmed - {{orderNumber}}",
     variables: ["name", "orderNumber", "amount", "paymentMethod"],
-    body: `<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /></head>
-<body style="margin:0;padding:0;background-color:#f4f6f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1f2937;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f6f5;padding:24px 0;">
-    <tr><td align="center">
-      <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
-        <tr>
-          <td style="background:linear-gradient(135deg,#059669 0%,#0d9488 100%);padding:24px 32px;text-align:center;">
-            <div style="font-size:22px;font-weight:700;color:#ffffff;letter-spacing:0.3px;"><span style="vertical-align:middle;margin-right:8px;font-size:26px;">&#128138;</span> Pradeep Medical Store</div>
-            <div style="font-size:12px;color:#d1fae5;margin-top:6px;letter-spacing:1px;text-transform:uppercase;">Order Confirmed</div>
-          </td>
-        </tr>
-        <tr>
-          <td style="padding:32px;">
-            <h1 style="margin:0 0 16px 0;font-size:20px;font-weight:600;color:#111827;">Hello {{name}},</h1>
-            <p style="margin:0 0 24px 0;font-size:15px;line-height:1.65;color:#374151;">Thank you for your order! We've received your order and it's now being processed. Here's a summary of your purchase:</p>
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:24px;">
-              <tr><td style="padding:16px 20px;border-bottom:1px solid #e5e7eb;font-size:14px;color:#6b7280;">Order Number</td><td style="padding:16px 20px;border-bottom:1px solid #e5e7eb;font-size:14px;font-weight:600;color:#111827;text-align:right;">{{orderNumber}}</td></tr>
-              <tr><td style="padding:16px 20px;border-bottom:1px solid #e5e7eb;font-size:14px;color:#6b7280;">Order Total</td><td style="padding:16px 20px;border-bottom:1px solid #e5e7eb;font-size:14px;font-weight:600;color:#059669;text-align:right;">Rs. {{amount}}</td></tr>
-              <tr><td style="padding:16px 20px;font-size:14px;color:#6b7280;">Payment Method</td><td style="padding:16px 20px;font-size:14px;font-weight:600;color:#111827;text-align:right;">{{paymentMethod}}</td></tr>
-            </table>
-            <p style="margin:0;font-size:14px;color:#374151;line-height:1.65;">We will notify you when your order is packed and out for delivery. If you have any questions, feel free to reach out to us.</p>
-          </td>
-        </tr>
-        <tr>
-          <td style="background-color:#f9fafb;padding:24px 32px;border-top:1px solid #e5e7eb;">
-            <p style="margin:0 0 8px 0;font-size:13px;color:#4b5563;line-height:1.5;"><strong>Pradeep Medical Store</strong><br />Main Market, Mathura, Uttar Pradesh 281001<br />Phone: +91 99999 99999 | Email: care@pradeepmedical.com</p>
-            <p style="margin:0;font-size:12px;color:#9ca3af;line-height:1.5;">&copy; Pradeep Medical Store. All rights reserved.</p>
-          </td>
-        </tr>
-      </table>
-    </td></tr>
-  </table>
-</body>
-</html>`,
+    body: darkEmailTemplate({
+      eyebrow: "Order Confirmed",
+      content: `<h1 style="margin:0 0 16px 0;font-size:20px;font-weight:600;color:#f1f5f9;">Hello {{name}},</h1>
+<p style="margin:0 0 24px 0;font-size:15px;line-height:1.65;color:#cbd5e1;">Thank you for your order! We've received your order and it's now being processed. Here's a summary of your purchase:</p>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#0f172a;border:1px solid #334155;border-radius:12px;margin-bottom:24px;">
+  <tr><td style="padding:14px 20px;border-bottom:1px solid #334155;font-size:14px;color:#94a3b8;">Order Number</td><td style="padding:14px 20px;border-bottom:1px solid #334155;font-size:14px;font-weight:600;color:#f1f5f9;text-align:right;">{{orderNumber}}</td></tr>
+  <tr><td style="padding:14px 20px;border-bottom:1px solid #334155;font-size:14px;color:#94a3b8;">Order Total</td><td style="padding:14px 20px;border-bottom:1px solid #334155;font-size:14px;font-weight:700;color:#10b981;text-align:right;">Rs. {{amount}}</td></tr>
+  <tr><td style="padding:14px 20px;font-size:14px;color:#94a3b8;">Payment Method</td><td style="padding:14px 20px;font-size:14px;font-weight:600;color:#f1f5f9;text-align:right;">{{paymentMethod}}</td></tr>
+</table>
+<p style="margin:0;font-size:14px;color:#cbd5e1;line-height:1.65;">We will notify you when your order is packed and out for delivery. If you have any questions, feel free to reach out to us.</p>`,
+    }),
   },
   {
     key: "order_packed",
@@ -609,43 +586,18 @@ export const DEFAULT_TEMPLATES: Array<{
     channel: "email",
     subject: "Your Order is Packed - {{orderNumber}}",
     variables: ["name", "orderNumber"],
-    body: `<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /></head>
-<body style="margin:0;padding:0;background-color:#f4f6f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1f2937;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f6f5;padding:24px 0;">
-    <tr><td align="center">
-      <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
-        <tr>
-          <td style="background:linear-gradient(135deg,#059669 0%,#0d9488 100%);padding:24px 32px;text-align:center;">
-            <div style="font-size:22px;font-weight:700;color:#ffffff;letter-spacing:0.3px;"><span style="vertical-align:middle;margin-right:8px;font-size:26px;">&#128230;</span> Pradeep Medical Store</div>
-            <div style="font-size:12px;color:#d1fae5;margin-top:6px;letter-spacing:1px;text-transform:uppercase;">Order Packed</div>
-          </td>
-        </tr>
-        <tr>
-          <td style="padding:32px;">
-            <h1 style="margin:0 0 16px 0;font-size:20px;font-weight:600;color:#111827;">Hello {{name}},</h1>
-            <p style="margin:0 0 24px 0;font-size:15px;line-height:1.65;color:#374151;">Good news! Your order has been carefully packed by our pharmacy team and is ready for dispatch.</p>
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#ecfdf5;border-left:4px solid #059669;border-radius:6px;margin-bottom:24px;">
-              <tr><td style="padding:16px 20px;font-size:14px;color:#065f46;">
-                <strong>Order Number:</strong> {{orderNumber}}<br />
-                <strong>Status:</strong> Packed &mdash; Dispatching Soon
-              </td></tr>
-            </table>
-            <p style="margin:0;font-size:14px;color:#374151;line-height:1.65;">We'll notify you as soon as your order is out for delivery. Thank you for choosing Pradeep Medical Store.</p>
-          </td>
-        </tr>
-        <tr>
-          <td style="background-color:#f9fafb;padding:24px 32px;border-top:1px solid #e5e7eb;">
-            <p style="margin:0 0 8px 0;font-size:13px;color:#4b5563;line-height:1.5;"><strong>Pradeep Medical Store</strong><br />Main Market, Mathura, Uttar Pradesh 281001<br />Phone: +91 99999 99999 | Email: care@pradeepmedical.com</p>
-            <p style="margin:0;font-size:12px;color:#9ca3af;line-height:1.5;">&copy; Pradeep Medical Store. All rights reserved.</p>
-          </td>
-        </tr>
-      </table>
-    </td></tr>
-  </table>
-</body>
-</html>`,
+    body: darkEmailTemplate({
+      eyebrow: "Order Packed",
+      content: `<h1 style="margin:0 0 16px 0;font-size:20px;font-weight:600;color:#f1f5f9;">Hello {{name}},</h1>
+<p style="margin:0 0 24px 0;font-size:15px;line-height:1.65;color:#cbd5e1;">Good news! Your order has been carefully packed by our pharmacy team and is ready for dispatch.</p>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#0f172a;border-left:4px solid #10b981;border-radius:8px;margin-bottom:24px;">
+  <tr><td style="padding:16px 20px;font-size:14px;color:#d1fae5;">
+    <strong>Order Number:</strong> {{orderNumber}}<br />
+    <strong>Status:</strong> Packed &mdash; Dispatching Soon
+  </td></tr>
+</table>
+<p style="margin:0;font-size:14px;color:#cbd5e1;line-height:1.65;">We'll notify you as soon as your order is out for delivery. Thank you for choosing Pradeep Medical Store.</p>`,
+    }),
   },
   {
     key: "order_out_for_delivery",
@@ -653,43 +605,18 @@ export const DEFAULT_TEMPLATES: Array<{
     channel: "email",
     subject: "Out for Delivery - {{orderNumber}}",
     variables: ["name", "orderNumber"],
-    body: `<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /></head>
-<body style="margin:0;padding:0;background-color:#f4f6f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1f2937;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f6f5;padding:24px 0;">
-    <tr><td align="center">
-      <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
-        <tr>
-          <td style="background:linear-gradient(135deg,#059669 0%,#0d9488 100%);padding:24px 32px;text-align:center;">
-            <div style="font-size:22px;font-weight:700;color:#ffffff;letter-spacing:0.3px;"><span style="vertical-align:middle;margin-right:8px;font-size:26px;">&#128666;</span> Pradeep Medical Store</div>
-            <div style="font-size:12px;color:#d1fae5;margin-top:6px;letter-spacing:1px;text-transform:uppercase;">Out for Delivery</div>
-          </td>
-        </tr>
-        <tr>
-          <td style="padding:32px;">
-            <h1 style="margin:0 0 16px 0;font-size:20px;font-weight:600;color:#111827;">Hello {{name}},</h1>
-            <p style="margin:0 0 24px 0;font-size:15px;line-height:1.65;color:#374151;">Your order is on its way! Our delivery executive is heading to your address and will reach you shortly.</p>
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#ecfdf5;border-left:4px solid #059669;border-radius:6px;margin-bottom:24px;">
-              <tr><td style="padding:16px 20px;font-size:14px;color:#065f46;">
-                <strong>Order Number:</strong> {{orderNumber}}<br />
-                <strong>Status:</strong> Out for Delivery
-              </td></tr>
-            </table>
-            <p style="margin:0;font-size:14px;color:#374151;line-height:1.65;">Please keep your phone handy &mdash; our delivery executive may call you to confirm your location. Thank you for choosing Pradeep Medical Store.</p>
-          </td>
-        </tr>
-        <tr>
-          <td style="background-color:#f9fafb;padding:24px 32px;border-top:1px solid #e5e7eb;">
-            <p style="margin:0 0 8px 0;font-size:13px;color:#4b5563;line-height:1.5;"><strong>Pradeep Medical Store</strong><br />Main Market, Mathura, Uttar Pradesh 281001<br />Phone: +91 99999 99999 | Email: care@pradeepmedical.com</p>
-            <p style="margin:0;font-size:12px;color:#9ca3af;line-height:1.5;">&copy; Pradeep Medical Store. All rights reserved.</p>
-          </td>
-        </tr>
-      </table>
-    </td></tr>
-  </table>
-</body>
-</html>`,
+    body: darkEmailTemplate({
+      eyebrow: "Out for Delivery",
+      content: `<h1 style="margin:0 0 16px 0;font-size:20px;font-weight:600;color:#f1f5f9;">Hello {{name}},</h1>
+<p style="margin:0 0 24px 0;font-size:15px;line-height:1.65;color:#cbd5e1;">Your order is on its way! Our delivery executive is heading to your address and will reach you shortly.</p>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#0f172a;border-left:4px solid #10b981;border-radius:8px;margin-bottom:24px;">
+  <tr><td style="padding:16px 20px;font-size:14px;color:#d1fae5;">
+    <strong>Order Number:</strong> {{orderNumber}}<br />
+    <strong>Status:</strong> Out for Delivery
+  </td></tr>
+</table>
+<p style="margin:0;font-size:14px;color:#cbd5e1;line-height:1.65;">Please keep your phone handy &mdash; our delivery executive may call you to confirm your location. Thank you for choosing Pradeep Medical Store.</p>`,
+    }),
   },
   {
     key: "order_delivered",
@@ -697,48 +624,23 @@ export const DEFAULT_TEMPLATES: Array<{
     channel: "email",
     subject: "Order Delivered - {{orderNumber}}",
     variables: ["name", "orderNumber"],
-    body: `<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /></head>
-<body style="margin:0;padding:0;background-color:#f4f6f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1f2937;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f6f5;padding:24px 0;">
-    <tr><td align="center">
-      <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
-        <tr>
-          <td style="background:linear-gradient(135deg,#059669 0%,#0d9488 100%);padding:24px 32px;text-align:center;">
-            <div style="font-size:22px;font-weight:700;color:#ffffff;letter-spacing:0.3px;"><span style="vertical-align:middle;margin-right:8px;font-size:26px;">&#9989;</span> Pradeep Medical Store</div>
-            <div style="font-size:12px;color:#d1fae5;margin-top:6px;letter-spacing:1px;text-transform:uppercase;">Order Delivered</div>
-          </td>
-        </tr>
-        <tr>
-          <td style="padding:32px;">
-            <h1 style="margin:0 0 16px 0;font-size:20px;font-weight:600;color:#111827;">Hello {{name}},</h1>
-            <p style="margin:0 0 24px 0;font-size:15px;line-height:1.65;color:#374151;">Great news! Your order has been successfully delivered. Thank you for shopping with Pradeep Medical Store &mdash; we hope to serve you again soon.</p>
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#ecfdf5;border-left:4px solid #059669;border-radius:6px;margin-bottom:24px;">
-              <tr><td style="padding:16px 20px;font-size:14px;color:#065f46;">
-                <strong>Order Number:</strong> {{orderNumber}}<br />
-                <strong>Status:</strong> Delivered
-              </td></tr>
-            </table>
-            <p style="margin:0 0 24px 0;font-size:14px;color:#374151;line-height:1.65;">We'd love to hear your feedback! Your review helps other customers and helps us improve our service.</p>
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-              <tr><td align="center">
-                <a href="https://pradeepmedical.com" target="_blank" rel="noopener noreferrer" style="display:inline-block;background-color:#059669;color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;padding:12px 28px;border-radius:8px;">Share Your Feedback</a>
-              </td></tr>
-            </table>
-          </td>
-        </tr>
-        <tr>
-          <td style="background-color:#f9fafb;padding:24px 32px;border-top:1px solid #e5e7eb;">
-            <p style="margin:0 0 8px 0;font-size:13px;color:#4b5563;line-height:1.5;"><strong>Pradeep Medical Store</strong><br />Main Market, Mathura, Uttar Pradesh 281001<br />Phone: +91 99999 99999 | Email: care@pradeepmedical.com</p>
-            <p style="margin:0;font-size:12px;color:#9ca3af;line-height:1.5;">&copy; Pradeep Medical Store. All rights reserved.</p>
-          </td>
-        </tr>
-      </table>
-    </td></tr>
-  </table>
-</body>
-</html>`,
+    body: darkEmailTemplate({
+      eyebrow: "Order Delivered",
+      content: `<h1 style="margin:0 0 16px 0;font-size:20px;font-weight:600;color:#f1f5f9;">Hello {{name}},</h1>
+<p style="margin:0 0 24px 0;font-size:15px;line-height:1.65;color:#cbd5e1;">Great news! Your order has been successfully delivered. Thank you for shopping with Pradeep Medical Store &mdash; we hope to serve you again soon.</p>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#0f172a;border-left:4px solid #10b981;border-radius:8px;margin-bottom:24px;">
+  <tr><td style="padding:16px 20px;font-size:14px;color:#d1fae5;">
+    <strong>Order Number:</strong> {{orderNumber}}<br />
+    <strong>Status:</strong> Delivered
+  </td></tr>
+</table>
+<p style="margin:0 0 24px 0;font-size:14px;color:#cbd5e1;line-height:1.65;">We'd love to hear your feedback! Your review helps other customers and helps us improve our service.</p>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+  <tr><td align="center">
+    <a href="https://pradeepmedical.com" target="_blank" rel="noopener noreferrer" style="display:inline-block;background:linear-gradient(135deg,#059669 0%,#0d9488 100%);color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;padding:12px 28px;border-radius:8px;">Share Your Feedback</a>
+  </td></tr>
+</table>`,
+    }),
   },
   {
     key: "order_cancelled",
@@ -746,44 +648,19 @@ export const DEFAULT_TEMPLATES: Array<{
     channel: "email",
     subject: "Order Cancelled - {{orderNumber}}",
     variables: ["name", "orderNumber", "reason"],
-    body: `<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /></head>
-<body style="margin:0;padding:0;background-color:#f4f6f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1f2937;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f6f5;padding:24px 0;">
-    <tr><td align="center">
-      <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
-        <tr>
-          <td style="background:linear-gradient(135deg,#059669 0%,#0d9488 100%);padding:24px 32px;text-align:center;">
-            <div style="font-size:22px;font-weight:700;color:#ffffff;letter-spacing:0.3px;"><span style="vertical-align:middle;margin-right:8px;font-size:26px;">&#9940;</span> Pradeep Medical Store</div>
-            <div style="font-size:12px;color:#d1fae5;margin-top:6px;letter-spacing:1px;text-transform:uppercase;">Order Cancelled</div>
-          </td>
-        </tr>
-        <tr>
-          <td style="padding:32px;">
-            <h1 style="margin:0 0 16px 0;font-size:20px;font-weight:600;color:#111827;">Hello {{name}},</h1>
-            <p style="margin:0 0 24px 0;font-size:15px;line-height:1.65;color:#374151;">Your order has been cancelled as per your request or due to unforeseen circumstances. We're sorry for any inconvenience caused.</p>
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#fef2f2;border-left:4px solid #dc2626;border-radius:6px;margin-bottom:24px;">
-              <tr><td style="padding:16px 20px;font-size:14px;color:#991b1b;">
-                <strong>Order Number:</strong> {{orderNumber}}<br />
-                <strong>Status:</strong> Cancelled<br />
-                <strong>Reason:</strong> {{reason}}
-              </td></tr>
-            </table>
-            <p style="margin:0;font-size:14px;color:#374151;line-height:1.65;">If you have any questions about this cancellation or wish to place a new order, please don't hesitate to contact us. We're here to help.</p>
-          </td>
-        </tr>
-        <tr>
-          <td style="background-color:#f9fafb;padding:24px 32px;border-top:1px solid #e5e7eb;">
-            <p style="margin:0 0 8px 0;font-size:13px;color:#4b5563;line-height:1.5;"><strong>Pradeep Medical Store</strong><br />Main Market, Mathura, Uttar Pradesh 281001<br />Phone: +91 99999 99999 | Email: care@pradeepmedical.com</p>
-            <p style="margin:0;font-size:12px;color:#9ca3af;line-height:1.5;">&copy; Pradeep Medical Store. All rights reserved.</p>
-          </td>
-        </tr>
-      </table>
-    </td></tr>
-  </table>
-</body>
-</html>`,
+    body: darkEmailTemplate({
+      eyebrow: "Order Cancelled",
+      content: `<h1 style="margin:0 0 16px 0;font-size:20px;font-weight:600;color:#f1f5f9;">Hello {{name}},</h1>
+<p style="margin:0 0 24px 0;font-size:15px;line-height:1.65;color:#cbd5e1;">Your order has been cancelled as per your request or due to unforeseen circumstances. We're sorry for any inconvenience caused.</p>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#3f1d1d;border-left:4px solid #ef4444;border-radius:8px;margin-bottom:24px;">
+  <tr><td style="padding:16px 20px;font-size:14px;color:#fecaca;">
+    <strong>Order Number:</strong> {{orderNumber}}<br />
+    <strong>Status:</strong> Cancelled<br />
+    <strong>Reason:</strong> {{reason}}
+  </td></tr>
+</table>
+<p style="margin:0;font-size:14px;color:#cbd5e1;line-height:1.65;">If you have any questions about this cancellation or wish to place a new order, please don't hesitate to contact us. We're here to help.</p>`,
+    }),
   },
   {
     key: "prescription_submitted",
@@ -791,45 +668,20 @@ export const DEFAULT_TEMPLATES: Array<{
     channel: "email",
     subject: "Prescription Received - Pradeep Medical Store",
     variables: ["name"],
-    body: `<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /></head>
-<body style="margin:0;padding:0;background-color:#f4f6f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1f2937;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f6f5;padding:24px 0;">
-    <tr><td align="center">
-      <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
-        <tr>
-          <td style="background:linear-gradient(135deg,#059669 0%,#0d9488 100%);padding:24px 32px;text-align:center;">
-            <div style="font-size:22px;font-weight:700;color:#ffffff;letter-spacing:0.3px;"><span style="vertical-align:middle;margin-right:8px;font-size:26px;">&#128221;</span> Pradeep Medical Store</div>
-            <div style="font-size:12px;color:#d1fae5;margin-top:6px;letter-spacing:1px;text-transform:uppercase;">Prescription Received</div>
-          </td>
-        </tr>
-        <tr>
-          <td style="padding:32px;">
-            <h1 style="margin:0 0 16px 0;font-size:20px;font-weight:600;color:#111827;">Hello {{name}},</h1>
-            <p style="margin:0 0 24px 0;font-size:15px;line-height:1.65;color:#374151;">Thank you for uploading your prescription with Pradeep Medical Store. Our licensed pharmacists will review it shortly and verify the medicines against your doctor's instructions.</p>
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#ecfdf5;border-left:4px solid #059669;border-radius:6px;margin-bottom:24px;">
-              <tr><td style="padding:16px 20px;font-size:14px;color:#065f46;">
-                <strong>What happens next?</strong><br />
-                1. Our pharmacist reviews your prescription<br />
-                2. We add the verified medicines to your cart<br />
-                3. You'll receive a notification once approved
-              </td></tr>
-            </table>
-            <p style="margin:0;font-size:14px;color:#374151;line-height:1.65;">This process typically takes 30-60 minutes during business hours. If you have any urgent queries, please call us at +91 99999 99999.</p>
-          </td>
-        </tr>
-        <tr>
-          <td style="background-color:#f9fafb;padding:24px 32px;border-top:1px solid #e5e7eb;">
-            <p style="margin:0 0 8px 0;font-size:13px;color:#4b5563;line-height:1.5;"><strong>Pradeep Medical Store</strong><br />Main Market, Mathura, Uttar Pradesh 281001<br />Phone: +91 99999 99999 | Email: care@pradeepmedical.com</p>
-            <p style="margin:0;font-size:12px;color:#9ca3af;line-height:1.5;">&copy; Pradeep Medical Store. All rights reserved.</p>
-          </td>
-        </tr>
-      </table>
-    </td></tr>
-  </table>
-</body>
-</html>`,
+    body: darkEmailTemplate({
+      eyebrow: "Prescription Received",
+      content: `<h1 style="margin:0 0 16px 0;font-size:20px;font-weight:600;color:#f1f5f9;">Hello {{name}},</h1>
+<p style="margin:0 0 24px 0;font-size:15px;line-height:1.65;color:#cbd5e1;">Thank you for uploading your prescription with Pradeep Medical Store. Our licensed pharmacists will review it shortly and verify the medicines against your doctor's instructions.</p>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#0f172a;border-left:4px solid #10b981;border-radius:8px;margin-bottom:24px;">
+  <tr><td style="padding:16px 20px;font-size:14px;color:#d1fae5;">
+    <strong>What happens next?</strong><br />
+    1. Our pharmacist reviews your prescription<br />
+    2. We add the verified medicines to your cart<br />
+    3. You'll receive a notification once approved
+  </td></tr>
+</table>
+<p style="margin:0;font-size:14px;color:#cbd5e1;line-height:1.65;">This process typically takes 30-60 minutes during business hours. If you have any urgent queries, please call us at +91 99999 99999.</p>`,
+    }),
   },
   {
     key: "prescription_under_review",
@@ -837,43 +689,18 @@ export const DEFAULT_TEMPLATES: Array<{
     channel: "email",
     subject: "Prescription Under Review - Pradeep Medical Store",
     variables: ["name"],
-    body: `<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /></head>
-<body style="margin:0;padding:0;background-color:#f4f6f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1f2937;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f6f5;padding:24px 0;">
-    <tr><td align="center">
-      <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
-        <tr>
-          <td style="background:linear-gradient(135deg,#059669 0%,#0d9488 100%);padding:24px 32px;text-align:center;">
-            <div style="font-size:22px;font-weight:700;color:#ffffff;letter-spacing:0.3px;"><span style="vertical-align:middle;margin-right:8px;font-size:26px;">&#128269;</span> Pradeep Medical Store</div>
-            <div style="font-size:12px;color:#d1fae5;margin-top:6px;letter-spacing:1px;text-transform:uppercase;">Prescription Under Review</div>
-          </td>
-        </tr>
-        <tr>
-          <td style="padding:32px;">
-            <h1 style="margin:0 0 16px 0;font-size:20px;font-weight:600;color:#111827;">Hello {{name}},</h1>
-            <p style="margin:0 0 24px 0;font-size:15px;line-height:1.65;color:#374151;">Good news! Our licensed pharmacist is now reviewing your prescription. We're verifying the medicines against your doctor's instructions and will update you shortly.</p>
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#fef3c7;border-left:4px solid #d97706;border-radius:6px;margin-bottom:24px;">
-              <tr><td style="padding:16px 20px;font-size:14px;color:#92400e;">
-                <strong>Status:</strong> Under Review<br />
-                <strong>What happens next:</strong> We'll either approve the prescription or reach out if we need more information.
-              </td></tr>
-            </table>
-            <p style="margin:0;font-size:14px;color:#374151;line-height:1.65;">This process typically takes 30-60 minutes during business hours. For any urgent queries, please call us at +91 99999 99999.</p>
-          </td>
-        </tr>
-        <tr>
-          <td style="background-color:#f9fafb;padding:24px 32px;border-top:1px solid #e5e7eb;">
-            <p style="margin:0 0 8px 0;font-size:13px;color:#4b5563;line-height:1.5;"><strong>Pradeep Medical Store</strong><br />Main Market, Mathura, Uttar Pradesh 281001<br />Phone: +91 99999 99999 | Email: care@pradeepmedical.com</p>
-            <p style="margin:0;font-size:12px;color:#9ca3af;line-height:1.5;">&copy; Pradeep Medical Store. All rights reserved.</p>
-          </td>
-        </tr>
-      </table>
-    </td></tr>
-  </table>
-</body>
-</html>`,
+    body: darkEmailTemplate({
+      eyebrow: "Prescription Under Review",
+      content: `<h1 style="margin:0 0 16px 0;font-size:20px;font-weight:600;color:#f1f5f9;">Hello {{name}},</h1>
+<p style="margin:0 0 24px 0;font-size:15px;line-height:1.65;color:#cbd5e1;">Good news! Our licensed pharmacist is now reviewing your prescription. We're verifying the medicines against your doctor's instructions and will update you shortly.</p>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#3a2f12;border-left:4px solid #f59e0b;border-radius:8px;margin-bottom:24px;">
+  <tr><td style="padding:16px 20px;font-size:14px;color:#fde68a;">
+    <strong>Status:</strong> Under Review<br />
+    <strong>What happens next:</strong> We'll either approve the prescription or reach out if we need more information.
+  </td></tr>
+</table>
+<p style="margin:0;font-size:14px;color:#cbd5e1;line-height:1.65;">This process typically takes 30-60 minutes during business hours. For any urgent queries, please call us at +91 99999 99999.</p>`,
+    }),
   },
   {
     key: "prescription_approved",
@@ -881,47 +708,22 @@ export const DEFAULT_TEMPLATES: Array<{
     channel: "email",
     subject: "Prescription Approved - Pradeep Medical Store",
     variables: ["name"],
-    body: `<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /></head>
-<body style="margin:0;padding:0;background-color:#f4f6f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1f2937;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f6f5;padding:24px 0;">
-    <tr><td align="center">
-      <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
-        <tr>
-          <td style="background:linear-gradient(135deg,#059669 0%,#0d9488 100%);padding:24px 32px;text-align:center;">
-            <div style="font-size:22px;font-weight:700;color:#ffffff;letter-spacing:0.3px;"><span style="vertical-align:middle;margin-right:8px;font-size:26px;">&#9989;</span> Pradeep Medical Store</div>
-            <div style="font-size:12px;color:#d1fae5;margin-top:6px;letter-spacing:1px;text-transform:uppercase;">Prescription Approved</div>
-          </td>
-        </tr>
-        <tr>
-          <td style="padding:32px;">
-            <h1 style="margin:0 0 16px 0;font-size:20px;font-weight:600;color:#111827;">Hello {{name}},</h1>
-            <p style="margin:0 0 24px 0;font-size:15px;line-height:1.65;color:#374151;">Great news! Your prescription has been reviewed and approved by our licensed pharmacist. The verified medicines have been added to your cart and are ready for checkout.</p>
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#ecfdf5;border-left:4px solid #059669;border-radius:6px;margin-bottom:24px;">
-              <tr><td style="padding:16px 20px;font-size:14px;color:#065f46;">
-                <strong>Status:</strong> Approved &amp; Ready for Checkout<br />
-                <strong>Next Step:</strong> Complete your purchase to get your medicines delivered.
-              </td></tr>
-            </table>
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-              <tr><td align="center">
-                <a href="https://pradeepmedical.com" target="_blank" rel="noopener noreferrer" style="display:inline-block;background-color:#059669;color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;padding:12px 28px;border-radius:8px;">Complete Your Order</a>
-              </td></tr>
-            </table>
-          </td>
-        </tr>
-        <tr>
-          <td style="background-color:#f9fafb;padding:24px 32px;border-top:1px solid #e5e7eb;">
-            <p style="margin:0 0 8px 0;font-size:13px;color:#4b5563;line-height:1.5;"><strong>Pradeep Medical Store</strong><br />Main Market, Mathura, Uttar Pradesh 281001<br />Phone: +91 99999 99999 | Email: care@pradeepmedical.com</p>
-            <p style="margin:0;font-size:12px;color:#9ca3af;line-height:1.5;">&copy; Pradeep Medical Store. All rights reserved.</p>
-          </td>
-        </tr>
-      </table>
-    </td></tr>
-  </table>
-</body>
-</html>`,
+    body: darkEmailTemplate({
+      eyebrow: "Prescription Approved",
+      content: `<h1 style="margin:0 0 16px 0;font-size:20px;font-weight:600;color:#f1f5f9;">Hello {{name}},</h1>
+<p style="margin:0 0 24px 0;font-size:15px;line-height:1.65;color:#cbd5e1;">Great news! Your prescription has been reviewed and approved by our licensed pharmacist. The verified medicines have been added to your cart and are ready for checkout.</p>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#0f172a;border-left:4px solid #10b981;border-radius:8px;margin-bottom:24px;">
+  <tr><td style="padding:16px 20px;font-size:14px;color:#d1fae5;">
+    <strong>Status:</strong> Approved &amp; Ready for Checkout<br />
+    <strong>Next Step:</strong> Complete your purchase to get your medicines delivered.
+  </td></tr>
+</table>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+  <tr><td align="center">
+    <a href="https://pradeepmedical.com" target="_blank" rel="noopener noreferrer" style="display:inline-block;background:linear-gradient(135deg,#059669 0%,#0d9488 100%);color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;padding:12px 28px;border-radius:8px;">Complete Your Order</a>
+  </td></tr>
+</table>`,
+    }),
   },
   {
     key: "prescription_completed",
@@ -929,43 +731,18 @@ export const DEFAULT_TEMPLATES: Array<{
     channel: "email",
     subject: "Your Prescription Order is Ready - Pradeep Medical Store",
     variables: ["name"],
-    body: `<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /></head>
-<body style="margin:0;padding:0;background-color:#f4f6f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1f2937;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f6f5;padding:24px 0;">
-    <tr><td align="center">
-      <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
-        <tr>
-          <td style="background:linear-gradient(135deg,#059669 0%,#0d9488 100%);padding:24px 32px;text-align:center;">
-            <div style="font-size:22px;font-weight:700;color:#ffffff;letter-spacing:0.3px;"><span style="vertical-align:middle;margin-right:8px;font-size:26px;">&#128722;</span> Pradeep Medical Store</div>
-            <div style="font-size:12px;color:#d1fae5;margin-top:6px;letter-spacing:1px;text-transform:uppercase;">Order Created</div>
-          </td>
-        </tr>
-        <tr>
-          <td style="padding:32px;">
-            <h1 style="margin:0 0 16px 0;font-size:20px;font-weight:600;color:#111827;">Hello {{name}},</h1>
-            <p style="margin:0 0 24px 0;font-size:15px;line-height:1.65;color:#374151;">Your prescription has been converted into a complete order. Our team has prepared your medicines and the order is now being processed for delivery.</p>
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#ecfdf5;border-left:4px solid #059669;border-radius:6px;margin-bottom:24px;">
-              <tr><td style="padding:16px 20px;font-size:14px;color:#065f46;">
-                <strong>Status:</strong> Order Created<br />
-                <strong>Next Step:</strong> You'll receive order status updates as we pack and dispatch your medicines.
-              </td></tr>
-            </table>
-            <p style="margin:0;font-size:14px;color:#374151;line-height:1.65;">Thank you for choosing Pradeep Medical Store. If you have any questions, please call us at +91 99999 99999.</p>
-          </td>
-        </tr>
-        <tr>
-          <td style="background-color:#f9fafb;padding:24px 32px;border-top:1px solid #e5e7eb;">
-            <p style="margin:0 0 8px 0;font-size:13px;color:#4b5563;line-height:1.5;"><strong>Pradeep Medical Store</strong><br />Main Market, Mathura, Uttar Pradesh 281001<br />Phone: +91 99999 99999 | Email: care@pradeepmedical.com</p>
-            <p style="margin:0;font-size:12px;color:#9ca3af;line-height:1.5;">&copy; Pradeep Medical Store. All rights reserved.</p>
-          </td>
-        </tr>
-      </table>
-    </td></tr>
-  </table>
-</body>
-</html>`,
+    body: darkEmailTemplate({
+      eyebrow: "Order Created",
+      content: `<h1 style="margin:0 0 16px 0;font-size:20px;font-weight:600;color:#f1f5f9;">Hello {{name}},</h1>
+<p style="margin:0 0 24px 0;font-size:15px;line-height:1.65;color:#cbd5e1;">Your prescription has been converted into a complete order. Our team has prepared your medicines and the order is now being processed for delivery.</p>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#0f172a;border-left:4px solid #10b981;border-radius:8px;margin-bottom:24px;">
+  <tr><td style="padding:16px 20px;font-size:14px;color:#d1fae5;">
+    <strong>Status:</strong> Order Created<br />
+    <strong>Next Step:</strong> You'll receive order status updates as we pack and dispatch your medicines.
+  </td></tr>
+</table>
+<p style="margin:0;font-size:14px;color:#cbd5e1;line-height:1.65;">Thank you for choosing Pradeep Medical Store. If you have any questions, please call us at +91 99999 99999.</p>`,
+    }),
   },
   {
     key: "prescription_rejected",
@@ -973,43 +750,18 @@ export const DEFAULT_TEMPLATES: Array<{
     channel: "email",
     subject: "Prescription Update - Pradeep Medical Store",
     variables: ["name", "reason"],
-    body: `<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /></head>
-<body style="margin:0;padding:0;background-color:#f4f6f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1f2937;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f6f5;padding:24px 0;">
-    <tr><td align="center">
-      <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
-        <tr>
-          <td style="background:linear-gradient(135deg,#059669 0%,#0d9488 100%);padding:24px 32px;text-align:center;">
-            <div style="font-size:22px;font-weight:700;color:#ffffff;letter-spacing:0.3px;"><span style="vertical-align:middle;margin-right:8px;font-size:26px;">&#9888;</span> Pradeep Medical Store</div>
-            <div style="font-size:12px;color:#d1fae5;margin-top:6px;letter-spacing:1px;text-transform:uppercase;">Prescription Update</div>
-          </td>
-        </tr>
-        <tr>
-          <td style="padding:32px;">
-            <h1 style="margin:0 0 16px 0;font-size:20px;font-weight:600;color:#111827;">Hello {{name}},</h1>
-            <p style="margin:0 0 24px 0;font-size:15px;line-height:1.65;color:#374151;">We've reviewed your prescription, but unfortunately we're unable to process it at this time. Please see the reason below:</p>
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#fef2f2;border-left:4px solid #dc2626;border-radius:6px;margin-bottom:24px;">
-              <tr><td style="padding:16px 20px;font-size:14px;color:#991b1b;">
-                <strong>Status:</strong> Rejected<br />
-                <strong>Reason:</strong> {{reason}}
-              </td></tr>
-            </table>
-            <p style="margin:0;font-size:14px;color:#374151;line-height:1.65;">Please upload a clearer copy of your prescription or contact our pharmacy team for assistance. We're happy to help you get the medicines you need.</p>
-          </td>
-        </tr>
-        <tr>
-          <td style="background-color:#f9fafb;padding:24px 32px;border-top:1px solid #e5e7eb;">
-            <p style="margin:0 0 8px 0;font-size:13px;color:#4b5563;line-height:1.5;"><strong>Pradeep Medical Store</strong><br />Main Market, Mathura, Uttar Pradesh 281001<br />Phone: +91 99999 99999 | Email: care@pradeepmedical.com</p>
-            <p style="margin:0;font-size:12px;color:#9ca3af;line-height:1.5;">&copy; Pradeep Medical Store. All rights reserved.</p>
-          </td>
-        </tr>
-      </table>
-    </td></tr>
-  </table>
-</body>
-</html>`,
+    body: darkEmailTemplate({
+      eyebrow: "Prescription Update",
+      content: `<h1 style="margin:0 0 16px 0;font-size:20px;font-weight:600;color:#f1f5f9;">Hello {{name}},</h1>
+<p style="margin:0 0 24px 0;font-size:15px;line-height:1.65;color:#cbd5e1;">We've reviewed your prescription, but unfortunately we're unable to process it at this time. Please see the reason below:</p>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#3f1d1d;border-left:4px solid #ef4444;border-radius:8px;margin-bottom:24px;">
+  <tr><td style="padding:16px 20px;font-size:14px;color:#fecaca;">
+    <strong>Status:</strong> Rejected<br />
+    <strong>Reason:</strong> {{reason}}
+  </td></tr>
+</table>
+<p style="margin:0;font-size:14px;color:#cbd5e1;line-height:1.65;">Please upload a clearer copy of your prescription or contact our pharmacy team for assistance. We're happy to help you get the medicines you need.</p>`,
+    }),
   },
   {
     key: "manual_request_under_review",
@@ -1017,43 +769,18 @@ export const DEFAULT_TEMPLATES: Array<{
     channel: "email",
     subject: "Medicine Request Under Review - Pradeep Medical Store",
     variables: ["name"],
-    body: `<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /></head>
-<body style="margin:0;padding:0;background-color:#f4f6f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1f2937;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f6f5;padding:24px 0;">
-    <tr><td align="center">
-      <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
-        <tr>
-          <td style="background:linear-gradient(135deg,#059669 0%,#0d9488 100%);padding:24px 32px;text-align:center;">
-            <div style="font-size:22px;font-weight:700;color:#ffffff;letter-spacing:0.3px;"><span style="vertical-align:middle;margin-right:8px;font-size:26px;">&#128269;</span> Pradeep Medical Store</div>
-            <div style="font-size:12px;color:#d1fae5;margin-top:6px;letter-spacing:1px;text-transform:uppercase;">Request Under Review</div>
-          </td>
-        </tr>
-        <tr>
-          <td style="padding:32px;">
-            <h1 style="margin:0 0 16px 0;font-size:20px;font-weight:600;color:#111827;">Hello {{name}},</h1>
-            <p style="margin:0 0 24px 0;font-size:15px;line-height:1.65;color:#374151;">Our pharmacy team is now reviewing the medicines you requested. We're checking availability and prices, and will update you shortly.</p>
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#fef3c7;border-left:4px solid #d97706;border-radius:6px;margin-bottom:24px;">
-              <tr><td style="padding:16px 20px;font-size:14px;color:#92400e;">
-                <strong>Status:</strong> Under Review<br />
-                <strong>What happens next:</strong> We'll either approve the request with prices, or reach out if any items are unavailable.
-              </td></tr>
-            </table>
-            <p style="margin:0;font-size:14px;color:#374151;line-height:1.65;">This process typically takes 30-60 minutes during business hours. For any urgent queries, please call us at +91 99999 99999.</p>
-          </td>
-        </tr>
-        <tr>
-          <td style="background-color:#f9fafb;padding:24px 32px;border-top:1px solid #e5e7eb;">
-            <p style="margin:0 0 8px 0;font-size:13px;color:#4b5563;line-height:1.5;"><strong>Pradeep Medical Store</strong><br />Main Market, Mathura, Uttar Pradesh 281001<br />Phone: +91 99999 99999 | Email: care@pradeepmedical.com</p>
-            <p style="margin:0;font-size:12px;color:#9ca3af;line-height:1.5;">&copy; Pradeep Medical Store. All rights reserved.</p>
-          </td>
-        </tr>
-      </table>
-    </td></tr>
-  </table>
-</body>
-</html>`,
+    body: darkEmailTemplate({
+      eyebrow: "Request Under Review",
+      content: `<h1 style="margin:0 0 16px 0;font-size:20px;font-weight:600;color:#f1f5f9;">Hello {{name}},</h1>
+<p style="margin:0 0 24px 0;font-size:15px;line-height:1.65;color:#cbd5e1;">Our pharmacy team is now reviewing the medicines you requested. We're checking availability and prices, and will update you shortly.</p>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#3a2f12;border-left:4px solid #f59e0b;border-radius:8px;margin-bottom:24px;">
+  <tr><td style="padding:16px 20px;font-size:14px;color:#fde68a;">
+    <strong>Status:</strong> Under Review<br />
+    <strong>What happens next:</strong> We'll either approve the request with prices, or reach out if any items are unavailable.
+  </td></tr>
+</table>
+<p style="margin:0;font-size:14px;color:#cbd5e1;line-height:1.65;">This process typically takes 30-60 minutes during business hours. For any urgent queries, please call us at +91 99999 99999.</p>`,
+    }),
   },
   {
     key: "manual_request_submitted",
@@ -1061,41 +788,16 @@ export const DEFAULT_TEMPLATES: Array<{
     channel: "email",
     subject: "Medicine Request Received - Pradeep Medical Store",
     variables: ["name", "medicineList"],
-    body: `<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /></head>
-<body style="margin:0;padding:0;background-color:#f4f6f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1f2937;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f6f5;padding:24px 0;">
-    <tr><td align="center">
-      <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
-        <tr>
-          <td style="background:linear-gradient(135deg,#059669 0%,#0d9488 100%);padding:24px 32px;text-align:center;">
-            <div style="font-size:22px;font-weight:700;color:#ffffff;letter-spacing:0.3px;"><span style="vertical-align:middle;margin-right:8px;font-size:26px;">&#128221;</span> Pradeep Medical Store</div>
-            <div style="font-size:12px;color:#d1fae5;margin-top:6px;letter-spacing:1px;text-transform:uppercase;">Medicine Request Received</div>
-          </td>
-        </tr>
-        <tr>
-          <td style="padding:32px;">
-            <h1 style="margin:0 0 16px 0;font-size:20px;font-weight:600;color:#111827;">Hello {{name}},</h1>
-            <p style="margin:0 0 24px 0;font-size:15px;line-height:1.65;color:#374151;">Thank you for your medicine request. Our pharmacy team is reviewing the items you requested and will add the available medicines to your cart shortly.</p>
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:24px;">
-              <tr><td style="padding:16px 20px;font-size:14px;color:#6b7280;border-bottom:1px solid #e5e7eb;font-weight:600;">Requested Medicines</td></tr>
-              <tr><td style="padding:16px 20px;font-size:14px;color:#111827;line-height:1.65;">{{medicineList}}</td></tr>
-            </table>
-            <p style="margin:0;font-size:14px;color:#374151;line-height:1.65;">We'll notify you as soon as your request is processed. For any urgent queries, please call us at +91 99999 99999.</p>
-          </td>
-        </tr>
-        <tr>
-          <td style="background-color:#f9fafb;padding:24px 32px;border-top:1px solid #e5e7eb;">
-            <p style="margin:0 0 8px 0;font-size:13px;color:#4b5563;line-height:1.5;"><strong>Pradeep Medical Store</strong><br />Main Market, Mathura, Uttar Pradesh 281001<br />Phone: +91 99999 99999 | Email: care@pradeepmedical.com</p>
-            <p style="margin:0;font-size:12px;color:#9ca3af;line-height:1.5;">&copy; Pradeep Medical Store. All rights reserved.</p>
-          </td>
-        </tr>
-      </table>
-    </td></tr>
-  </table>
-</body>
-</html>`,
+    body: darkEmailTemplate({
+      eyebrow: "Medicine Request Received",
+      content: `<h1 style="margin:0 0 16px 0;font-size:20px;font-weight:600;color:#f1f5f9;">Hello {{name}},</h1>
+<p style="margin:0 0 24px 0;font-size:15px;line-height:1.65;color:#cbd5e1;">Thank you for your medicine request. Our pharmacy team is reviewing the items you requested and will add the available medicines to your cart shortly.</p>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#0f172a;border:1px solid #334155;border-radius:8px;margin-bottom:24px;">
+  <tr><td style="padding:16px 20px;font-size:14px;color:#94a3b8;border-bottom:1px solid #334155;font-weight:600;">Requested Medicines</td></tr>
+  <tr><td style="padding:16px 20px;font-size:14px;color:#f1f5f9;line-height:1.65;">{{medicineList}}</td></tr>
+</table>
+<p style="margin:0;font-size:14px;color:#cbd5e1;line-height:1.65;">We'll notify you as soon as your request is processed. For any urgent queries, please call us at +91 99999 99999.</p>`,
+    }),
   },
   {
     key: "manual_request_approved",
@@ -1103,47 +805,22 @@ export const DEFAULT_TEMPLATES: Array<{
     channel: "email",
     subject: "Medicine Request Approved - Pradeep Medical Store",
     variables: ["name"],
-    body: `<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /></head>
-<body style="margin:0;padding:0;background-color:#f4f6f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1f2937;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f6f5;padding:24px 0;">
-    <tr><td align="center">
-      <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
-        <tr>
-          <td style="background:linear-gradient(135deg,#059669 0%,#0d9488 100%);padding:24px 32px;text-align:center;">
-            <div style="font-size:22px;font-weight:700;color:#ffffff;letter-spacing:0.3px;"><span style="vertical-align:middle;margin-right:8px;font-size:26px;">&#9989;</span> Pradeep Medical Store</div>
-            <div style="font-size:12px;color:#d1fae5;margin-top:6px;letter-spacing:1px;text-transform:uppercase;">Medicine Request Approved</div>
-          </td>
-        </tr>
-        <tr>
-          <td style="padding:32px;">
-            <h1 style="margin:0 0 16px 0;font-size:20px;font-weight:600;color:#111827;">Hello {{name}},</h1>
-            <p style="margin:0 0 24px 0;font-size:15px;line-height:1.65;color:#374151;">Great news! Your medicine request has been approved by our pharmacy team. The verified medicines have been added to your cart and are ready for checkout.</p>
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#ecfdf5;border-left:4px solid #059669;border-radius:6px;margin-bottom:24px;">
-              <tr><td style="padding:16px 20px;font-size:14px;color:#065f46;">
-                <strong>Status:</strong> Approved &amp; Ready for Checkout<br />
-                <strong>Next Step:</strong> Complete your purchase to get your medicines delivered.
-              </td></tr>
-            </table>
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-              <tr><td align="center">
-                <a href="https://pradeepmedical.com" target="_blank" rel="noopener noreferrer" style="display:inline-block;background-color:#059669;color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;padding:12px 28px;border-radius:8px;">Complete Your Order</a>
-              </td></tr>
-            </table>
-          </td>
-        </tr>
-        <tr>
-          <td style="background-color:#f9fafb;padding:24px 32px;border-top:1px solid #e5e7eb;">
-            <p style="margin:0 0 8px 0;font-size:13px;color:#4b5563;line-height:1.5;"><strong>Pradeep Medical Store</strong><br />Main Market, Mathura, Uttar Pradesh 281001<br />Phone: +91 99999 99999 | Email: care@pradeepmedical.com</p>
-            <p style="margin:0;font-size:12px;color:#9ca3af;line-height:1.5;">&copy; Pradeep Medical Store. All rights reserved.</p>
-          </td>
-        </tr>
-      </table>
-    </td></tr>
-  </table>
-</body>
-</html>`,
+    body: darkEmailTemplate({
+      eyebrow: "Medicine Request Approved",
+      content: `<h1 style="margin:0 0 16px 0;font-size:20px;font-weight:600;color:#f1f5f9;">Hello {{name}},</h1>
+<p style="margin:0 0 24px 0;font-size:15px;line-height:1.65;color:#cbd5e1;">Great news! Your medicine request has been approved by our pharmacy team. The verified medicines have been added to your cart and are ready for checkout.</p>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#0f172a;border-left:4px solid #10b981;border-radius:8px;margin-bottom:24px;">
+  <tr><td style="padding:16px 20px;font-size:14px;color:#d1fae5;">
+    <strong>Status:</strong> Approved &amp; Ready for Checkout<br />
+    <strong>Next Step:</strong> Complete your purchase to get your medicines delivered.
+  </td></tr>
+</table>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+  <tr><td align="center">
+    <a href="https://pradeepmedical.com" target="_blank" rel="noopener noreferrer" style="display:inline-block;background:linear-gradient(135deg,#059669 0%,#0d9488 100%);color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;padding:12px 28px;border-radius:8px;">Complete Your Order</a>
+  </td></tr>
+</table>`,
+    }),
   },
   {
     key: "manual_request_completed",
@@ -1151,43 +828,18 @@ export const DEFAULT_TEMPLATES: Array<{
     channel: "email",
     subject: "Your Medicine Request Order is Ready - Pradeep Medical Store",
     variables: ["name"],
-    body: `<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /></head>
-<body style="margin:0;padding:0;background-color:#f4f6f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1f2937;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f6f5;padding:24px 0;">
-    <tr><td align="center">
-      <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
-        <tr>
-          <td style="background:linear-gradient(135deg,#059669 0%,#0d9488 100%);padding:24px 32px;text-align:center;">
-            <div style="font-size:22px;font-weight:700;color:#ffffff;letter-spacing:0.3px;"><span style="vertical-align:middle;margin-right:8px;font-size:26px;">&#128722;</span> Pradeep Medical Store</div>
-            <div style="font-size:12px;color:#d1fae5;margin-top:6px;letter-spacing:1px;text-transform:uppercase;">Order Created</div>
-          </td>
-        </tr>
-        <tr>
-          <td style="padding:32px;">
-            <h1 style="margin:0 0 16px 0;font-size:20px;font-weight:600;color:#111827;">Hello {{name}},</h1>
-            <p style="margin:0 0 24px 0;font-size:15px;line-height:1.65;color:#374151;">Your medicine request has been converted into a complete order. Our team has prepared your medicines and the order is now being processed for delivery.</p>
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#ecfdf5;border-left:4px solid #059669;border-radius:6px;margin-bottom:24px;">
-              <tr><td style="padding:16px 20px;font-size:14px;color:#065f46;">
-                <strong>Status:</strong> Order Created<br />
-                <strong>Next Step:</strong> You'll receive order status updates as we pack and dispatch your medicines.
-              </td></tr>
-            </table>
-            <p style="margin:0;font-size:14px;color:#374151;line-height:1.65;">Thank you for choosing Pradeep Medical Store. If you have any questions, please call us at +91 99999 99999.</p>
-          </td>
-        </tr>
-        <tr>
-          <td style="background-color:#f9fafb;padding:24px 32px;border-top:1px solid #e5e7eb;">
-            <p style="margin:0 0 8px 0;font-size:13px;color:#4b5563;line-height:1.5;"><strong>Pradeep Medical Store</strong><br />Main Market, Mathura, Uttar Pradesh 281001<br />Phone: +91 99999 99999 | Email: care@pradeepmedical.com</p>
-            <p style="margin:0;font-size:12px;color:#9ca3af;line-height:1.5;">&copy; Pradeep Medical Store. All rights reserved.</p>
-          </td>
-        </tr>
-      </table>
-    </td></tr>
-  </table>
-</body>
-</html>`,
+    body: darkEmailTemplate({
+      eyebrow: "Order Created",
+      content: `<h1 style="margin:0 0 16px 0;font-size:20px;font-weight:600;color:#f1f5f9;">Hello {{name}},</h1>
+<p style="margin:0 0 24px 0;font-size:15px;line-height:1.65;color:#cbd5e1;">Your medicine request has been converted into a complete order. Our team has prepared your medicines and the order is now being processed for delivery.</p>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#0f172a;border-left:4px solid #10b981;border-radius:8px;margin-bottom:24px;">
+  <tr><td style="padding:16px 20px;font-size:14px;color:#d1fae5;">
+    <strong>Status:</strong> Order Created<br />
+    <strong>Next Step:</strong> You'll receive order status updates as we pack and dispatch your medicines.
+  </td></tr>
+</table>
+<p style="margin:0;font-size:14px;color:#cbd5e1;line-height:1.65;">Thank you for choosing Pradeep Medical Store. If you have any questions, please call us at +91 99999 99999.</p>`,
+    }),
   },
   {
     key: "manual_request_rejected",

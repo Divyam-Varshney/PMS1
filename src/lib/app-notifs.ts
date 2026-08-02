@@ -380,7 +380,7 @@ export async function getAnalytics(days = 30): Promise<AppNotifAnalytics> {
   from.setDate(from.getDate() - days);
   from.setHours(0, 0, 0, 0);
 
-  const [logs, activeSubscribers, totalCustomers, enabledPrefs] = await Promise.all([
+  const [logs, activeSubscribers, totalCustomers, enabledPrefs, subscriptions] = await Promise.all([
     db.appNotifLog.findMany({
       where: { createdAt: { gte: from } },
       select: {

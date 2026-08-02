@@ -30,7 +30,7 @@ export async function GET(req: Request) {
     orderBy: [{ category: "asc" }, { key: "asc" }],
   });
 
-  return ok({ items: templates });
+  return ok({ templates });
 }
 
 interface UpdateBody {

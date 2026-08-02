@@ -1,22 +1,25 @@
 // ============================================================================
 // File: src/components/admin/views/NotificationTemplatesView.tsx
 // Purpose: Notification templates — list, inline edit, create custom templates
-//          with HTML/CSS support + live preview. Supports email & WhatsApp.
+//          with HTML/CSS support + live preview. Supports email & app push
+//          notifications.
 //
 // Redesign (Phase 97 — templates-perf):
-//   • Templates grouped by TYPE rather than recipient:
+//   • Templates grouped by CHANNEL:
 //       - Customer Email  → transactional customer emails (order/OTP/shipping)
 //       - Admin Email     → internal operational alerts
-//       - Marketing       → newsletter / promo / campaign templates
-//       - WhatsApp        → plain-text WhatsApp messages
+//       - App Notification's → in-app push notifications (AppNotifTemplate)
 //   • Premium card design: rounded-xl, shadow-premium-sm, border-border/50,
 //     consistent spacing, branded channel pills, sticky action footer.
 //   • Card-based loading skeleton (replaces table skeleton — matches the
-//     2-col card layout, so the layout doesn't jump on data arrival).
+//     3-col card layout, so the layout doesn't jump on data arrival).
 //   • Per-channel stat cards in the summary header (counts + descriptions).
 //   • Improved mobile responsiveness: stacked layout, full-width actions.
 //   • Cleaner HTML editor toolbar with Format / Minify / Preview toggles.
 //   • Live HTML preview pane with branded email-frame styling.
+//   • App-notif templates are fetched from a separate endpoint and mapped
+//     into the same row shape so the same TemplateCard can edit them;
+//     saves/toggles route to the app-notifs PUT / template-toggle endpoints.
 // ============================================================================
 
 "use client";
@@ -42,7 +45,7 @@ import {
 } from "@/components/ui/select";
 import {
   FileText, Loader2, Save, Plus, Trash2, Eye, Code, Wand2,
-  Mail, MessageSquare, Send, ToggleLeft, ToggleRight, Megaphone,
+  Mail, Send, Bell, ToggleLeft, ToggleRight,
 } from "lucide-react";
 import { sanitizeHtml } from "@/lib/sanitize";
 import { toast } from "sonner";
@@ -94,34 +97,21 @@ function countLines(s: string): number {
 }
 
 // ----------------------------------------------------------------------------
-// Category grouping — templates bucketed by TYPE (not recipient).
+// Category grouping — templates bucketed by CHANNEL.
 //
-//   customer   → transactional customer emails (order/OTP/shipping)
-//   admin      → internal operational alerts for staff
-//   marketing  → newsletter / promo / campaign / broadcast templates
-//   whatsapp   → plain-text WhatsApp messages
-//   other      → uncategorized fallback (hidden tab — shown in summary count)
+//   customer → transactional customer emails (order/OTP/shipping)
+//   admin    → internal operational alerts for staff
+//   app      → in-app push notifications (AppNotifTemplate rows)
+//   other    → uncategorized fallback (hidden tab — shown in summary count)
 // ----------------------------------------------------------------------------
 
-type TemplateCategory = "customer" | "admin" | "marketing" | "whatsapp" | "other";
-
-/** Keys whose name suggests a marketing/promotional template. */
-const MARKETING_KEY_PATTERNS = [
-  /^newsletter/i,
-  /^promo/i,
-  /^campaign/i,
-  /^marketing/i,
-  /^broadcast/i,
-  /^offer_email/i,
-  /^discount_email/i,
-  /^welcome_email/i, // welcome flow is marketing-adjacent
-];
+type TemplateCategory = "customer" | "admin" | "app" | "other";
 
 function categorize(t: any): TemplateCategory {
-  if (t.channel === "whatsapp") return "whatsapp";
+  // App-notif templates are tagged at fetch time (_isApp === true).
+  if (t._isApp) return "app";
   const rawKey: string = t.key || "";
-  if (MARKETING_KEY_PATTERNS.some((re) => re.test(rawKey))) return "marketing";
-  const baseKey = rawKey.replace(/_(email|whatsapp)$/, "");
+  const baseKey = rawKey.replace(/_email$/, "");
   if (baseKey.startsWith("admin")) return "admin";
   if (t.channel === "email") return "customer";
   return "other";
@@ -157,23 +147,14 @@ const CHANNEL_META: Record<
     description: "Internal alerts for new orders, prescriptions, stock events, and system activity.",
     tabDescription: "Internal alerts for new orders, prescriptions, and stock events.",
   },
-  marketing: {
-    label: "Marketing Campaigns",
-    shortLabel: "Marketing",
-    icon: Megaphone,
-    tint: "bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300",
-    accent: "from-rose-50 to-amber-50/50 dark:from-rose-950/30 dark:to-amber-950/20",
-    description: "Promotional templates — newsletters, seasonal campaigns, offer broadcasts.",
-    tabDescription: "Newsletters, promotional campaigns, and seasonal broadcasts.",
-  },
-  whatsapp: {
-    label: "WhatsApp Messages",
-    shortLabel: "WhatsApp",
-    icon: MessageSquare,
-    tint: "bg-teal-100 text-teal-700 dark:bg-teal-950/40 dark:text-teal-300",
-    accent: "from-teal-50 to-emerald-50/50 dark:from-teal-950/30 dark:to-emerald-950/20",
-    description: "Plain-text messages sent via WhatsApp Business API.",
-    tabDescription: "Plain-text messages sent via WhatsApp Business API.",
+  app: {
+    label: "App Notification's",
+    shortLabel: "App",
+    icon: Bell,
+    tint: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300",
+    accent: "from-emerald-50 to-teal-50/50 dark:from-emerald-950/30 dark:to-teal-950/20",
+    description: "In-app push notifications sent to customer devices via the PWA service worker.",
+    tabDescription: "Push notifications delivered to customer devices through the PWA service worker.",
   },
   other: {
     label: "Other",
@@ -187,7 +168,12 @@ const CHANNEL_META: Record<
 };
 
 // Visible tab order — "other" is excluded from the tab strip but still counted.
-const TAB_ORDER: TemplateCategory[] = ["customer", "admin", "marketing", "whatsapp"];
+const TAB_ORDER: TemplateCategory[] = ["customer", "admin", "app"];
+
+// Query key shared by all template-related mutations so saves/toggles/
+// deletes invalidate both the email list AND the app-notif list at once.
+const EMAIL_QK = ["admin-notification-templates"] as const;
+const APP_QK = ["admin-app-notif-templates"] as const;
 
 // Shared textarea class for the HTML/text editor. Capped at max-h-[300px] so
 // pasted HTML doesn't blow up the card height; resize-y lets the admin drag
@@ -243,27 +229,60 @@ export function NotificationTemplatesView() {
   const qc = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<TemplateCategory>("customer");
-  const { data: templates, isLoading } = useQuery({
-    queryKey: ["admin-notification-templates"],
+  const { data: templates, isLoading: emailLoading } = useQuery({
+    queryKey: EMAIL_QK,
     queryFn: () => api.get<any[]>("/api/admin/notifications/templates"),
   });
 
-  // Bucket templates into the 4 named categories (+ an "other" fallback).
+  // Separate query for App Notification templates (different table + endpoint).
+  // The route returns `{ templates: [...] }` after envelope unwrap — extract it
+  // here and map each row to the same shape as email templates so the same
+  // TemplateCard can edit them. We tag each row with `_isApp: true` so
+  // `categorize()` routes them into the "app" bucket and so the card knows to
+  // save/toggle via the app-notifs endpoints instead of the email endpoints.
+  const { data: appTemplates, isLoading: appLoading } = useQuery({
+    queryKey: APP_QK,
+    queryFn: async () => {
+      const r = await api.get<{ templates: any[] }>("/api/admin/app-notifs/templates");
+      const list = r?.templates ?? [];
+      return list.map((t) => ({
+        id: t.id,
+        key: t.key,
+        name: t.name,
+        channel: "app",
+        // Map app-notif fields → email-template shape used by TemplateCard.
+        subject: t.title ?? "",
+        body: t.fullMessage ?? t.shortDesc ?? "",
+        isActive: t.isEnabled ?? true,
+        variables: t.variables ?? "[]",
+        // Pass-through fields the card needs for the app-notif PUT payload.
+        _isApp: true,
+        _raw: t,
+      }));
+    },
+  });
+
+  const isLoading = emailLoading || appLoading;
+  const allTemplates = useMemo(
+    () => [...(templates ?? []), ...(appTemplates ?? [])],
+    [templates, appTemplates],
+  );
+
+  // Bucket templates into the 3 named categories (+ an "other" fallback).
   const grouped = useMemo(() => {
     const buckets: Record<TemplateCategory, any[]> = {
-      customer: [], admin: [], marketing: [], whatsapp: [], other: [],
+      customer: [], admin: [], app: [], other: [],
     };
-    for (const t of templates ?? []) buckets[categorize(t)].push(t);
+    for (const t of allTemplates) buckets[categorize(t)].push(t);
     return buckets;
-  }, [templates]);
+  }, [allTemplates]);
 
   const customerCount = grouped.customer.length;
   const adminCount = grouped.admin.length;
-  const marketingCount = grouped.marketing.length;
-  const whatsappCount = grouped.whatsapp.length;
+  const appCount = grouped.app.length;
   const otherCount = grouped.other.length;
-  const totalCount = (templates ?? []).length;
-  const activeCount = (templates ?? []).filter((t) => t.isActive).length;
+  const totalCount = allTemplates.length;
+  const activeCount = allTemplates.filter((t) => t.isActive).length;
 
   function renderGroup(list: any[], category: TemplateCategory) {
     const meta = CHANNEL_META[category];
@@ -282,12 +301,15 @@ export function NotificationTemplatesView() {
       );
     }
     return (
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
         {list.map((t) => (
           <TemplateCard
             key={t.id}
             template={t}
-            onChanged={() => qc.invalidateQueries({ queryKey: ["admin-notification-templates"] })}
+            onChanged={() => {
+              qc.invalidateQueries({ queryKey: EMAIL_QK });
+              qc.invalidateQueries({ queryKey: APP_QK });
+            }}
           />
         ))}
       </div>
@@ -298,7 +320,7 @@ export function NotificationTemplatesView() {
     <div className="space-y-5">
       <PageHeader
         title="Notification Templates"
-        description="Edit email & WhatsApp templates. Create custom HTML/CSS email templates with variable placeholders."
+        description="Edit customer emails, admin alerts, and app push notifications. Create custom HTML/CSS templates with variable placeholders."
         actions={
           <Button onClick={() => setCreateOpen(true)} className="gap-1.5 btn-premium">
             <Plus className="size-4" /> New Template
@@ -311,7 +333,7 @@ export function NotificationTemplatesView() {
           Each stat is its own mini-card with icon, count, and label, so
           admins can see the template distribution at a glance.
       ==================================================================== */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
         <SummaryStat
           icon={Mail}
           tint="bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
@@ -331,22 +353,13 @@ export function NotificationTemplatesView() {
           active={activeTab === "admin"}
         />
         <SummaryStat
-          icon={Megaphone}
-          tint="bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300"
-          accent="from-rose-50 to-amber-50/50 dark:from-rose-950/30 dark:to-amber-950/20"
-          label="Marketing"
-          count={marketingCount}
-          onClick={() => setActiveTab("marketing")}
-          active={activeTab === "marketing"}
-        />
-        <SummaryStat
-          icon={MessageSquare}
-          tint="bg-teal-100 text-teal-700 dark:bg-teal-950/40 dark:text-teal-300"
-          accent="from-teal-50 to-emerald-50/50 dark:from-teal-950/30 dark:to-emerald-950/20"
-          label="WhatsApp"
-          count={whatsappCount}
-          onClick={() => setActiveTab("whatsapp")}
-          active={activeTab === "whatsapp"}
+          icon={Bell}
+          tint="bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
+          accent="from-emerald-50 to-teal-50/50 dark:from-emerald-950/30 dark:to-teal-950/20"
+          label="App Notification's"
+          count={appCount}
+          onClick={() => setActiveTab("app")}
+          active={activeTab === "app"}
         />
       </div>
 
@@ -397,17 +410,17 @@ export function NotificationTemplatesView() {
           grouped under that channel. Loading uses card-based skeletons.
       ==================================================================== */}
       {isLoading ? (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          {Array.from({ length: 4 }).map((_, i) => (
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, i) => (
             <TemplateCardSkeleton key={i} />
           ))}
         </div>
-      ) : !templates?.length ? (
+      ) : !allTemplates.length ? (
         <Card className="overflow-hidden rounded-xl border-border/50 shadow-premium-sm">
           <CardContent className="pt-6">
             <EmptyState
               title="No templates yet"
-              description="Create your first notification template to start sending branded emails and WhatsApp messages."
+              description="Create your first notification template to start sending branded emails and app notifications."
               icon={<FileText className="size-6" />}
               action={
                 <Button onClick={() => setCreateOpen(true)} className="btn-premium gap-1.5">
@@ -419,7 +432,7 @@ export function NotificationTemplatesView() {
         </Card>
       ) : (
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TemplateCategory)}>
-          <TabsList className="mb-4 grid w-full grid-cols-2 sm:grid-cols-4 sm:w-auto">
+          <TabsList className="mb-4 grid w-full grid-cols-3 sm:w-auto">
             {TAB_ORDER.map((cat) => {
               const meta = CHANNEL_META[cat];
               const count = grouped[cat].length;
@@ -442,11 +455,8 @@ export function NotificationTemplatesView() {
           <TabsContent value="admin" className="mt-0">
             {renderGroup(grouped.admin, "admin")}
           </TabsContent>
-          <TabsContent value="marketing" className="mt-0">
-            {renderGroup(grouped.marketing, "marketing")}
-          </TabsContent>
-          <TabsContent value="whatsapp" className="mt-0">
-            {renderGroup(grouped.whatsapp, "whatsapp")}
+          <TabsContent value="app" className="mt-0">
+            {renderGroup(grouped.app, "app")}
           </TabsContent>
         </Tabs>
       )}
@@ -454,14 +464,17 @@ export function NotificationTemplatesView() {
       <CreateTemplateDialog
         open={createOpen}
         onOpenChange={setCreateOpen}
-        onCreated={() => qc.invalidateQueries({ queryKey: ["admin-notification-templates"] })}
+        onCreated={() => {
+          qc.invalidateQueries({ queryKey: EMAIL_QK });
+          qc.invalidateQueries({ queryKey: APP_QK });
+        }}
       />
     </div>
   );
 }
 
 // ----------------------------------------------------------------------------
-// SummaryStat — small clickable stat card used in the 4-up summary strip.
+// SummaryStat — small clickable stat card used in the 3-up summary strip.
 // Clicking it switches the active tab to that channel.
 // ----------------------------------------------------------------------------
 function SummaryStat({
@@ -551,17 +564,51 @@ function TemplateCard({ template, onChanged }: { template: any; onChanged: () =>
 
   async function save() {
     setSaving(true);
-    const r = await run(
-      () => api.put(`/api/admin/notifications/templates/${template.id}`, {
-        subject,
-        body,
-        isActive,
-        variables: vars,
-      }),
-      { success: "Template saved", error: "Save failed" }
-    );
+    // App-notif templates use a different table + endpoint. Their "subject"
+    // maps to `title` and their "body" maps to `fullMessage`. The PUT endpoint
+    // also takes the row id in the body (not the URL).
+    const r = template._isApp
+      ? await run(
+          () => api.put("/api/admin/app-notifs/templates", {
+            id: template.id,
+            title: subject,
+            fullMessage: body,
+            shortDesc: body.slice(0, 500),
+          }),
+          { success: "App template saved", error: "Save failed" },
+        )
+      : await run(
+          () => api.put(`/api/admin/notifications/templates/${template.id}`, {
+            subject,
+            body,
+            isActive,
+            variables: vars,
+          }),
+          { success: "Template saved", error: "Save failed" }
+        );
     setSaving(false);
     if (r) onChanged();
+  }
+
+  async function toggleActive(next: boolean) {
+    // For app-notifs, persist the toggle immediately through the dedicated
+    // toggle endpoint so the switch reflects server state in real time.
+    if (template._isApp) {
+      const r = await run(
+        () => api.put("/api/admin/app-notifs/template-toggle", {
+          id: template.id,
+          isEnabled: next,
+        }),
+        { success: next ? "App template enabled" : "App template disabled", error: "Toggle failed" },
+      );
+      if (r) {
+        setIsActive(next);
+        onChanged();
+      }
+    } else {
+      // For email templates, the toggle is just local state — committed on Save.
+      setIsActive(next);
+    }
   }
 
   async function del() {
@@ -742,7 +789,7 @@ function TemplateCard({ template, onChanged }: { template: any; onChanged: () =>
         {/* Footer — active toggle + actions, sticky to the card bottom. */}
         <div className="flex items-center justify-between rounded-lg border border-border/50 bg-muted/20 px-3 py-2.5">
           <label className="flex cursor-pointer items-center gap-2">
-            <Switch checked={isActive} onCheckedChange={setIsActive} />
+            <Switch checked={isActive} onCheckedChange={toggleActive} />
             <span className="flex items-center gap-1 text-xs font-medium">
               {isActive
                 ? <ToggleRight className="size-3.5 text-emerald-600" />
@@ -751,9 +798,13 @@ function TemplateCard({ template, onChanged }: { template: any; onChanged: () =>
             </span>
           </label>
           <div className="flex items-center gap-2">
-            <Button size="sm" variant="ghost" className="text-destructive hover:bg-destructive/5" onClick={del} title="Delete template">
-              <Trash2 className="size-3.5" />
-            </Button>
+            {/* App-notif templates can't be deleted from here — their key/name
+                are part of the seed contract used by sendAutoNotification. */}
+            {!template._isApp && (
+              <Button size="sm" variant="ghost" className="text-destructive hover:bg-destructive/5" onClick={del} title="Delete template">
+                <Trash2 className="size-3.5" />
+              </Button>
+            )}
             <Button size="sm" onClick={save} disabled={saving} className="btn-premium gap-1.5">
               {saving ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
               Save
@@ -823,8 +874,9 @@ function CreateTemplateDialog({ open, onOpenChange, onCreated }: { open: boolean
         <DialogHeader>
           <DialogTitle>Create Custom Template</DialogTitle>
           <DialogDescription>
-            Create a custom email or WhatsApp template. Use HTML for email templates with inline CSS.
-            Insert variables like {`{{name}}`}, {`{{orderNumber}}`}, {`{{otp}}`}, etc.
+            Create a custom email template. Use HTML with inline CSS for premium,
+            cross-client rendering. Insert variables like {`{{name}}`}, {`{{orderNumber}}`},
+            {`{{otp}}`}, etc.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
@@ -844,7 +896,6 @@ function CreateTemplateDialog({ open, onOpenChange, onCreated }: { open: boolean
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="email">Email (supports HTML)</SelectItem>
-                <SelectItem value="whatsapp">WhatsApp (plain text)</SelectItem>
               </SelectContent>
             </Select>
           </div>

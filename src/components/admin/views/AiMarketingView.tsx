@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/select";
 import {
   Wand2, Loader2, Copy, Check, MessageCircle, Facebook, Instagram,
-  Twitter, Mail, Smartphone, Sparkles,
+  Twitter, Mail, Smartphone, Sparkles, Code2, Eye, Download, FileCode,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -33,6 +33,8 @@ interface MarketingContent {
   twitter?: string;
   email?: { subject: string; body: string };
   sms?: string;
+  /** Complete responsive HTML email (full <!DOCTYPE html> document, inline CSS, table-based). */
+  htmlEmail?: string;
 }
 
 const PLATFORMS = [
@@ -193,7 +195,7 @@ export function AiMarketingView() {
               icon={MessageCircle}
               color="text-emerald-600"
               text={content.whatsapp}
-              onCopy={() => copyToClipboard(content.whatsapp, "whatsapp")}
+              onCopy={() => copyToClipboard(content.whatsapp!, "whatsapp")}
               copied={copiedField === "whatsapp"}
             />
           )}
@@ -205,7 +207,7 @@ export function AiMarketingView() {
               icon={Facebook}
               color="text-teal-600"
               text={content.facebook}
-              onCopy={() => copyToClipboard(content.facebook, "facebook")}
+              onCopy={() => copyToClipboard(content.facebook!, "facebook")}
               copied={copiedField === "facebook"}
             />
           )}
@@ -217,7 +219,7 @@ export function AiMarketingView() {
               icon={Instagram}
               color="text-pink-600"
               text={content.instagram}
-              onCopy={() => copyToClipboard(content.instagram, "instagram")}
+              onCopy={() => copyToClipboard(content.instagram!, "instagram")}
               copied={copiedField === "instagram"}
             />
           )}
@@ -229,7 +231,7 @@ export function AiMarketingView() {
               icon={Twitter}
               color="text-cyan-600"
               text={content.twitter}
-              onCopy={() => copyToClipboard(content.twitter, "twitter")}
+              onCopy={() => copyToClipboard(content.twitter!, "twitter")}
               copied={copiedField === "twitter"}
             />
           )}
@@ -267,8 +269,17 @@ export function AiMarketingView() {
               icon={Smartphone}
               color="text-amber-600"
               text={content.sms}
-              onCopy={() => copyToClipboard(content.sms, "sms")}
+              onCopy={() => copyToClipboard(content.sms!, "sms")}
               copied={copiedField === "sms"}
+            />
+          )}
+
+          {/* HTML Email (Responsive) */}
+          {content.htmlEmail && (
+            <HtmlEmailCard
+              html={content.htmlEmail}
+              copied={copiedField === "htmlEmail"}
+              onCopy={() => copyToClipboard(content.htmlEmail!, "htmlEmail")}
             />
           )}
         </div>
@@ -326,6 +337,113 @@ function ContentCard({
         <Textarea value={text} readOnly rows={4} className="text-sm resize-none" />
         <div className="mt-2 flex items-center gap-2">
           <Badge variant="outline" className="text-[10px]">{text.length} characters</Badge>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// HtmlEmailCard — displays the AI-generated responsive HTML email with a
+// Preview/Code toggle, copy + download actions, and size badges.
+// ---------------------------------------------------------------------------
+
+function HtmlEmailCard({
+  html,
+  copied,
+  onCopy,
+}: {
+  html: string;
+  copied: boolean;
+  onCopy: () => void;
+}) {
+  const [mode, setMode] = useState<"preview" | "code">("preview");
+
+  const charCount = html.length;
+  const kb = (new Blob([html]).size / 1024).toFixed(1);
+
+  function download() {
+    try {
+      const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `marketing-email-${Date.now()}.html`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      // Revoke on the next tick so the download has time to start.
+      setTimeout(() => URL.revokeObjectURL(url), 0);
+      toast.success("HTML file downloaded");
+    } catch (e: any) {
+      toast.error(e?.message || "Download failed");
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <CardTitle className="flex items-center gap-2 text-sm">
+            <FileCode className="size-4 text-emerald-600" /> HTML Email (Responsive)
+          </CardTitle>
+          <div className="flex items-center gap-2">
+            {/* Preview / Code segmented control */}
+            <div className="inline-flex rounded-lg border border-border bg-muted/40 p-0.5">
+              <button
+                onClick={() => setMode("preview")}
+                className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                  mode === "preview"
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <Eye className="size-3" /> Preview
+              </button>
+              <button
+                onClick={() => setMode("code")}
+                className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                  mode === "code"
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <Code2 className="size-3" /> Code
+              </button>
+            </div>
+            <Button size="sm" variant="ghost" onClick={onCopy} className="gap-1 text-xs">
+              {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
+              {copied ? "Copied!" : "Copy HTML"}
+            </Button>
+            <Button size="sm" variant="ghost" onClick={download} className="gap-1 text-xs">
+              <Download className="size-3" /> Download
+            </Button>
+          </div>
+        </div>
+        <CardDescription className="text-xs">
+          Complete responsive HTML email — table-based, inline CSS, email-client compatible. Use for broadcast campaigns.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {mode === "preview" ? (
+          <iframe
+            title="HTML Email Preview"
+            srcDoc={html}
+            sandbox=""
+            className="h-[520px] w-full rounded-md border border-border bg-white"
+          />
+        ) : (
+          <Textarea
+            value={html}
+            readOnly
+            rows={18}
+            className="resize-none rounded-md border-border bg-muted/30 p-3 font-mono text-xs leading-relaxed text-foreground"
+            spellCheck={false}
+          />
+        )}
+        <div className="flex items-center gap-2">
+          <Badge variant="outline" className="text-[10px]">{charCount.toLocaleString()} characters</Badge>
+          <Badge variant="outline" className="text-[10px]">{kb} KB</Badge>
         </div>
       </CardContent>
     </Card>

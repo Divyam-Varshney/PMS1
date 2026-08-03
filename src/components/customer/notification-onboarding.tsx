@@ -1,19 +1,14 @@
 // ============================================================================
 // File: src/components/customer/notification-onboarding.tsx
 // Purpose: Shows a one-time dialog encouraging the customer to enable push
-//          notifications after login. Triggered when:
+//          notifications after login/signup. Appears ONLY when:
 //            • Customer is logged in
 //            • No active push subscription exists on this device
-//            • The dialog hasn't been previously dismissed (localStorage flag)
+//            • Notification permission is not "granted"
+//            • The dialog hasn't been previously dismissed (localStorage)
 //
-//  Behavior:
-//    • "Enable Notifications" → runs the same subscribe flow as
-//      notification-preferences.tsx (requestPermission → SW subscribe →
-//      POST /api/push/subscribe → PUT /api/app-notifs/preferences).
-//    • "Skip for Now" → writes localStorage `notif_onboarding_dismissed`
-//      = "true" so the dialog never re-appears (until the customer clears
-//      browser storage).
-//    • The dialog auto-closes on either action or after a successful enable.
+//  Re-show logic: if the customer clears browser data or logs in from a
+//  new device, localStorage is empty → dialog shows again (correct behavior).
 // ============================================================================
 
 "use client";
@@ -43,35 +38,13 @@ import {
 import { toast } from "sonner";
 import { api } from "./api";
 
-const DISMISS_KEY = "notif_onboarding_dismissed";
-const PREFS_QK = ["customer", "app-notif-prefs"] as const;
-
-interface NotifPrefs {
-  enabled: boolean;
-  activeDevices: number;
-}
+const DISMISS_KEY = "pms_notif_onboarding_done";
 
 const BENEFITS = [
-  {
-    icon: Package,
-    title: "Order Status",
-    desc: "Real-time updates when your order is confirmed, packed, or delivered.",
-  },
-  {
-    icon: Truck,
-    title: "Delivery Updates",
-    desc: "Get notified when your delivery executive is on the way.",
-  },
-  {
-    icon: FileText,
-    title: "Prescription Status",
-    desc: "Know the moment your prescription is reviewed and approved.",
-  },
-  {
-    icon: Tag,
-    title: "Exclusive Offers",
-    desc: "Be the first to know about deals, vouchers, and seasonal discounts.",
-  },
+  { icon: Package, title: "Order Status", desc: "Real-time updates when your order is confirmed, packed, or delivered." },
+  { icon: Truck, title: "Delivery Updates", desc: "Get notified when your delivery is on the way." },
+  { icon: FileText, title: "Prescription Status", desc: "Know the moment your prescription is reviewed and approved." },
+  { icon: Tag, title: "Exclusive Offers", desc: "Be the first to know about deals, vouchers, and seasonal discounts." },
 ];
 
 export function NotificationOnboarding({
@@ -82,150 +55,148 @@ export function NotificationOnboarding({
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [pushSupported, setPushSupported] = useState(true);
-  const [dismissed, setDismissed] = useState(true); // default: don't show
-  const [hasSubscription, setHasSubscription] = useState(false);
+  const [shouldCheck, setShouldCheck] = useState(false);
 
-  // 1) Detect Push API support + read the localStorage dismiss flag on mount.
+  // Step 1: On mount, check if push is supported and if onboarding was already done
   useEffect(() => {
     if (typeof window === "undefined") return;
+
+    // Check if push is supported
     const supported =
       "serviceWorker" in navigator &&
       "PushManager" in window &&
       "Notification" in window;
-    setPushSupported(supported);
-    setDismissed(localStorage.getItem(DISMISS_KEY) === "true");
+
+    if (!supported) return;
+
+    // Check if already dismissed/completed
+    const done = localStorage.getItem(DISMISS_KEY);
+    if (done === "true") return;
+
+    // If notification permission is already granted, don't show onboarding
+    if (Notification.permission === "granted") {
+      localStorage.setItem(DISMISS_KEY, "true");
+      return;
+    }
+
+    // Mark for checking — we'll verify subscription when authenticated
+    setShouldCheck(true);
   }, []);
 
-  // 2) Check the current push subscription state on this device + server pref.
+  // Step 2: When authenticated + shouldCheck, verify no push subscription exists
   useEffect(() => {
-    if (!isAuthenticated || !pushSupported || dismissed) return;
+    if (!isAuthenticated || !shouldCheck) return;
+
     let cancelled = false;
 
     const checkSubscription = async () => {
       try {
-        // Local browser subscription check
-        let localSub = false;
+        // Check local browser subscription
+        let hasLocalSub = false;
         try {
           const reg = await navigator.serviceWorker.ready;
           const sub = await reg.pushManager.getSubscription();
-          localSub = !!sub;
+          hasLocalSub = !!sub;
         } catch {
-          // SW not ready yet — assume no subscription
-        }
-
-        // Server-side preferences check
-        let serverEnabled = false;
-        try {
-          const prefs = await api.get<NotifPrefs>("/api/app-notifs/preferences");
-          serverEnabled = !!prefs?.enabled;
-        } catch {
-          // not logged in or endpoint unavailable
+          // SW not ready — assume no subscription
         }
 
         if (cancelled) return;
-        const hasSub = localSub || serverEnabled;
-        setHasSubscription(hasSub);
-        // Show only if no subscription exists on this device and not dismissed
-        if (!hasSub) {
-          setOpen(true);
+
+        // If already subscribed, mark as done
+        if (hasLocalSub) {
+          localStorage.setItem(DISMISS_KEY, "true");
+          return;
         }
-      } catch (e) {
+
+        // Show the onboarding dialog
+        setOpen(true);
+      } catch {
         // Silent — onboarding is best-effort
       }
     };
 
-    checkSubscription();
+    // Small delay to let the page settle after login
+    const timer = setTimeout(checkSubscription, 1500);
     return () => {
       cancelled = true;
+      clearTimeout(timer);
     };
-  }, [isAuthenticated, pushSupported, dismissed]);
+  }, [isAuthenticated, shouldCheck]);
 
-  // -------------------------------------------------------------------------
-  // Skip handler — persist dismissal so the dialog never re-appears.
-  // -------------------------------------------------------------------------
+  // Skip handler
   const handleSkip = useCallback(() => {
     try {
       localStorage.setItem(DISMISS_KEY, "true");
-    } catch {
-      // localStorage may be blocked — best-effort
-    }
-    setDismissed(true);
+    } catch {}
     setOpen(false);
   }, []);
 
-  // -------------------------------------------------------------------------
-  // Enable flow — request permission + subscribe via SW + POST to backend
-  // -------------------------------------------------------------------------
+  // Enable flow
   const handleEnable = useCallback(async () => {
     setBusy(true);
     try {
-      // 1. Notification permission
+      // 1. Request notification permission
       const perm = await Notification.requestPermission();
       if (perm !== "granted") {
-        toast.error(
-          "Notification permission was denied. Please allow notifications in your browser settings and try again."
-        );
+        toast.error("Notification permission was denied. You can enable it later from Profile → Settings → App Notifications.");
+        // Still mark as done so we don't keep pestering
+        try { localStorage.setItem(DISMISS_KEY, "true"); } catch {}
+        setOpen(false);
         return;
       }
 
-      // 2. Wait for SW registration
+      // 2. Wait for SW
       const reg = await navigator.serviceWorker.ready;
 
       // 3. Fetch VAPID public key
-      const { publicKey } = await api.get<{ publicKey: string }>(
-        "/api/push/vapid-public"
-      );
-      if (!publicKey) {
+      const vapidRes = await fetch("/api/push/vapid-public");
+      const vapidJson = await vapidRes.json();
+      if (!vapidJson.data?.publicKey) {
         toast.error("Push notifications are not configured on the server.");
         return;
       }
 
-      // 4. Convert the base64url key to Uint8Array
-      const applicationServerKey = urlBase64ToUint8Array(publicKey);
+      // 4. Convert base64url to Uint8Array
+      const applicationServerKey = urlBase64ToUint8Array(vapidJson.data.publicKey);
 
-      // 5. Subscribe
-      const subscription = await reg.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey,
-      });
+      // 5. Subscribe via PushManager
+      let subscription = await reg.pushManager.getSubscription();
+      if (!subscription) {
+        subscription = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey,
+        });
+      }
 
       // 6. POST to backend
-      const subJson = subscription.toJSON();
-      await api.post("/api/push/subscribe", {
-        endpoint: subJson.endpoint,
-        keys: subJson.keys,
-        userAgent: navigator.userAgent,
+      const sub = subscription.toJSON();
+      await fetch("/api/push/subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          endpoint: sub.endpoint,
+          keys: sub.keys,
+        }),
       });
 
-      // 7. Update preference (turn ON the master toggle)
+      // 7. Update preference (enable master toggle)
       await api.put("/api/app-notifs/preferences", { enabled: true });
 
-      // Mark as dismissed so we don't re-show after a successful enable
-      try {
-        localStorage.setItem(DISMISS_KEY, "true");
-      } catch {}
-      setDismissed(true);
-      setHasSubscription(true);
-      qc.invalidateQueries({ queryKey: PREFS_QK });
-      toast.success(
-        "Push notifications enabled. You'll receive order updates and offers on this device."
-      );
+      // Mark as done
+      try { localStorage.setItem(DISMISS_KEY, "true"); } catch {}
+      qc.invalidateQueries({ queryKey: ["customer", "app-notif-prefs"] });
+      toast.success("Notifications enabled! You'll receive order updates and offers on this device.");
       setOpen(false);
     } catch (e: any) {
       console.error("[notif-onboarding] enable failed:", e);
-      toast.error(
-        `Failed to enable notifications: ${e?.message || "unknown error"}`
-      );
+      toast.error(`Failed to enable notifications: ${e?.message || "unknown error"}`);
     } finally {
       setBusy(false);
     }
   }, [qc]);
 
-  // Don't render anything if conditions aren't met
-  if (!isAuthenticated || !pushSupported || dismissed || hasSubscription) {
-    return null;
-  }
+  if (!isAuthenticated) return null;
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && handleSkip()}>
@@ -256,22 +227,18 @@ export function NotificationOnboarding({
             return (
               <div key={benefit.title} className="flex items-start gap-3">
                 <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">
-                  <Icon className="size-4.5" />
+                  <Icon className="size-4" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-semibold text-foreground">
-                    {benefit.title}
-                  </p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">
-                    {benefit.desc}
-                  </p>
+                  <p className="text-sm font-semibold text-foreground">{benefit.title}</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">{benefit.desc}</p>
                 </div>
               </div>
             );
           })}
 
-          <div className="flex items-start gap-2 rounded-lg bg-emerald-50/70 border border-emerald-100 p-3 text-xs text-emerald-900 dark:bg-emerald-950/20 dark:border-emerald-900/30 dark:text-emerald-200">
-            <ShieldCheck className="size-4 shrink-0 mt-0.5 text-emerald-600 dark:text-emerald-400" />
+          <div className="flex items-start gap-2 rounded-lg border border-emerald-100 bg-emerald-50/70 p-3 text-xs text-emerald-900 dark:border-emerald-900/30 dark:bg-emerald-950/20 dark:text-emerald-200">
+            <ShieldCheck className="mt-0.5 size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
             <p>
               Your privacy is protected. We only send transactional updates and
               occasional offers — no spam, ever. You can turn off notifications
@@ -282,14 +249,8 @@ export function NotificationOnboarding({
 
         {/* Footer actions */}
         <DialogFooter className="flex-col gap-2 border-t bg-muted/30 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleSkip}
-            disabled={busy}
-            className="w-full sm:w-auto"
-          >
-            Skip for Now
+          <Button variant="ghost" size="sm" onClick={handleSkip} disabled={busy} className="w-full sm:w-auto">
+            Not Now
           </Button>
           <Button
             size="sm"
@@ -315,9 +276,6 @@ export function NotificationOnboarding({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Utility — convert base64url VAPID key to Uint8Array for PushManager.
-// ---------------------------------------------------------------------------
 function urlBase64ToUint8Array(base64Url: string): Uint8Array {
   const padding = "=".repeat((4 - (base64Url.length % 4)) % 4);
   const base64 = (base64Url + padding).replace(/-/g, "+").replace(/_/g, "/");

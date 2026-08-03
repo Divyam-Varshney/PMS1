@@ -150,6 +150,28 @@ function CampaignTab() {
   const [deepLink, setDeepLink] = useState("/");
   const [priority, setPriority] = useState<"normal" | "high">("normal");
   const [bannerImage, setBannerImage] = useState("");
+  const [productSearch, setProductSearch] = useState("");
+  const [selectedProduct, setSelectedProduct] = useState<{ id: string; name: string; slug: string; image?: string } | null>(null);
+
+  // Product search query
+  const { data: productResults } = useQuery({
+    queryKey: ["product-search", productSearch],
+    queryFn: async () => {
+      if (!productSearch.trim()) return [];
+      const res = await fetch(`/api/admin/products?search=${encodeURIComponent(productSearch)}&pageSize=5`);
+      const json = await res.json();
+      return json.data?.items || [];
+    },
+    enabled: productSearch.trim().length > 1,
+    staleTime: 10_000,
+  });
+
+  const handleProductSelect = (p: any) => {
+    setSelectedProduct({ id: p.id, name: p.name, slug: p.slug, image: p.primaryImage });
+    // Set deep link to hash routing format: /#v=product&productId=xxx&slug=yyy
+    setDeepLink(`/?v=product&productId=${p.id}&slug=${p.slug}`);
+    setProductSearch("");
+  };
 
   // AI generator inputs
   const [topic, setTopic] = useState("");
@@ -351,10 +373,50 @@ function CampaignTab() {
                   id="link"
                   value={deepLink}
                   onChange={(e) => setDeepLink(e.target.value)}
-                  placeholder="/shop or /deals"
-                  className="mt-1"
+                  placeholder="/?v=product&productId=xxx&slug=yyy"
+                  className="mt-1 font-mono text-xs"
                 />
               </div>
+            </div>
+
+            {/* Product Link */}
+            <div className="space-y-2">
+              <Label className="text-xs">Link to Product (optional — sets deep link automatically)</Label>
+              {selectedProduct ? (
+                <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-2 dark:border-emerald-900/40 dark:bg-emerald-950/20">
+                  {selectedProduct.image && (
+                    <img src={selectedProduct.image} alt="" className="size-8 rounded object-cover" />
+                  )}
+                  <span className="flex-1 truncate text-xs font-medium text-emerald-700 dark:text-emerald-300">{selectedProduct.name}</span>
+                  <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={() => { setSelectedProduct(null); setDeepLink("/"); }}>
+                    Remove
+                  </Button>
+                </div>
+              ) : (
+                <div className="relative">
+                  <Input
+                    value={productSearch}
+                    onChange={(e) => setProductSearch(e.target.value)}
+                    placeholder="Search product by name..."
+                    className="text-xs"
+                  />
+                  {productResults && productResults.length > 0 && (
+                    <div className="absolute z-10 mt-1 w-full rounded-lg border border-border bg-popover shadow-lg max-h-48 overflow-y-auto">
+                      {productResults.map((p: any) => (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() => handleProductSelect(p)}
+                          className="flex w-full items-center gap-2 border-b border-border/40 px-2 py-1.5 text-left text-xs hover:bg-accent/50 last:border-0"
+                        >
+                          {p.primaryImage && <img src={p.primaryImage} alt="" className="size-6 rounded object-cover" />}
+                          <span className="truncate">{p.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>

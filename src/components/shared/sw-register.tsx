@@ -52,18 +52,45 @@ export function SWRegister() {
       setTimeout(register, 1500);
     }
 
-    // Listen for NOTIF_CLICK messages from the SW — let the SPA router
-    // navigate to the deep link without a full page reload. The actual
-    // navigation is delegated to the customer UI store (window.__pmsNavigate).
+    // Listen for NOTIF_CLICK messages from the SW — navigate to the deep link
+    // using hash routing (the SPA uses #v=product&productId=xxx&slug=yyy).
     const onMessage = (event: MessageEvent) => {
       const data = event.data;
       if (!data || data.type !== "NOTIF_CLICK" || !data.deepLink) return;
       try {
-        const nav = (window as any).__pmsNavigate;
-        if (typeof nav === "function") {
-          nav(data.deepLink);
+        // The deep link may be in query param format (?view=product&productId=xxx)
+        // or hash format (#v=product&productId=xxx). Normalize to hash format.
+        let link = data.deepLink;
+        if (link.startsWith("/?")) {
+          // Convert /?v=product&productId=xxx to #v=product&productId=xxx
+          const params = link.substring(2);
+          link = "#" + params.replace(/^v=/, "v=").replace(/^view=/, "v=");
+        } else if (link.startsWith("/#")) {
+          // Already hash format — use as-is
+          link = link.substring(1);
+        } else if (link.startsWith("#")) {
+          // Already hash
+        } else if (link.startsWith("http")) {
+          // Full URL — extract just the hash part
+          const url = new URL(link);
+          if (url.hash) {
+            link = url.hash;
+          } else if (url.search) {
+            link = "#" + url.search.substring(1).replace(/^view=/, "v=");
+          } else {
+            link = "#v=home";
+          }
+        } else {
+          // Just a path like /shop → convert to hash
+          link = "#v=shop";
         }
-      } catch {}
+        // Set the hash — the SPA store listens to hashchange
+        if (window.location.hash !== link) {
+          window.location.hash = link;
+        }
+      } catch (e) {
+        console.warn("[sw] navigation failed:", e);
+      }
     };
     navigator.serviceWorker.addEventListener("message", onMessage);
     return () => {

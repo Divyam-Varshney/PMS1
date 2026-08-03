@@ -39,7 +39,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Plus, Pencil, Trash2, Tags, Loader2, Upload, Download, Search, Sparkles } from "lucide-react";
+import { Plus, Pencil, Trash2, Tags, Loader2, Upload, Download, Search, Sparkles, CheckCircle2 } from "lucide-react";
 import { slugify } from "@/lib/format";
 import { toast } from "sonner";
 
@@ -302,26 +302,32 @@ export function BrandsView() {
                       <Checkbox checked={allSelected} onCheckedChange={toggleAll} aria-label="Select all" />
                     </TableHead>
                     <TableHead className="min-w-[220px]">Brand</TableHead>
-                    <TableHead className="min-w-[140px]">Slug</TableHead>
+                    <TableHead className="min-w-[140px] hidden md:table-cell">Slug</TableHead>
                     <TableHead className="text-right w-24">Products</TableHead>
-                    <TableHead className="text-right w-28">Order</TableHead>
+                    <TableHead className="text-right w-28 hidden sm:table-cell">Order</TableHead>
                     <TableHead className="w-32">Status</TableHead>
-                    <TableHead className="w-32">Homepage</TableHead>
+                    <TableHead className="w-32 hidden lg:table-cell">Homepage</TableHead>
                     <TableHead className="w-24 text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filtered.map((b) => (
-                    <TableRow key={b.id} className={`border-border/60 ${selected.has(b.id) ? "bg-primary/5" : "admin-table-row"}`}>
+                    <TableRow key={b.id} className={`border-border/60 h-16 ${selected.has(b.id) ? "bg-primary/5" : "admin-table-row"}`}>
                       <TableCell>
                         <Checkbox checked={selected.has(b.id)} onCheckedChange={() => toggleOne(b.id)} aria-label={`Select ${b.name}`} />
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-3">
                           {b.logo ? (
-                            <img src={b.logo} alt="" className="size-9 rounded-md object-contain border border-border/70 bg-muted/30 p-0.5" />
+                            <div className="relative group">
+                              <img src={b.logo} alt="" className="size-10 rounded-md object-contain border border-border/70 bg-muted/30 p-1" />
+                              {/* Hover preview tooltip — larger logo on hover */}
+                              <div className="pointer-events-none absolute left-0 top-full mt-1 z-20 hidden group-hover:block">
+                                <img src={b.logo} alt="" className="size-24 rounded-md border border-border bg-background p-2 shadow-premium object-contain" />
+                              </div>
+                            </div>
                           ) : (
-                            <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-emerald-400 to-teal-500 text-sm font-bold text-white shadow-premium-sm">
+                            <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-emerald-400 to-teal-500 text-sm font-bold text-white shadow-premium-sm">
                               {b.name[0]?.toUpperCase() ?? "?"}
                             </span>
                           )}
@@ -331,6 +337,11 @@ export function BrandsView() {
                               {b.isFeaturedOnHomepage && (
                                 <Badge variant="outline" className="shrink-0 gap-0.5 border-emerald-200 bg-emerald-50 px-1.5 py-0 text-[9px] font-semibold text-emerald-700 admin-badge-emerald">
                                   <Sparkles className="size-2.5" /> Home
+                                </Badge>
+                              )}
+                              {!b.logo && (
+                                <Badge variant="outline" className="shrink-0 gap-0.5 border-amber-200 bg-amber-50 px-1.5 py-0 text-[9px] font-semibold text-amber-700 admin-badge-amber">
+                                  No logo
                                 </Badge>
                               )}
                             </div>
@@ -347,13 +358,13 @@ export function BrandsView() {
                           </div>
                         </div>
                       </TableCell>
-                      <TableCell className="text-xs font-mono text-muted-foreground">{b.slug}</TableCell>
+                      <TableCell className="text-xs font-mono text-muted-foreground hidden md:table-cell">{b.slug}</TableCell>
                       <TableCell className="text-right text-sm tabular-nums">{b._count?.products ?? 0}</TableCell>
-                      <TableCell className="text-right text-sm tabular-nums">{b.displayOrder}</TableCell>
+                      <TableCell className="text-right text-sm tabular-nums hidden sm:table-cell">{b.displayOrder}</TableCell>
                       <TableCell>
                         <StatusBadge status={b.status} />
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="hidden lg:table-cell">
                         <button
                           type="button"
                           onClick={() => toggleFeatured(b)}
@@ -469,26 +480,40 @@ export function BrandsView() {
             </label>
 
             {editing && (
-              <div className="space-y-1.5 border-t pt-3">
+              <div className="space-y-2 border-t border-border/70 pt-3">
                 <Label>Logo</Label>
-                <div className="flex items-center gap-3">
-                  {editing.logo && (
-                    <img src={editing.logo} alt="" className="size-12 rounded-md object-contain border" />
+                <div className="flex items-start gap-3">
+                  {editing.logo ? (
+                    <div className="relative">
+                      <img src={editing.logo} alt="" className="size-16 rounded-md object-contain border border-border bg-muted/30 p-1.5" />
+                      <Badge variant="outline" className="absolute -bottom-1.5 -right-1.5 bg-emerald-50 text-emerald-700 border-emerald-200 text-[9px] admin-badge-emerald">
+                        <CheckCircle2 className="size-2.5 mr-0.5" /> Set
+                      </Badge>
+                    </div>
+                  ) : (
+                    <div className="flex size-16 items-center justify-center rounded-md border border-dashed border-border bg-muted/30 text-muted-foreground">
+                      <Tags className="size-5" />
+                    </div>
                   )}
-                  <label className="cursor-pointer">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={(e) => e.target.files?.[0] && uploadLogo(e.target.files[0])}
-                    />
-                    <Button variant="outline" asChild disabled={uploading}>
-                      <span>
-                        {uploading ? <Loader2 className="size-4 mr-1 animate-spin" /> : <Upload className="size-4 mr-1" />}
-                        Upload Logo
-                      </span>
-                    </Button>
-                  </label>
+                  <div className="flex-1 space-y-2">
+                    <label className="cursor-pointer">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => e.target.files?.[0] && uploadLogo(e.target.files[0])}
+                      />
+                      <Button variant="outline" asChild disabled={uploading}>
+                        <span>
+                          {uploading ? <Loader2 className="size-4 mr-1 animate-spin" /> : <Upload className="size-4 mr-1" />}
+                          {editing.logo ? "Replace Logo" : "Upload Logo"}
+                        </span>
+                      </Button>
+                    </label>
+                    <p className="text-xs text-muted-foreground">
+                      Recommended: square PNG/SVG, 200×200px or larger. Brands without a logo are hidden from the public catalog.
+                    </p>
+                  </div>
                 </div>
               </div>
             )}

@@ -40,7 +40,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Plus, Pencil, Trash2, FolderTree, Loader2, Upload, Image as ImageIcon, Search, ArrowUpDown, ChevronRight } from "lucide-react";
+import { Plus, Pencil, Trash2, FolderTree, Loader2, Upload, Image as ImageIcon, Search, ArrowUpDown, ChevronRight, CheckCircle2 } from "lucide-react";
 import { slugify } from "@/lib/format";
 
 interface Category {
@@ -291,22 +291,28 @@ export function CategoriesView() {
                   <TableRow className="border-border/70 hover:bg-transparent">
                     <TableHead className="w-12"></TableHead>
                     <TableHead className="min-w-[240px]">Category</TableHead>
-                    <TableHead className="min-w-[140px]">Slug</TableHead>
-                    <TableHead className="min-w-[120px]">Parent</TableHead>
+                    <TableHead className="min-w-[140px] hidden md:table-cell">Slug</TableHead>
+                    <TableHead className="min-w-[120px] hidden lg:table-cell">Parent</TableHead>
                     <TableHead className="text-right w-24">Products</TableHead>
-                    <TableHead className="text-right w-24">Order</TableHead>
+                    <TableHead className="text-right w-24 hidden sm:table-cell">Order</TableHead>
                     <TableHead className="w-32">Status</TableHead>
                     <TableHead className="w-24 text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {visibleList.map((c) => (
-                    <TableRow key={c.id} className="border-border/60 admin-table-row">
+                    <TableRow key={c.id} className="border-border/60 h-16 admin-table-row">
                       <TableCell>
                         {c.image ? (
-                          <img src={c.image} alt="" className="size-9 rounded-md object-cover border border-border/70 bg-muted/30" />
+                          <div className="relative group">
+                            <img src={c.image} alt="" className="size-10 rounded-md object-cover border border-border/70 bg-muted/30" />
+                            {/* Hover preview — larger image on hover */}
+                            <div className="pointer-events-none absolute left-0 top-full mt-1 z-20 hidden group-hover:block">
+                              <img src={c.image} alt="" className="size-24 rounded-md border border-border bg-background shadow-premium object-cover" />
+                            </div>
+                          </div>
                         ) : (
-                          <div className="flex size-9 items-center justify-center rounded-md border border-border/70 bg-gradient-to-br from-emerald-400 to-teal-500 text-xs font-bold text-white shadow-premium-sm">
+                          <div className="flex size-10 items-center justify-center rounded-md border border-border/70 bg-gradient-to-br from-emerald-400 to-teal-500 text-xs font-bold text-white shadow-premium-sm">
                             {(c.name?.[0] || "P").toUpperCase()}
                           </div>
                         )}
@@ -328,12 +334,12 @@ export function CategoriesView() {
                           </div>
                         </div>
                       </TableCell>
-                      <TableCell className="text-xs font-mono text-muted-foreground">{c.slug}</TableCell>
-                      <TableCell className="text-sm">
+                      <TableCell className="text-xs font-mono text-muted-foreground hidden md:table-cell">{c.slug}</TableCell>
+                      <TableCell className="text-sm hidden lg:table-cell">
                         {c.parent?.name || <span className="text-muted-foreground italic">—</span>}
                       </TableCell>
                       <TableCell className="text-right text-sm tabular-nums">{c._count?.products ?? 0}</TableCell>
-                      <TableCell className="text-right text-sm tabular-nums">{c.displayOrder}</TableCell>
+                      <TableCell className="text-right text-sm tabular-nums hidden sm:table-cell">{c.displayOrder}</TableCell>
                       <TableCell><StatusBadge status={c.status} /></TableCell>
                       <TableCell>
                         <div className="flex gap-1 justify-end">
@@ -420,34 +426,41 @@ export function CategoriesView() {
                 (the upload endpoint requires an id). Mirrors the brand logo
                 upload pattern. */}
             {editing && (
-              <div className="space-y-1.5 border-t border-border/70 pt-3">
+              <div className="space-y-2 border-t border-border/70 pt-3">
                 <Label>Category Image</Label>
-                <div className="flex items-center gap-3">
+                <div className="flex items-start gap-3">
                   {editing.image ? (
-                    <img src={editing.image} alt="" className="size-14 rounded-md object-cover border border-border/70" />
+                    <div className="relative">
+                      <img src={editing.image} alt="" className="size-16 rounded-md object-cover border border-border/70" />
+                      <Badge variant="outline" className="absolute -bottom-1.5 -right-1.5 bg-emerald-50 text-emerald-700 border-emerald-200 text-[9px] admin-badge-emerald">
+                        <CheckCircle2 className="size-2.5 mr-0.5" /> Set
+                      </Badge>
+                    </div>
                   ) : (
-                    <div className="flex size-14 items-center justify-center rounded-md border border-border/70 bg-muted text-muted-foreground">
+                    <div className="flex size-16 items-center justify-center rounded-md border border-dashed border-border bg-muted/30 text-muted-foreground">
                       <ImageIcon className="size-5" />
                     </div>
                   )}
-                  <label className="cursor-pointer">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={(e) => e.target.files?.[0] && uploadImage(e.target.files[0])}
-                    />
-                    <Button variant="outline" asChild disabled={uploading} className="btn-premium">
-                      <span>
-                        {uploading ? <Loader2 className="size-4 mr-1 animate-spin" /> : <Upload className="size-4 mr-1" />}
-                        {editing.image ? "Replace Image" : "Upload Image"}
-                      </span>
-                    </Button>
-                  </label>
+                  <div className="flex-1 space-y-2">
+                    <label className="cursor-pointer">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => e.target.files?.[0] && uploadImage(e.target.files[0])}
+                      />
+                      <Button variant="outline" asChild disabled={uploading} className="btn-premium">
+                        <span>
+                          {uploading ? <Loader2 className="size-4 mr-1 animate-spin" /> : <Upload className="size-4 mr-1" />}
+                          {editing.image ? "Replace Image" : "Upload Image"}
+                        </span>
+                      </Button>
+                    </label>
+                    <p className="text-xs text-muted-foreground">
+                      Recommended: square image, 400×400px or larger. Used on the customer-facing categories page.
+                    </p>
+                  </div>
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  Recommended: square image, 400×400px or larger. Used on the customer-facing categories page.
-                </p>
               </div>
             )}
           </div>

@@ -108,6 +108,7 @@ export function ProductsView() {
   const [categoryId, setCategoryId] = useState("all");
   const [brandId, setBrandId] = useState("all");
   const [stock, setStock] = useState<"all" | "low" | "out">("all");
+  const [prescription, setPrescription] = useState<"all" | "true" | "false">("all");
   const [sort, setSort] = useState<"newest" | "oldest" | "name" | "price" | "stock">("newest");
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -137,6 +138,7 @@ export function ProductsView() {
     if (categoryId !== "all") p.set("categoryId", categoryId);
     if (brandId !== "all") p.set("brandId", brandId);
     if (stock !== "all") p.set("stock", stock);
+    if (prescription !== "all") p.set("prescription", prescription);
     // Map frontend sort values to API sort values
     const sortMap: Record<string, string> = {
       newest: "newest",
@@ -147,9 +149,9 @@ export function ProductsView() {
     };
     p.set("sort", sortMap[sort] || "newest");
     return p.toString();
-  }, [search, status, categoryId, brandId, stock, sort, page]);
+  }, [search, status, categoryId, brandId, stock, prescription, sort, page]);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isFetching } = useQuery({
     queryKey: ["admin-products", "list", queryParams],
     queryFn: () =>
       api.get<{
@@ -210,6 +212,7 @@ export function ProductsView() {
     setCategoryId("all");
     setBrandId("all");
     setStock("all");
+    setPrescription("all");
     setSort("newest");
     setPage(1);
   }
@@ -517,7 +520,7 @@ export function ProductsView() {
               <Input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search name, SKU, generic, composition..."
+                placeholder="Search name, SKU, brand, category, manufacturer..."
                 className="pl-9 admin-search h-9 focus-visible:ring-1 focus-visible:ring-primary/30"
               />
             </div>
@@ -556,7 +559,15 @@ export function ProductsView() {
                 <SelectItem value="out">Out of Stock</SelectItem>
               </SelectContent>
             </Select>
-            <div className="flex gap-2 lg:col-span-6">
+            <Select value={prescription} onValueChange={(v) => { setPrescription(v as "all" | "true" | "false"); setPage(1); }}>
+              <SelectTrigger className="h-9 lg:col-span-1"><SelectValue placeholder="Prescription" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All (Rx + OTC)</SelectItem>
+                <SelectItem value="true">Rx Only</SelectItem>
+                <SelectItem value="false">OTC Only</SelectItem>
+              </SelectContent>
+            </Select>
+            <div className="flex flex-wrap gap-2 lg:col-span-6">
               <Select value={sort} onValueChange={(v) => setSort(v as typeof sort)}>
                 <SelectTrigger className="w-full sm:w-52 h-9"><SelectValue placeholder="Sort by" /></SelectTrigger>
                 <SelectContent>
@@ -567,15 +578,29 @@ export function ProductsView() {
                   <SelectItem value="stock">Stock (Low to High)</SelectItem>
                 </SelectContent>
               </Select>
-              <Button type="submit" variant="secondary" className="btn-premium">Apply</Button>
+              <Button type="submit" variant="secondary" className="btn-premium" disabled={isFetching}>
+                {isFetching && !isLoading ? <Loader2 className="size-3.5 mr-1 animate-spin" /> : null}
+                Apply
+              </Button>
               <Button type="button" variant="ghost" onClick={resetFilters}>Reset</Button>
+              {(status !== "all" || categoryId !== "all" || brandId !== "all" || stock !== "all" || prescription !== "all" || search.trim()) && (
+                <span className="ml-auto self-center text-xs text-muted-foreground">
+                  Filters active
+                </span>
+              )}
             </div>
           </form>
         </CardContent>
       </Card>
 
       {/* Table */}
-      <Card className="admin-card">
+      <Card className="admin-card relative overflow-hidden">
+        {/* Background refetch indicator — slim top bar shown while re-fetching */}
+        {isFetching && !isLoading && data?.items?.length ? (
+          <div className="absolute inset-x-0 top-0 h-0.5 bg-primary/20 overflow-hidden z-10">
+            <div className="h-full w-1/3 bg-primary animate-pulse rounded-full" />
+          </div>
+        ) : null}
         <CardContent className="p-0">
           {isLoading ? (
             <div className="p-4"><TableSkeleton rows={8} cols={8} /></div>
@@ -603,7 +628,20 @@ export function ProductsView() {
                     onClick={() => navigate({ name: "product-edit", id: p.id })}
                   >
                     <div className="relative aspect-square mb-2 overflow-hidden rounded-md bg-muted/30 img-zoom-premium">
-                      <ProductThumb product={p} />
+                      <img
+                        src={p.primaryImage || undefined}
+                        alt={p.name}
+                        className="size-full object-cover"
+                        onError={(e) => {
+                          // Hide broken image — fallback to placeholder div below
+                          (e.target as HTMLImageElement).style.display = "none";
+                        }}
+                      />
+                      {!p.primaryImage && (
+                        <div className="absolute inset-0 flex items-center justify-center text-2xl font-bold text-primary/30">
+                          {(p.name?.[0] || "P").toUpperCase()}
+                        </div>
+                      )}
                       {p.stock <= 0 && (
                         <Badge className="absolute top-1 left-1 bg-rose-500 text-white text-[9px] badge-premium">Out</Badge>
                       )}
@@ -658,13 +696,13 @@ export function ProductsView() {
                       />
                     </TableHead>
                     <TableHead>Product</TableHead>
-                    <TableHead>Category</TableHead>
+                    <TableHead className="hidden md:table-cell">Category</TableHead>
                     <TableHead className="text-right">Price</TableHead>
-                    <TableHead className="text-right">Discount %</TableHead>
+                    <TableHead className="hidden lg:table-cell text-right">Discount %</TableHead>
                     <TableHead className="text-right">Stock</TableHead>
-                    <TableHead>Stock Status</TableHead>
+                    <TableHead className="hidden sm:table-cell">Stock Status</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead>Visibility</TableHead>
+                    <TableHead className="hidden xl:table-cell">Visibility</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -684,7 +722,7 @@ export function ProductsView() {
                     return (
                       <TableRow
                         key={p.id}
-                        className={`${isSelected ? "bg-primary/5" : "cursor-pointer admin-table-row"} border-border/60`}
+                        className={`${isSelected ? "bg-primary/5" : "cursor-pointer admin-table-row"} border-border/60 h-16`}
                         onClick={() => navigate({ name: "product-edit", id: p.id })}
                       >
                         <TableCell onClick={(e) => e.stopPropagation()}>
@@ -698,11 +736,14 @@ export function ProductsView() {
                           <div className="flex items-center gap-3">
                             <ProductThumb image={p.primaryImage} name={p.name} brand={p.brand?.name} size={40} />
                             <div className="min-w-0">
-                              <div className="font-medium text-sm truncate max-w-[240px]">{p.name}</div>
-                              <div className="text-[11px] text-muted-foreground flex items-center gap-1.5">
+                              <div className="font-medium text-sm truncate max-w-[180px] sm:max-w-[240px]">{p.name}</div>
+                              <div className="text-[11px] text-muted-foreground flex items-center gap-1.5 flex-wrap">
                                 {p.brand?.name || "No brand"}
                                 {p.isGeneric && (
                                   <span className="text-primary font-medium">· GENERIC</span>
+                                )}
+                                {p.prescriptionRequired && (
+                                  <span className="text-rose-600 dark:text-rose-400 font-medium">· Rx</span>
                                 )}
                                 {p.sku && (
                                   <span className="font-mono">· {p.sku}</span>
@@ -711,7 +752,7 @@ export function ProductsView() {
                             </div>
                           </div>
                         </TableCell>
-                        <TableCell className="text-sm">
+                        <TableCell className="hidden md:table-cell text-sm">
                           {p.category?.name || <span className="text-muted-foreground italic">—</span>}
                         </TableCell>
                         <TableCell className="text-right">
@@ -726,7 +767,7 @@ export function ProductsView() {
                             )}
                           </div>
                         </TableCell>
-                        <TableCell className="text-right">
+                        <TableCell className="hidden lg:table-cell text-right">
                           {effDiscountPct > 0 ? (
                             <Badge
                               variant="outline"
@@ -766,7 +807,7 @@ export function ProductsView() {
                             </button>
                           </div>
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="hidden sm:table-cell">
                           {out ? (
                             <Badge
                               variant="outline"
@@ -794,7 +835,7 @@ export function ProductsView() {
                           )}
                         </TableCell>
                         <TableCell><StatusBadge status={p.status} /></TableCell>
-                        <TableCell>
+                        <TableCell className="hidden xl:table-cell">
                           <Badge
                             variant="outline"
                             className={isPublic

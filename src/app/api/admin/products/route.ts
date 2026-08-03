@@ -38,12 +38,18 @@ export async function GET(req: Request) {
       { composition: { contains: search, mode: "insensitive" } },
       { manufacturer: { contains: search, mode: "insensitive" } },
       { brand: { name: { contains: search, mode: "insensitive" } } },
+      { category: { name: { contains: search, mode: "insensitive" } } },
     ];
   }
 
   if (categoryId && categoryId !== "all") where.categoryId = categoryId;
   if (brandId && brandId !== "all") where.brandId = brandId;
   if (status && status !== "all") where.status = status;
+  // Prescription-required filter — refinement of the existing filter UI so
+  // admins can quickly find Rx-only or OTC products.
+  const prescription = param(req, "prescription");
+  if (prescription === "true") where.prescriptionRequired = true;
+  else if (prescription === "false") where.prescriptionRequired = false;
 
   // Stock filter — uses a numeric threshold (not Prisma field reference)
   if (stock === "out") {

@@ -1,29 +1,32 @@
 // ============================================================================
 // File: src/components/customer/notification-preferences.tsx
-// Purpose: Customer account → App Notifications settings. Clean toggle with
-//          professional description, active device count, and "Send Test" /
-//          "Enable on this device" buttons.
+// Purpose: Customer account → App Notifications settings card. Provides:
+//    • Master toggle (enabled/disabled) — reflects AppNotifPreference.
+//    • Active device count.
+//    • "Send Test" button.
+//    • "Browser blocked" warning when Notification.permission === "denied".
 //
-//  CRITICAL FIX (Phase 39.5 audit):
-//    • Use window.__ensurePushReady() to guarantee an ACTIVE SW before
-//      subscribing (fixes "no active Service Worker" desktop error).
-//    • Cast applicationServerKey as BufferSource to satisfy TS lib.dom.
-//    • Send UA on subscribe so device analytics work.
-//    • Show "N active device(s)" hint + "Send Test" button when enabled.
-//    • Handle the "enabled on another device, not on this one" case with
-//      a separate "Enable on this device" button.
-//    • Show a clear hint when the browser permission is blocked.
+//  Phase 40 changes:
+//    • Removed the inline "Enable on this device" panel + runSubscribeFlow —
+//      the new DeviceRegistrationWizard handles initial setup on login. The
+//      master toggle here just flips the AppNotifPreference flag (and
+//      activates/deactivates existing PushSubscription rows server-side).
+//    • When the toggle is ON but the customer has NO active subscription on
+//      this device, we show a hint linking them to log out + back in (which
+//      re-triggers the wizard).
+//    • The existing App Notification Center + automatic notification system
+//      are untouched.
 // ============================================================================
 
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./api";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
-import { Bell, BellOff, Loader2, ShieldCheck, Info, Send, Smartphone, AlertCircle, MonitorSmartphone } from "lucide-react";
+import { Bell, BellOff, Loader2, ShieldCheck, Info, Send, Smartphone, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 
 interface NotifPrefs {
@@ -37,7 +40,6 @@ export function NotificationPreferences() {
   const qc = useQueryClient();
   const [busy, setBusy] = useState(false);
   const [testing, setTesting] = useState(false);
-  const [enablingOnDevice, setEnablingOnDevice] = useState(false);
   const [pushSupported, setPushSupported] = useState(true);
   const [hasLocalSubscription, setHasLocalSubscription] = useState<boolean | null>(null);
 
@@ -50,8 +52,7 @@ export function NotificationPreferences() {
     );
   }, []);
 
-  // Check if THIS device has an active push subscription. Used to decide
-  // whether to show the "Enable on this device" button.
+  // Check if THIS device has an active push subscription.
   useEffect(() => {
     if (!pushSupported) return;
     let cancelled = false;
@@ -79,114 +80,49 @@ export function NotificationPreferences() {
     staleTime: 30_000,
   });
 
-  // Shared subscribe-flow used by both "toggle ON" and "Enable on this device".
-  const runSubscribeFlow = useCallback(async (): Promise<boolean> => {
+  // Enable = just flip the preference flag. The wizard handles device
+  // registration; this is the master toggle.
+  const enableNotifications = useCallback(async () => {
     setBusy(true);
     try {
-      // 1. Permission
-      const perm = await Notification.requestPermission();
-      if (perm !== "granted") {
-        toast.error("Notification permission denied. Please allow notifications in your browser settings.");
-        return false;
-      }
-
-      // 2. Ensure SW is registered AND active — fixes the desktop
-      //    "no active Service Worker" error.
-      let reg: ServiceWorkerRegistration | null = null;
-      if (typeof window.__ensurePushReady === "function") {
-        reg = await window.__ensurePushReady();
-      } else {
-        reg = await navigator.serviceWorker.ready;
-      }
-      if (!reg) {
-        toast.error("Service Worker failed to activate. Please refresh the page and try again.");
-        return false;
-      }
-
-      // 3. Get VAPID public key
-      const vapidRes = await fetch("/api/push/vapid-public");
-      const vapidJson = await vapidRes.json();
-      if (!vapidJson.data?.publicKey) {
-        toast.error("Push notifications are not configured on the server.");
-        return false;
-      }
-
-      const applicationServerKey = urlBase64ToUint8Array(vapidJson.data.publicKey);
-
-      // 4. Subscribe (or reuse existing subscription)
-      let subscription = await reg.pushManager.getSubscription();
-      if (!subscription) {
-        subscription = await reg.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: applicationServerKey as BufferSource,
-        });
-      }
-
-      // 5. POST to backend
-      const sub = subscription.toJSON();
-      const subscribeRes = await fetch("/api/push/subscribe", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          endpoint: sub.endpoint,
-          keys: sub.keys,
-          userAgent: navigator.userAgent.slice(0, 500),
-        }),
-      });
-      if (!subscribeRes.ok) {
-        const errData = await subscribeRes.json().catch(() => ({}));
-        toast.error(errData.error || "Failed to save subscription on server");
-        return false;
-      }
-
-      // 6. Update preference
       await api.put("/api/app-notifs/preferences", { enabled: true });
-      setHasLocalSubscription(true);
-      toast.success("Notifications enabled. You'll receive order updates and offers on this device.");
+      toast.success("Notifications enabled. You'll receive updates on all your registered devices.");
       qc.invalidateQueries({ queryKey: QK });
-      return true;
     } catch (e: any) {
-      console.error("[notif-prefs] enable failed:", e);
       toast.error(`Failed to enable: ${e?.message || "unknown error"}`);
-      return false;
     } finally {
       setBusy(false);
     }
   }, [qc]);
 
-  const enableNotifications = useCallback(async () => {
-    await runSubscribeFlow();
-  }, [runSubscribeFlow]);
-
+  // Disable = flip the preference + deactivate all PushSubscription rows
+  // (server-side belt-and-suspenders so the browser stops receiving pushes).
   const disableNotifications = useCallback(async () => {
     setBusy(true);
     try {
-      let reg: ServiceWorkerRegistration | null = null;
+      // Also unsubscribe locally if there's a subscription on this device.
       if (typeof window.__ensurePushReady === "function") {
-        reg = await window.__ensurePushReady();
-      } else {
-        try { reg = await navigator.serviceWorker.ready; } catch { reg = null; }
-      }
-      if (reg) {
-        const sub = await reg.pushManager.getSubscription();
-        if (sub) {
-          try { await sub.unsubscribe(); } catch {}
-          await fetch("/api/push/unsubscribe", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ endpoint: sub.endpoint }),
-          });
-        }
+        try {
+          const reg = await window.__ensurePushReady();
+          if (reg) {
+            const sub = await reg.pushManager.getSubscription();
+            if (sub) {
+              try { await sub.unsubscribe(); } catch {}
+              await fetch("/api/push/unsubscribe", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ endpoint: sub.endpoint }),
+              });
+            }
+          }
+        } catch {}
       }
       await api.put("/api/app-notifs/preferences", { enabled: false });
       setHasLocalSubscription(false);
-      toast.success("Notifications disabled.");
+      toast.success("Notifications disabled. You can re-enable anytime.");
       qc.invalidateQueries({ queryKey: QK });
-      return true;
     } catch (e: any) {
-      console.error("[notif-prefs] disable failed:", e);
       toast.error(`Failed to disable: ${e?.message || "unknown error"}`);
-      return false;
     } finally {
       setBusy(false);
     }
@@ -219,11 +155,11 @@ export function NotificationPreferences() {
   const enabled = !!data?.enabled;
   const activeDevices = data?.activeDevices ?? 0;
   const browserBlocked = typeof Notification !== "undefined" && Notification.permission === "denied";
-  // Show the "Enable on this device" button when:
+  // Show the "enable on this device" hint when:
   //   - preferences.enabled is true (customer wants notifications)
   //   - AND we know there's no local subscription on THIS device
   //   - AND the browser hasn't blocked notifications
-  const showEnableOnDevice = enabled && hasLocalSubscription === false && !browserBlocked;
+  const showEnableOnDeviceHint = enabled && hasLocalSubscription === false && !browserBlocked;
 
   return (
     <Card className="overflow-hidden border-border/60">
@@ -272,7 +208,7 @@ export function NotificationPreferences() {
               </div>
             </div>
 
-            {/* Active device count + Send Test button (only when enabled) */}
+            {/* Active device count + Send Test button */}
             {enabled && (
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-lg border border-border/60 bg-muted/30 p-3">
                 <div className="flex items-center gap-2 text-xs">
@@ -302,35 +238,26 @@ export function NotificationPreferences() {
               </div>
             )}
 
-            {/* "Enable on this device" — shown when toggle is ON but this device has no subscription */}
-            {showEnableOnDevice && (
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs dark:border-amber-900/40 dark:bg-amber-950/30">
-                <div className="flex items-start gap-2">
-                  <MonitorSmartphone className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400" />
-                  <div>
-                    <p className="font-medium text-amber-900 dark:text-amber-200">Not enabled on this device</p>
-                    <p className="mt-0.5 text-amber-700 dark:text-amber-300">
-                      You've enabled notifications on {activeDevices} other device{activeDevices === 1 ? "" : "s"}. Click below to also receive them on this device.
-                    </p>
-                  </div>
+            {/* Hint: enabled but not on this device */}
+            {showEnableOnDeviceHint && (
+              <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs dark:border-amber-900/40 dark:bg-amber-950/30">
+                <Smartphone className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                <div className="space-y-1">
+                  <p className="font-medium text-amber-900 dark:text-amber-200">
+                    Not enabled on this device
+                  </p>
+                  <p className="text-amber-700 dark:text-amber-300">
+                    You've enabled notifications on {activeDevices} other device{activeDevices === 1 ? "" : "s"}.
+                    To also receive them here, log out and log back in — the setup wizard will appear automatically.
+                  </p>
                 </div>
-                <Button
-                  size="sm"
-                  onClick={async () => { setEnablingOnDevice(true); await runSubscribeFlow(); setEnablingOnDevice(false); }}
-                  disabled={enablingOnDevice || busy}
-                  variant="outline"
-                  className="shrink-0 gap-1.5 border-amber-300 text-amber-800 hover:bg-amber-100 dark:border-amber-800 dark:text-amber-200 dark:hover:bg-amber-900/40"
-                >
-                  {enablingOnDevice ? <Loader2 className="size-3.5 animate-spin" /> : <MonitorSmartphone className="size-3.5" />}
-                  Enable Here
-                </Button>
               </div>
             )}
 
             {busy && (
               <p className="flex items-center gap-2 text-xs text-muted-foreground">
                 <Loader2 className="size-3 animate-spin" />
-                {enabled ? "Disabling..." : "Requesting permission + registering device..."}
+                {enabled ? "Disabling..." : "Enabling..."}
               </p>
             )}
 
@@ -351,15 +278,4 @@ export function NotificationPreferences() {
       </CardContent>
     </Card>
   );
-}
-
-function urlBase64ToUint8Array(base64Url: string): Uint8Array {
-  const padding = "=".repeat((4 - (base64Url.length % 4)) % 4);
-  const base64 = (base64Url + padding).replace(/-/g, "+").replace(/_/g, "/");
-  const raw = atob(base64);
-  const arr = new Uint8Array(raw.length);
-  for (let i = 0; i < raw.length; i++) {
-    arr[i] = raw.charCodeAt(i);
-  }
-  return arr;
 }

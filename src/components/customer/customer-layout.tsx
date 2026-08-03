@@ -22,7 +22,7 @@ import { BackToTop } from "./back-to-top";
 import { CompareBar } from "./compare-bar";
 import { HealthAssistantWidget } from "./health-assistant-widget";
 import { WelcomePopup } from "./welcome-popup";
-import { NotificationOnboarding } from "./notification-onboarding";
+import { DeviceRegistrationWizard } from "./device-registration-wizard";
 import { usePublicSettings } from "./use-public-settings";
 import { useCustomer } from "./use-customer";
 import { useUI } from "@/lib/store";
@@ -111,7 +111,7 @@ export function CustomerLayout({ children }: { children: ReactNode }) {
       <BackToTop />
       <HealthAssistantWidget />
       <WelcomePopup />
-      <NotificationOnboarding isAuthenticated={isAuthenticated} />
+      <DeviceRegistrationWizard isAuthenticated={isAuthenticated} />
     </div>
   );
 }

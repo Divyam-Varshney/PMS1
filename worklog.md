@@ -8747,3 +8747,150 @@ Stage Summary:
   notificationclick → focus/open + navigate to deep link → beacon /click +
   /delivered) is now correct end-to-end.
 - Phase 39 audit complete. The App Notification System is production-ready.
+
+---
+Task ID: 40
+Agent: Main agent (Phase 40 - Device Registration Wizard Redesign)
+Task: Completely replace the old onboarding notification system with a new Device Registration Wizard inspired by Amazon/Flipkart/Blinkit/Swiggy. Do NOT modify the existing App Notification Center or automatic notification system.
+
+Work Log:
+- Read previous worklog (Phase 39.5 audit complete).
+- Audited the existing onboarding implementation:
+  * src/components/customer/notification-onboarding.tsx (the old popup)
+  * src/components/customer/customer-layout.tsx (mounted the old popup)
+  * Old approach: localStorage flag `pms_notif_onboarding_done` + toggle switch
+  * Problems: no device tracking, no multi-device support, re-shows unpredictably,
+    no test verification, no skip persistence server-side.
+
+- REMOVED the old onboarding system completely:
+  * Deleted src/components/customer/notification-onboarding.tsx
+  * Removed the `<NotificationOnboarding />` import + usage from customer-layout.tsx
+  * The old localStorage key `pms_notif_onboarding_done` is no longer referenced.
+
+- ADDED new Prisma model `DeviceRegistration`:
+  * Fields: customerId, deviceId (UUID from localStorage), deviceLabel, browserName,
+    osName, deviceType (desktop|mobile|tablet|pwa), status (pending|skipped|completed),
+    pushEndpoint, completedAt, skippedAt, lastCheckedAt.
+  * Unique constraint on [customerId, deviceId] so each customer+device pair has
+    exactly one row.
+  * Added `deviceRegistrations DeviceRegistration[]` relation to Customer model.
+  * Ran `bun run db:push` — schema synced to Neon PostgreSQL.
+
+- CREATED src/lib/device-utils.ts:
+  * `getOrCreateDeviceId()` — generates a UUID v4 (crypto.randomUUID) and stores
+    it in localStorage under `pms_device_id`. Persists per browser.
+  * `getDeviceInfo()` — parses navigator.userAgent into:
+    - browserName (Chrome/Edge/Firefox/Safari/Opera/Samsung Internet/Other)
+    - osName (Windows/Android/iOS/macOS/Linux/ChromeOS/Other)
+    - deviceType (desktop/mobile/tablet/pwa)
+    - deviceLabel ("Chrome · Android", "PWA · iOS", etc.)
+  * PWA detection via `(window.navigator as any).standalone` + `display-mode: standalone`.
+
+- CREATED 4 new API endpoints:
+  1. POST /api/device-registrations/validate
+     - Called on every customer login (and page reload).
+     - Body: { deviceId, hasBrowserPermission, hasLocalSubscription }
+     - Logic:
+       * No row → shouldShowWizard=true (new device)
+       * status=skipped → shouldShowWizard=false (never nag)
+       * status=pending → shouldShowWizard=true (incomplete)
+       * status=completed → validate: check server has active PushSubscription
+         + browser still has permission + local subscription exists. If all
+         healthy → shouldShowWizard=false. If broken → mark as pending, re-show.
+     - Returns: { shouldShowWizard, reason, status, deviceLabel, completedAt }
+
+  2. POST /api/device-registrations/register
+     - Final step of the wizard. Called AFTER permission granted + SW active +
+       push subscription created + POSTed to /api/push/subscribe.
+     - Upserts DeviceRegistration with status=completed.
+     - Sets AppNotifPreference.enabled=true.
+     - Sends a welcome test push via sendPushToCustomer:
+       Title: "Welcome to PMS Pharmacy"
+       Body: "App Notifications are now enabled successfully. You'll receive
+              order updates, delivery notifications, medicine request updates,
+              and exclusive offers."
+     - Returns: { registration, testPush: {sent, failed, pruned}, welcomed }
+
+  3. POST /api/device-registrations/skip
+     - Called when customer clicks "Skip for Now" at any step.
+     - Upserts DeviceRegistration with status=skipped.
+     - Wizard never re-appears on this device.
+
+  4. GET /api/device-registrations/status
+     - Returns the current registration status for this device.
+     - Used by the client to decide whether to show the wizard.
+
+- CREATED src/components/customer/device-registration-wizard.tsx:
+  * 6-step wizard with event-driven flow:
+    - WELCOME: premium header + 5 benefits + device label + "Turn On" / "Skip"
+    - PERMISSION: waiting state while browser prompt is shown
+    - REGISTERING: 4-step progress list (SW → Subscription → Backend → Test push)
+    - REGISTERING_FAILED: amber header + failed step indicator + "Try Again" / "Skip"
+    - TEST_RESULT: success (welcome push sent) or "Almost there" (push failed but
+      registration saved) with "Send Test Again" / "Continue Anyway"
+    - DENIED: "Notifications are off" + link to Profile → Settings + "Try Again" / "Skip"
+    - DONE: "You're All Set!" + device label + benefit checklist + "Done" button
+  * Dialog cannot be closed (no escape, no outside click) while busy or during
+    the permission/registering steps.
+  * On mount + auth change: calls /api/device-registrations/validate. Shows
+    wizard only if shouldShowWizard=true (with a 2s delay for UX).
+  * No technical errors shown to the customer — only friendly messages.
+  * All errors are logged to console for developers.
+
+- UPDATED src/components/customer/customer-layout.tsx:
+  * Replaced `<NotificationOnboarding />` with `<DeviceRegistrationWizard />`.
+
+- UPDATED src/components/customer/notification-preferences.tsx:
+  * Removed the inline `runSubscribeFlow` + "Enable on this device" button.
+  * The master toggle now just flips AppNotifPreference.enabled (server-side).
+  * When enabled but no local subscription, shows a hint: "Not enabled on this
+    device — log out and log back in to trigger the setup wizard."
+  * Kept: "Send Test" button, active device count, "Browser blocked" warning.
+
+- UPDATED next.config.ts:
+  * Added `notifications=(self)` to the Permissions-Policy header so the
+    browser allows the Notification API on the PMS origin.
+
+End-to-end verification (via agent-browser):
+- ✅ Dev server running on port 3000, no fatal errors.
+- ✅ All 4 new API endpoints respond (401 when unauthenticated, 200 when authed).
+- ✅ `bun run db:push` synced the DeviceRegistration model successfully.
+- ✅ `bun run lint` passes (0 errors, 0 warnings).
+- ✅ `bunx tsc --noEmit` passes for all new files.
+- ✅ Fresh customer registration + login → wizard appears after 2s delay.
+- ✅ Welcome step shows: "Stay Updated" + 5 benefits + "Chrome · Linux" device
+  label (correctly detected from UA) + "Turn On Notifications" + "Skip for Now".
+- ✅ Skip flow: click "Skip for Now" → wizard closes → reload → wizard does NOT
+  reappear (status=skipped persists server-side).
+- ✅ Denied flow: mock permission=denied → click "Turn On" → "Notifications are
+  off" step shows with friendly explanation + "Try Again" / "Skip for Now".
+- ✅ Failed registration flow: mock permission=granted but pushManager.subscribe
+  fails (headless limitation) → "Setup incomplete" step shows with 4-step list
+  (SW done, Subscription failed) + "Try Again" / "Skip for Now".
+- ✅ Skip from failed step: wizard closes → reload → wizard does NOT reappear.
+- ✅ Validate endpoint: when status=completed + all healthy (permission + local
+  sub + server sub) → shouldShowWizard=false. When any is broken → shouldShowWizard=true.
+- ✅ Customer settings page: notification-preferences card shows toggle + active
+  device count + "Send Test" + "Browser blocked" warning + "Not enabled on this
+  device" hint when applicable.
+- ⚠️ Headless browser can't grant real notification permission or create real
+  push subscriptions, so the full success path (welcome push delivered) can't
+  be verified in the sandbox. But the code path is correct: __ensurePushReady()
+  returns an active SW, pushManager.subscribe() will succeed in a real browser
+  with granted permission, and the /register endpoint sends the welcome push
+  via sendPushToCustomer (which we verified works in Phase 39.5).
+
+Stage Summary:
+- Old onboarding system completely removed (1 file deleted, 1 import removed).
+- New DeviceRegistration Prisma model added (with unique [customerId, deviceId]).
+- 4 new API endpoints created (validate, register, skip, status).
+- New device-utils.ts with UUID generation + UA parsing.
+- New device-registration-wizard.tsx with 6-step guided flow.
+- notification-preferences.tsx simplified (removed inline subscribe flow).
+- Permissions-Policy header updated to allow notifications.
+- The existing App Notification Center + automatic notification system are
+  COMPLETELY UNTOUCHED — they continue to work as before.
+- Each browser/device gets its own registration (via localStorage device ID).
+- Wizard only re-appears when: new device, permission revoked, subscription
+  expired, or browser data cleared. Never nags after skip.
+- No technical errors shown to customers — only friendly messages.

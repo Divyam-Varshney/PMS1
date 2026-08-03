@@ -86,6 +86,7 @@ model Customer {
   pushSubscriptions PushSubscription[]
   appNotifLogs   AppNotifLog[]
   appNotifPref   AppNotifPreference?
+  deviceRegistrations DeviceRegistration[]
 
   @@index([email])
   @@index([phone])
@@ -900,6 +901,46 @@ model AppNotifPreference {
   customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
 
   @@index([customerId])
+}
+
+/// Per-customer, per-device registration record for the onboarding wizard.
+/// One customer can have multiple device registrations (Chrome Desktop,
+/// Chrome Android, PWA install, etc.). Each browser/device is identified by
+/// a locally-generated `deviceId` (UUID stored in localStorage) so the
+/// onboarding wizard only shows ONCE per device.
+///
+/// Lifecycle:
+///   • Row created when the wizard first appears (status=pending).
+///   • status=skipped  → customer clicked "Skip for Now".
+///   • status=completed→ customer finished the wizard + test push verified.
+///
+/// On every login, the client checks `GET /api/device-registrations/status`
+/// — if THIS device's status is `completed` AND the browser still has
+/// permission + an active push subscription, the wizard NEVER re-appears.
+/// If permission was revoked, the subscription expired, or the customer
+/// logged in from a brand-new browser, the wizard shows again.
+model DeviceRegistration {
+  id              String   @id @default(cuid())
+  customerId      String
+  deviceId        String   @db.VarChar(64)  // UUID generated client-side, stored in localStorage
+  deviceLabel     String   @db.VarChar(120) // "Chrome · Android", "Edge · Windows", etc.
+  browserName     String   @db.VarChar(40)
+  osName          String   @db.VarChar(40)
+  deviceType      String   @db.VarChar(20)  // desktop | mobile | tablet | pwa
+  status          String   @default("pending") @db.VarChar(20) // pending | skipped | completed
+  pushEndpoint    String?  @db.VarChar(500) // the FCM/Mozilla endpoint at registration time
+  completedAt     DateTime?
+  skippedAt       DateTime?
+  lastCheckedAt   DateTime @default(now())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@unique([customerId, deviceId])
+  @@index([customerId])
+  @@index([deviceId])
+  @@index([status])
 }
 
 // ---------------------------------------------------------------------------

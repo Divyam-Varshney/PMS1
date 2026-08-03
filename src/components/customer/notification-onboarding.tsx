@@ -247,6 +247,14 @@ export function NotificationOnboarding({
           </div>
         </div>
 
+        {/* Change preference note */}
+        <div className="px-6 pb-2">
+          <p className="text-center text-xs text-muted-foreground">
+            You can change your notification preference at any time from{" "}
+            <span className="font-medium text-foreground">Profile → Settings → App Notifications</span>.
+          </p>
+        </div>
+
         {/* Footer actions */}
         <DialogFooter className="flex-col gap-2 border-t bg-muted/30 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
           <Button variant="ghost" size="sm" onClick={handleSkip} disabled={busy} className="w-full sm:w-auto">

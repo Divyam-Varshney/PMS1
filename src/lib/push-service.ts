@@ -7,11 +7,6 @@
 //              PushSubscription.subscribe() call (base64url)
 //            • sendPushToCustomer(customerId, payload) — fan-out to all
 //              active subscriptions for a customer, auto-pruning dead ones
-//
-// Dead-endpoint handling: web-push throws on 404/410 (FCM/Mozilla permanently
-// remove the endpoint). We catch + delete the PushSubscription row so the
-// customer can re-subscribe cleanly. Other errors (429, 5xx) are logged but
-// the subscription is preserved (transient).
 // ============================================================================
 
 import webpush, { type PushSubscription as WpSubscription } from "web-push";
@@ -21,20 +16,21 @@ import { db } from "@/lib/db";
 // VAPID setup — configure once on first import. The keys live in .env.
 // ---------------------------------------------------------------------------
 
-const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY;
-const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY;
+const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || "";
+const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || "";
 const VAPID_SUBJECT =
   process.env.VAPID_SUBJECT || "mailto:admin@pradeepmedicalstore.in";
 
 let _configured = false;
 function ensureVapidConfigured() {
   if (_configured) return;
-  if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) {
-    // Soft skip — sendPushToCustomer will return 0 sent if unconfigured.
-    return;
+  if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) return;
+  try {
+    webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+    _configured = true;
+  } catch (err) {
+    console.error("[push-service] VAPID config failed:", err);
   }
-  webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
-  _configured = true;
 }
 
 /** True when VAPID env vars are present and the push service is usable. */
@@ -43,8 +39,8 @@ export function isPushConfigured(): boolean {
 }
 
 /** The public VAPID key (base64url). Pass to PushManager.subscribe(). */
-export function getVapidPublicKey(): string | null {
-  return VAPID_PUBLIC_KEY || null;
+export function getVapidPublicKey(): string {
+  return VAPID_PUBLIC_KEY;
 }
 
 // ---------------------------------------------------------------------------
@@ -73,6 +69,7 @@ export async function sendPushToCustomer(
 ): Promise<{ sent: number; failed: number; pruned: number }> {
   if (!isPushConfigured()) return { sent: 0, failed: 0, pruned: 0 };
   ensureVapidConfigured();
+  if (!_configured) return { sent: 0, failed: 0, pruned: 0 };
 
   const subs = await db.pushSubscription.findMany({
     where: { customerId, isActive: true },
@@ -94,7 +91,6 @@ export async function sendPushToCustomer(
   let failed = 0;
   let pruned = 0;
 
-  // Send in parallel — each subscription is independent.
   await Promise.all(
     subs.map(async (sub) => {
       const wpSub: WpSubscription = {
@@ -102,30 +98,20 @@ export async function sendPushToCustomer(
         keys: { p256dh: sub.p256dhKey, auth: sub.authKey },
       };
       try {
-        await webpush.sendNotification(wpSub, message, {
-          vapidDetails: {
-            subject: VAPID_SUBJECT,
-            publicKey: VAPID_PUBLIC_KEY!,
-            privateKey: VAPID_PRIVATE_KEY!,
-          },
-        });
+        await webpush.sendNotification(wpSub, message);
         sent++;
       } catch (e: any) {
         const status = e?.statusCode ?? 0;
-        // 404 / 410 = endpoint permanently gone → prune the row.
         if (status === 404 || status === 410) {
           try {
-            await db.pushSubscription.delete({ where: { id: sub.id } });
+            await db.pushSubscription.update({
+              where: { id: sub.id },
+              data: { isActive: false },
+            });
             pruned++;
-          } catch {
-            // already deleted by another worker
-          }
+          } catch {}
         } else {
-          // 429 / 5xx / network — keep the subscription, just log.
-          console.error(
-            `[push] send failed (status=${status}) for sub ${sub.id}:`,
-            e?.message
-          );
+          console.error(`[push] send failed (status=${status}):`, e?.message);
           failed++;
         }
       }

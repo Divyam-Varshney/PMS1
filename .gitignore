@@ -40,3 +40,4 @@ upload/
 # Sandbox build artifacts
 db/
 .zscripts/mini-service-*.log
+tsconfig.tsbuildinfo

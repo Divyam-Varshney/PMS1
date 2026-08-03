@@ -64,10 +64,20 @@ export async function POST(req: Request) {
       else if (userAgent.includes("iPhone") || userAgent.includes("iPad")) { os = "iOS"; device = "Mobile"; }
       else if (userAgent.includes("Linux")) os = "Linux";
 
-      const loginTime = new Date().toLocaleString("en-IN", {
+      const loginDateObj = new Date();
+      const loginDate = loginDateObj.toLocaleDateString("en-IN", {
         timeZone: "Asia/Kolkata",
-        dateStyle: "full",
-        timeStyle: "long",
+        weekday: "short",
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      });
+      const loginTime = loginDateObj.toLocaleTimeString("en-IN", {
+        timeZone: "Asia/Kolkata",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: true,
       });
 
       // Get global admin email from settings
@@ -78,29 +88,18 @@ export async function POST(req: Request) {
       if (globalAdminEmail) {
         await sendNotification({
           to: globalAdminEmail,
-          templateKey: "admin_alert",
+          templateKey: "admin_login_alert",
           vars: {
-            name: "Administrator",
-            alertType: "Admin Login Notification",
-            message: `An admin account has successfully logged in.\n\nAdmin Name: ${admin.name}\nEmail: ${admin.email}\nLogin Time: ${loginTime}\nBrowser: ${browser}\nDevice: ${device}\nOperating System: ${os}\nIP Address: ${ip}\nLogin Status: Success`,
-            details: `Admin: ${admin.name} (${admin.email}) logged in from ${browser} on ${os} (${device}) at ${loginTime}. IP: ${ip}`,
+            adminName: admin.name,
+            adminEmail: admin.email,
+            loginDate,
+            loginTime,
+            ipAddress: ip,
+            browser,
+            os,
+            device,
+            loginStatus: "Success",
           },
-          subjectOverride: `[Security] Admin Login: ${admin.name} (${admin.email})`,
-          bodyOverride: `<div style="font-family:sans-serif;max-width:600px;margin:0 auto;background-color:#0f172a;color:#f1f5f9;padding:24px;border-radius:12px;">
-<h2 style="color:#10b981;margin:0 0 16px;">🔐 Admin Login Notification</h2>
-<p style="color:#cbd5e1;">An administrator account has successfully logged in to the PMS Admin Panel.</p>
-<table style="width:100%;border-collapse:collapse;margin:16px 0;">
-<tr><td style="padding:8px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Admin Name</td><td style="padding:8px 12px;color:#f1f5f9;font-weight:600;border-bottom:1px solid #334155;">${admin.name}</td></tr>
-<tr><td style="padding:8px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Email</td><td style="padding:8px 12px;color:#f1f5f9;font-weight:600;border-bottom:1px solid #334155;">${admin.email}</td></tr>
-<tr><td style="padding:8px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Login Time</td><td style="padding:8px 12px;color:#f1f5f9;font-weight:600;border-bottom:1px solid #334155;">${loginTime}</td></tr>
-<tr><td style="padding:8px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Browser</td><td style="padding:8px 12px;color:#f1f5f9;font-weight:600;border-bottom:1px solid #334155;">${browser}</td></tr>
-<tr><td style="padding:8px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Device</td><td style="padding:8px 12px;color:#f1f5f9;font-weight:600;border-bottom:1px solid #334155;">${device}</td></tr>
-<tr><td style="padding:8px 12px;color:#94a3b8;border-bottom:1px solid #334155;">Operating System</td><td style="padding:8px 12px;color:#f1f5f9;font-weight:600;border-bottom:1px solid #334155;">${os}</td></tr>
-<tr><td style="padding:8px 12px;color:#94a3b8;border-bottom:1px solid #334155;">IP Address</td><td style="padding:8px 12px;color:#f1f5f9;font-weight:600;border-bottom:1px solid #334155;">${ip}</td></tr>
-<tr><td style="padding:8px 12px;color:#94a3b8;">Login Status</td><td style="padding:8px 12px;color:#10b981;font-weight:600;">✅ Success</td></tr>
-</table>
-<p style="color:#64748b;font-size:12px;margin-top:16px;">This is an automated security notification. If you did not initiate this login, please take immediate action to secure the account.</p>
-</div>`,
           channel: "email",
         });
       }

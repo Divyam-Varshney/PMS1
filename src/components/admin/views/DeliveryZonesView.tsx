@@ -330,50 +330,50 @@ export function DeliveryZonesView() {
   // Render
   // -------------------------------------------------------------------
   return (
-    <div>
+    <div className="space-y-4">
       <PageHeader
         title="Delivery Zones"
         description="Locality-based delivery charges. PIN codes are an optional fallback when no locality matches."
         actions={
-          <Button onClick={openNew} className="bg-emerald-600 hover:bg-emerald-700">
-            <Plus className="size-4 mr-1" /> Add Zone
+          <Button onClick={openNew} className="gap-1.5 bg-emerald-600 hover:bg-emerald-700">
+            <Plus className="size-4" /> Add Zone
           </Button>
         }
       />
 
       {/* Summary stats */}
       {sortedZones.length > 0 && (
-        <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           <Card className="rounded-xl border-border/50 shadow-premium-sm">
-            <CardContent className="flex items-center gap-3 p-4">
-              <div className="flex size-10 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+            <CardContent className="flex items-center gap-3 p-3 sm:p-4">
+              <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 sm:size-10">
                 <Truck className="size-5" />
               </div>
-              <div>
-                <div className="text-xl font-bold text-foreground">{sortedZones.length}</div>
-                <div className="text-xs text-muted-foreground">Total Zones</div>
+              <div className="min-w-0">
+                <div className="text-xl font-bold text-foreground tabular-nums leading-tight">{sortedZones.length}</div>
+                <div className="text-xs text-muted-foreground truncate">Total Zones</div>
               </div>
             </CardContent>
           </Card>
           <Card className="rounded-xl border-border/50 shadow-premium-sm">
-            <CardContent className="flex items-center gap-3 p-4">
-              <div className="flex size-10 items-center justify-center rounded-xl bg-teal-100 text-teal-700 dark:bg-teal-950/40 dark:text-teal-300">
+            <CardContent className="flex items-center gap-3 p-3 sm:p-4">
+              <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-teal-100 text-teal-700 dark:bg-teal-950/40 dark:text-teal-300 sm:size-10">
                 <CheckCircle2 className="size-5" />
               </div>
-              <div>
-                <div className="text-xl font-bold text-foreground">{activeCount}</div>
-                <div className="text-xs text-muted-foreground">Active</div>
+              <div className="min-w-0">
+                <div className="text-xl font-bold text-foreground tabular-nums leading-tight">{activeCount}</div>
+                <div className="text-xs text-muted-foreground truncate">Active</div>
               </div>
             </CardContent>
           </Card>
           <Card className="col-span-2 rounded-xl border-border/50 shadow-premium-sm sm:col-span-1">
-            <CardContent className="flex items-center gap-3 p-4">
-              <div className="flex size-10 items-center justify-center rounded-xl bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
+            <CardContent className="flex items-center gap-3 p-3 sm:p-4">
+              <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 sm:size-10">
                 <XCircle className="size-5" />
               </div>
-              <div>
-                <div className="text-xl font-bold text-foreground">{sortedZones.length - activeCount}</div>
-                <div className="text-xs text-muted-foreground">Inactive</div>
+              <div className="min-w-0">
+                <div className="text-xl font-bold text-foreground tabular-nums leading-tight">{sortedZones.length - activeCount}</div>
+                <div className="text-xs text-muted-foreground truncate">Inactive</div>
               </div>
             </CardContent>
           </Card>
@@ -401,7 +401,7 @@ export function DeliveryZonesView() {
             <>
               {/* Desktop: table view (md+ breakpoint) */}
               <div className="hidden overflow-x-auto md:block">
-                <Table>
+                <Table className="min-w-[820px]">
                   <TableHeader>
                     <TableRow className="bg-muted/40">
                       <TableHead className="w-[180px]">Zone</TableHead>

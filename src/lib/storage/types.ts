@@ -32,7 +32,8 @@ export type FileCategory =
   | "qr-codes"
   | "store"
   | "prescriptions"
-  | "payments";
+  | "payments"
+  | "reviews";
 
 // Categories that contain sensitive files (customer prescriptions, payment
 // screenshots). These are served through the authenticated /api/file proxy

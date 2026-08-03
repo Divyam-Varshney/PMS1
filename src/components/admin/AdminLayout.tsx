@@ -129,7 +129,7 @@ const NAV_GROUPS: Array<{
       { view: { name: "offers" }, icon: Megaphone, label: "Offers & Banners", permission: "offers" },
       { view: { name: "deals" }, icon: Flame, label: "Today's Deals", permission: "deals" },
       { view: { name: "campaigns" }, icon: Megaphone, label: "Campaigns", permission: "campaigns" },
-      { view: { name: "ai-marketing" }, icon: Sparkles, label: "AI Marketing", permission: "ai-marketing" },
+      { view: { name: "ai-marketing" }, icon: Sparkles, label: "AI Email Marketing", permission: "ai-marketing" },
       { view: { name: "vouchers" }, icon: Ticket, label: "Vouchers", permission: "vouchers" },
       { view: { name: "newsletter" }, icon: Mailbox, label: "Newsletter", permission: "newsletter" },
       { view: { name: "app-notification-center" }, icon: Bell, label: "Apps Notification's", permission: "app-notifications" },
@@ -195,7 +195,7 @@ const TITLE_MAP: Record<string, string> = {
   database: "Database",
   campaigns: "Campaigns",
   "error-logs": "Error Logs",
-  "ai-marketing": "AI Marketing",
+  "ai-marketing": "AI Email Marketing",
 };
 
 // Breadcrumb parent map (child → parent view name)

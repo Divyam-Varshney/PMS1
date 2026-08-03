@@ -25,8 +25,19 @@ export async function POST(req: Request, { params }: Ctx) {
     include: { items: true },
   });
   if (!order) return notFound("Order not found");
-  if (order.status === "cancelled" || order.status === "delivered") {
-    return err("Cannot modify a delivered/cancelled order", 400);
+  // Items can only be added while the order is still in pre-fulfillment
+  // stages (pending / confirmed). Once packed, the order is locked.
+  if (
+    order.status === "cancelled" ||
+    order.status === "delivered" ||
+    order.status === "packed" ||
+    order.status === "out_for_delivery" ||
+    order.status === "returned"
+  ) {
+    return err(
+      "Items are locked once the order is packed. Only pending or confirmed orders can be modified.",
+      400
+    );
   }
 
   const product = await db.product.findUnique({

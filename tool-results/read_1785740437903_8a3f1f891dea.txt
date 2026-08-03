@@ -1,0 +1,802 @@
+     1→     1→// ============================================================================
+     2→     2→// File: src/components/admin/views/PaymentMethodsView.tsx
+     3→     3→// Purpose: Payment method management. Modular — admin can add new methods
+     4→     4→//          (UPI, Razorpay, Cashfree, COD, QR, etc.) without code changes.
+     5→     5→//          Active methods appear at checkout. Each row has a quick-toggle
+     6→     6→//          switch; full add/edit happens in a dialog.
+     7→     7→//          Special handling:
+     8→     8→//            - QR method: shows a QR code image upload (saved to /uploads/qr/
+     9→     9→//              and stored in PaymentMethod.config as {"qrImage":"..."}).
+    10→    10→//            - Razorpay method: shows Key ID + Key Secret inputs (saved to
+    11→    11→//              config as {"keyId":"...","keySecret":"..."}) plus a "Test
+    12→    12→//              Connection" button that POSTs to /api/admin/payment-methods/razorpay-test.
+    13→    13→// ============================================================================
+    14→    14→
+    15→    15→"use client";
+    16→    16→
+    17→    17→import { useState, useRef } from "react";
+    18→    18→import { useQuery, useQueryClient } from "@tanstack/react-query";
+    19→    19→import { api, run } from "../api";
+    20→    20→import { PageHeader, TableSkeleton, EmptyState } from "../ui";
+    21→    21→import { Card, CardContent } from "@/components/ui/card";
+    22→    22→import { Button } from "@/components/ui/button";
+    23→    23→import { Input } from "@/components/ui/input";
+    24→    24→import { Label } from "@/components/ui/label";
+    25→    25→import { Textarea } from "@/components/ui/textarea";
+    26→    26→import { Switch } from "@/components/ui/switch";
+    27→    27→import { Badge } from "@/components/ui/badge";
+    28→    28→import {
+    29→    29→  Dialog,
+    30→    30→  DialogContent,
+    31→    31→  DialogHeader,
+    32→    32→  DialogTitle,
+    33→    33→  DialogDescription,
+    34→    34→  DialogFooter,
+    35→    35→} from "@/components/ui/dialog";
+    36→    36→import {
+    37→    37→  Table,
+    38→    38→  TableBody,
+    39→    39→  TableCell,
+    40→    40→  TableHead,
+    41→    41→  TableHeader,
+    42→    42→  TableRow,
+    43→    43→} from "@/components/ui/table";
+    44→    44→import {
+    45→    45→  Plus,
+    46→    46→  Pencil,
+    47→    47→  Trash2,
+    48→    48→  CreditCard,
+    49→    49→  Loader2,
+    50→    50→  Info,
+    51→    51→  Upload,
+    52→    52→  PlugZap,
+    53→    53→  CheckCircle2,
+    54→    54→  Eye,
+    55→    55→  EyeOff,
+    56→    56→} from "lucide-react";
+    57→    57→import { toast } from "sonner";
+    58→    58→
+    59→    59→// ---------------------------------------------------------------------------
+    60→    60→// Types
+    61→    61→// ---------------------------------------------------------------------------
+    62→    62→
+    63→    63→interface PaymentMethod {
+    64→    64→  id: string;
+    65→    65→  key: string;
+    66→    66→  label: string;
+    67→    67→  description?: string | null;
+    68→    68→  icon?: string | null;
+    69→    69→  gateway?: string | null;
+    70→    70→  config?: string | null;
+    71→    71→  displayOrder: number;
+    72→    72→  isActive: boolean;
+    73→    73→  createdAt: string;
+    74→    74→  updatedAt: string;
+    75→    75→}
+    76→    76→
+    77→    77→interface RazorpayConfig {
+    78→    78→  keyId?: string;
+    79→    79→  keySecret?: string;
+    80→    80→}
+    81→    81→interface QrConfig {
+    82→    82→  qrImage?: string;
+    83→    83→}
+    84→    84→
+    85→    85→const EMPTY = {
+    86→    86→  key: "",
+    87→    87→  label: "",
+    88→    88→  description: "",
+    89→    89→  icon: "",
+    90→    90→  gateway: "",
+    91→    91→  displayOrder: 0,
+    92→    92→  isActive: true,
+    93→    93→};
+    94→    94→
+    95→    95→// ---------------------------------------------------------------------------
+    96→    96→// Key auto-generation: "Cash on Delivery" → "cod", "UPI" → "upi",
+    97→    97→// "Razorpay" → "razorpay", "QR Code" → "qc". Multi-word → initials joined;
+    98→    98→// single-word → lowercased whole word. Special-cased common terms so
+    99→    99→// "QR Code" → "qr" (more conventional than "qc").
+   100→   100→// ---------------------------------------------------------------------------
+   101→   101→function generateKey(label: string): string {
+   102→   102→  const trimmed = label.trim();
+   103→   103→  if (!trimmed) return "";
+   104→   104→  const words = trimmed.split(/\s+/).filter(Boolean);
+   105→   105→  if (words.length === 1) return words[0].toLowerCase();
+   106→   106→  // Common multi-word payment terms — use conventional short forms.
+   107→   107→  const lower = trimmed.toLowerCase();
+   108→   108→  if (lower.includes("qr")) return "qr";
+   109→   109→  if (lower.includes("upi")) return "upi";
+   110→   110→  if (lower.includes("cash") && lower.includes("delivery")) return "cod";
+   111→   111→  if (lower.includes("net banking")) return "netbanking";
+   112→   112→  return words.map((w) => w[0]).join("").toLowerCase();
+   113→   113→}
+   114→   114→
+   115→   115→/** Safe JSON parse of PaymentMethod.config — never throws. */
+   116→   116→function parseConfig<T = Record<string, unknown>>(raw?: string | null): T {
+   117→   117→  if (!raw) return {} as T;
+   118→   118→  try {
+   119→   119→    return JSON.parse(raw) as T;
+   120→   120→  } catch {
+   121→   121→    return {} as T;
+   122→   122→  }
+   123→   123→}
+   124→   124→
+   125→   125→// ---------------------------------------------------------------------------
+   126→   126→// View
+   127→   127→// ---------------------------------------------------------------------------
+   128→   128→
+   129→   129→export function PaymentMethodsView() {
+   130→   130→  const qc = useQueryClient();
+   131→   131→  const { data, isLoading } = useQuery({
+   132→   132→    queryKey: ["admin-payment-methods"],
+   133→   133→    queryFn: () => api.get<PaymentMethod[]>("/api/admin/payment-methods"),
+   134→   134→  });
+   135→   135→
+   136→   136→  const [open, setOpen] = useState(false);
+   137→   137→  const [editing, setEditing] = useState<PaymentMethod | null>(null);
+   138→   138→  const [form, setForm] = useState<any>(EMPTY);
+   139→   139→  // Razorpay + QR-specific form state (parsed from config when editing)
+   140→   140→  const [razorpayCreds, setRazorpayCreds] = useState<RazorpayConfig>({ keyId: "", keySecret: "" });
+   141→   141→  const [qrImage, setQrImage] = useState<string>("");
+   142→   142→  const [showSecret, setShowSecret] = useState(false);
+   143→   143→  const [testingRazorpay, setTestingRazorpay] = useState(false);
+   144→   144→  // When true, the key field auto-follows the label. Turned off when the
+   145→   145→  // admin manually edits the key field so the override survives.
+   146→   146→  const [autoKey, setAutoKey] = useState(true);
+   147→   147→  const [saving, setSaving] = useState(false);
+   148→   148→  const [togglingId, setTogglingId] = useState<string | null>(null);
+   149→   149→  const qrFileInputRef = useRef<HTMLInputElement>(null);
+   150→   150→
+   151→   151→  function openNew() {
+   152→   152→    setEditing(null);
+   153→   153→    setForm(EMPTY);
+   154→   154→    setRazorpayCreds({ keyId: "", keySecret: "" });
+   155→   155→    setQrImage("");
+   156→   156→    setShowSecret(false);
+   157→   157→    setAutoKey(true);
+   158→   158→    setOpen(true);
+   159→   159→  }
+   160→   160→
+   161→   161→  function openEdit(pm: PaymentMethod) {
+   162→   162→    setEditing(pm);
+   163→   163→    setForm({
+   164→   164→      key: pm.key,
+   165→   165→      label: pm.label,
+   166→   166→      description: pm.description || "",
+   167→   167→      icon: pm.icon || "",
+   168→   168→      gateway: pm.gateway || "",
+   169→   169→      displayOrder: pm.displayOrder,
+   170→   170→      isActive: pm.isActive,
+   171→   171→    });
+   172→   172→    // Load method-specific config from the JSON string.
+   173→   173→    if (pm.key === "razorpay") {
+   174→   174→      const cfg = parseConfig<RazorpayConfig>(pm.config);
+   175→   175→      setRazorpayCreds({ keyId: cfg.keyId ?? "", keySecret: cfg.keySecret ?? "" });
+   176→   176→    } else {
+   177→   177→      setRazorpayCreds({ keyId: "", keySecret: "" });
+   178→   178→    }
+   179→   179→    if (pm.key === "qr") {
+   180→   180→      const cfg = parseConfig<QrConfig>(pm.config);
+   181→   181→      setQrImage(cfg.qrImage ?? "");
+   182→   182→    } else {
+   183→   183→      setQrImage("");
+   184→   184→    }
+   185→   185→    setShowSecret(false);
+   186→   186→    // Existing records have an explicit key — don't auto-overwrite it.
+   187→   187→    setAutoKey(false);
+   188→   188→    setOpen(true);
+   189→   189→  }
+   190→   190→
+   191→   191→  function onLabelChange(value: string) {
+   192→   192→    setForm((f: any) => ({
+   193→   193→      ...f,
+   194→   194→      label: value,
+   195→   195→      ...(autoKey ? { key: generateKey(value) } : {}),
+   196→   196→    }));
+   197→   197→  }
+   198→   198→
+   199→   199→  function onKeyChange(value: string) {
+   200→   200→    setAutoKey(false);
+   201→   201→    // Force lowercase + strip whitespace (keys must be lowercase identifiers).
+   202→   202→    setForm((f: any) => ({ ...f, key: value.toLowerCase().replace(/\s+/g, "") }));
+   203→   203→  }
+   204→   204→
+   205→   205→  // Build the config object to send, based on the method key.
+   206→   206→  function buildConfig(): Record<string, string> | undefined {
+   207→   207→    if (form.key === "razorpay") {
+   208→   208→      const cfg: Record<string, string> = {};
+   209→   209→      if (razorpayCreds.keyId?.trim()) cfg.keyId = razorpayCreds.keyId.trim();
+   210→   210→      if (razorpayCreds.keySecret?.trim()) cfg.keySecret = razorpayCreds.keySecret.trim();
+   211→   211→      return Object.keys(cfg).length ? cfg : undefined;
+   212→   212→    }
+   213→   213→    if (form.key === "qr") {
+   214→   214→      const cfg: Record<string, string> = {};
+   215→   215→      if (qrImage) cfg.qrImage = qrImage;
+   216→   216→      return Object.keys(cfg).length ? cfg : undefined;
+   217→   217→    }
+   218→   218→    return undefined;
+   219→   219→  }
+   220→   220→
+   221→   221→  async function save() {
+   222→   222→    if (!form.label.trim()) {
+   223→   223→      toast.error("Label is required");
+   224→   224→      return;
+   225→   225→    }
+   226→   226→    if (!form.key.trim()) {
+   227→   227→      toast.error("Key is required");
+   228→   228→      return;
+   229→   229→    }
+   230→   230→    // Razorpay-specific validation — require both fields IF the admin is
+   231→   231→    // enabling the method OR entering any value. Allows saving an empty
+   232→   232→    // disabled Razorpay method (the seeded default).
+   233→   233→    if (form.key === "razorpay" && form.isActive) {
+   234→   234→      if (!razorpayCreds.keyId?.trim() || !razorpayCreds.keySecret?.trim()) {
+   235→   235→        toast.error("Razorpay Key ID and Key Secret are required to enable this method");
+   236→   236→        return;
+   237→   237→      }
+   238→   238→    }
+   239→   239→    setSaving(true);
+   240→   240→    const payload = {
+   241→   241→      label: form.label.trim(),
+   242→   242→      description: form.description.trim(),
+   243→   243→      icon: form.icon.trim(),
+   244→   244→      gateway: form.gateway.trim(),
+   245→   245→      config: buildConfig(),
+   246→   246→      displayOrder: parseInt(form.displayOrder, 10) || 0,
+   247→   247→      isActive: form.isActive,
+   248→   248→    };
+   249→   249→    const r = editing
+   250→   250→      ? await run(() => api.patch(`/api/admin/payment-methods/${editing.id}`, payload), {
+   251→   251→          success: "Payment method updated",
+   252→   252→          error: "Update failed",
+   253→   253→        })
+   254→   254→      : await run(
+   255→   255→          () => api.post("/api/admin/payment-methods", { key: form.key.trim(), ...payload }),
+   256→   256→          { success: "Payment method created", error: "Create failed" }
+   257→   257→        );
+   258→   258→    setSaving(false);
+   259→   259→    if (r) {
+   260→   260→      setOpen(false);
+   261→   261→      qc.invalidateQueries({ queryKey: ["admin-payment-methods"] });
+   262→   262→    }
+   263→   263→  }
+   264→   264→
+   265→   265→  async function del(pm: PaymentMethod) {
+   266→   266→    if (!confirm(`Delete payment method "${pm.label}"?`)) return;
+   267→   267→    const r = await run(() => api.del(`/api/admin/payment-methods/${pm.id}`), {
+   268→   268→      success: "Payment method deleted",
+   269→   269→      error: "Delete failed",
+   270→   270→    });
+   271→   271→    if (r) qc.invalidateQueries({ queryKey: ["admin-payment-methods"] });
+   272→   272→  }
+   273→   273→
+   274→   274→  async function quickToggle(pm: PaymentMethod, next: boolean) {
+   275→   275→    setTogglingId(pm.id);
+   276→   276→    const r = await run(
+   277→   277→      () => api.patch(`/api/admin/payment-methods/${pm.id}`, { isActive: next }),
+   278→   278→      { success: next ? "Method enabled" : "Method disabled", error: "Toggle failed", silent: true }
+   279→   279→    );
+   280→   280→    setTogglingId(null);
+   281→   281→    if (r) {
+   282→   282→      toast.success(next ? `${pm.label} enabled` : `${pm.label} disabled`);
+   283→   283→      qc.invalidateQueries({ queryKey: ["admin-payment-methods"] });
+   284→   284→    }
+   285→   285→  }
+   286→   286→
+   287→   287→  // --- QR image upload ------------------------------------------------------
+   288→   288→  async function onQrImagePicked(e: React.ChangeEvent<HTMLInputElement>) {
+   289→   289→    const file = e.target.files?.[0];
+   290→   290→    if (!file || !editing) return;
+   291→   291→    // Basic client-side validation — server re-validates.
+   292→   292→    if (!file.type.startsWith("image/")) {
+   293→   293→      toast.error("Please upload an image file");
+   294→   294→      return;
+   295→   295→    }
+   296→   296→    if (file.size > 4 * 1024 * 1024) {
+   297→   297→      toast.error("Image must be under 4MB");
+   298→   298→      return;
+   299→   299→    }
+   300→   300→    const fd = new FormData();
+   301→   301→    fd.append("file", file);
+   302→   302→    const r = await run(
+   303→   303→      () => api.upload<{ qrImage: string }>(`/api/admin/payment-methods/${editing.id}/qr-image`, fd),
+   304→   304→      { success: "QR image uploaded", error: "Upload failed" }
+   305→   305→    );
+   306→   306→    if (r) {
+   307→   307→      setQrImage(r.qrImage);
+   308→   308→      qc.invalidateQueries({ queryKey: ["admin-payment-methods"] });
+   309→   309→    }
+   310→   310→    // Reset file input so the same file can be re-uploaded if needed.
+   311→   311→    if (qrFileInputRef.current) qrFileInputRef.current.value = "";
+   312→   312→  }
+   313→   313→
+   314→   314→  // --- Razorpay test connection --------------------------------------------
+   315→   315→  async function testRazorpay() {
+   316→   316→    // Persist current creds first so the test endpoint can read them from DB.
+   317→   317→    // This matches what the user sees (they expect to test what they typed).
+   318→   318→    if (!editing) {
+   319→   319→      toast.error("Save the payment method first, then test the connection");
+   320→   320→      return;
+   321→   321→    }
+   322→   322→    if (!razorpayCreds.keyId?.trim() || !razorpayCreds.keySecret?.trim()) {
+   323→   323→      toast.error("Enter Key ID and Key Secret before testing");
+   324→   324→      return;
+   325→   325→    }
+   326→   326→    setSaving(true);
+   327→   327→    const payload = {
+   328→   328→      label: form.label.trim(),
+   329→   329→      description: form.description.trim(),
+   330→   330→      icon: form.icon.trim(),
+   331→   331→      gateway: form.gateway.trim(),
+   332→   332→      config: buildConfig(),
+   333→   333→      displayOrder: parseInt(form.displayOrder, 10) || 0,
+   334→   334→      isActive: form.isActive,
+   335→   335→    };
+   336→   336→    const saved = await run(
+   337→   337→      () => api.patch(`/api/admin/payment-methods/${editing.id}`, payload),
+   338→   338→      { error: "Save failed before test", silent: true }
+   339→   339→    );
+   340→   340→    setSaving(false);
+   341→   341→    if (!saved) {
+   342→   342→      toast.error("Could not save credentials — please fix and try again");
+   343→   343→      return;
+   344→   344→    }
+   345→   345→    // Now hit the test endpoint.
+   346→   346→    setTestingRazorpay(true);
+   347→   347→    const r = await run(
+   348→   348→      () => api.post<{ success: true; orderId: string }>("/api/admin/payment-methods/razorpay-test"),
+   349→   349→      { success: "Razorpay connection OK — test order created & cancelled", error: "Razorpay test failed", silent: true }
+   350→   350→    );
+   351→   351→    setTestingRazorpay(false);
+   352→   352→    if (r) {
+   353→   353→      toast.success("Razorpay credentials are valid");
+   354→   354→      qc.invalidateQueries({ queryKey: ["admin-payment-methods"] });
+   355→   355→    } else {
+   356→   356→      // run() already toasted the error message from the API.
+   357→   357→    }
+   358→   358→  }
+   359→   359→
+   360→   360→  const isRazorpayForm = form.key === "razorpay";
+   361→   361→  const isQrForm = form.key === "qr";
+   362→   362→
+   363→   363→  return (
+   364→   364→    <div>
+   365→   365→      <PageHeader
+   366→   366→        title="Payment Methods"
+   367→   367→        description="Modular checkout payment options. Active methods appear at checkout."
+   368→   368→        actions={
+   369→   369→          <Button onClick={openNew}>
+   370→   370→            <Plus className="size-4 mr-1" /> Add Method
+   371→   371→          </Button>
+   372→   372→        }
+   373→   373→      />
+   374→   374→
+   375→   375→      {/* Info box */}
+   376→   376→      <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900 flex gap-2 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-100">
+   377→   377→        <Info className="size-4 shrink-0 mt-0.5" />
+   378→   378→        <div>
+   379→   379→          Payment methods are <strong>modular</strong>. Add new methods (UPI, Razorpay,
+   380→   380→          Cashfree, etc.) without code changes. <strong>Active methods appear at checkout.</strong>
+   381→   381→          {" "}For Razorpay, enter your Key ID + Key Secret here — they are stored securely in the
+   382→   382→          payment method&apos;s config (not in Settings).
+   383→   383→        </div>
+   384→   384→      </div>
+   385→   385→
+   386→   386→      <Card className="admin-card">
+   387→   387→        <CardContent className="p-0">
+   388→   388→          {isLoading ? (
+   389→   389→            <div className="p-4"><TableSkeleton rows={4} cols={7} /></div>
+   390→   390→          ) : !data?.length ? (
+   391→   391→            <div className="p-4">
+   392→   392→              <EmptyState
+   393→   393→                title="No payment methods"
+   394→   394→                description="Add your first method — e.g. Cash on Delivery, UPI, Razorpay."
+   395→   395→                icon={<CreditCard className="size-6" />}
+   396→   396→                action={
+   397→   397→                  <Button onClick={openNew}>
+   398→   398→                    <Plus className="size-4 mr-1" /> Add Method
+   399→   399→                  </Button>
+   400→   400→                }
+   401→   401→              />
+   402→   402→            </div>
+   403→   403→          ) : (
+   404→   404→            <div className="overflow-x-auto">
+   405→   405→              <Table>
+   406→   406→                <TableHeader>
+   407→   407→                  <TableRow>
+   408→   408→                    <TableHead className="w-12 text-right">Order</TableHead>
+   409→   409→                    <TableHead>Method</TableHead>
+   410→   410→                    <TableHead>Key</TableHead>
+   411→   411→                    <TableHead>Gateway</TableHead>
+   412→   412→                    <TableHead>Description</TableHead>
+   413→   413→                    <TableHead className="text-center">Active</TableHead>
+   414→   414→                    <TableHead className="text-right">Actions</TableHead>
+   415→   415→                  </TableRow>
+   416→   416→                </TableHeader>
+   417→   417→                <TableBody>
+   418→   418→                  {data.map((pm) => {
+   419→   419→                    const cfg = parseConfig(pm.config);
+   420→   420→                    const razorpayConfigured = !!(cfg.keyId && cfg.keySecret);
+   421→   421→                    const qrConfigured = !!cfg.qrImage;
+   422→   422→                    return (
+   423→   423→                      <TableRow key={pm.id} className={pm.isActive ? "" : "opacity-60"}>
+   424→   424→                        <TableCell className="text-right text-sm text-muted-foreground">
+   425→   425→                          {pm.displayOrder}
+   426→   426→                        </TableCell>
+   427→   427→                        <TableCell>
+   428→   428→                          <div className="flex items-center gap-2.5">
+   429→   429→                            <div className="size-9 rounded-md bg-primary/10 text-primary flex items-center justify-center shrink-0">
+   430→   430→                              <CreditCard className="size-4" />
+   431→   431→                            </div>
+   432→   432→                            <div className="min-w-0">
+   433→   433→                              <div className="font-medium text-sm">{pm.label}</div>
+   434→   434→                              {pm.icon && (
+   435→   435→                                <div className="text-[11px] text-muted-foreground font-mono">
+   436→   436→                                  icon: {pm.icon}
+   437→   437→                                </div>
+   438→   438→                              )}
+   439→   439→                            </div>
+   440→   440→                          </div>
+   441→   441→                        </TableCell>
+   442→   442→                        <TableCell>
+   443→   443→                          <Badge variant="outline" className="font-mono text-xs bg-muted/40">
+   444→   444→                            {pm.key}
+   445→   445→                          </Badge>
+   446→   446→                        </TableCell>
+   447→   447→                        <TableCell className="text-sm">
+   448→   448→                          {pm.gateway ? (
+   449→   449→                            <span className="font-mono text-xs px-1.5 py-0.5 rounded bg-muted text-foreground">
+   450→   450→                              {pm.gateway}
+   451→   451→                            </span>
+   452→   452→                          ) : (
+   453→   453→                            <span className="text-xs text-muted-foreground italic">—</span>
+   454→   454→                          )}
+   455→   455→                        </TableCell>
+   456→   456→                        <TableCell className="text-sm text-muted-foreground max-w-xs">
+   457→   457→                          {pm.description ? (
+   458→   458→                            <span className="line-clamp-2">{pm.description}</span>
+   459→   459→                          ) : (
+   460→   460→                            <span className="italic">—</span>
+   461→   461→                          )}
+   462→   462→                          {/* Inline configuration status badges */}
+   463→   463→                          {pm.key === "razorpay" && (
+   464→   464→                            <div className="mt-1">
+   465→   465→                              {razorpayConfigured ? (
+   466→   466→                                <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px]">
+   467→   467→                                  <CheckCircle2 className="mr-1 size-2.5" /> Credentials set
+   468→   468→                                </Badge>
+   469→   469→                              ) : (
+   470→   470→                                <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 text-[10px]">
+   471→   471→                                  No credentials
+   472→   472→                                </Badge>
+   473→   473→                              )}
+   474→   474→                            </div>
+   475→   475→                          )}
+   476→   476→                          {pm.key === "qr" && (
+   477→   477→                            <div className="mt-1">
+   478→   478→                              {qrConfigured ? (
+   479→   479→                                <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px]">
+   480→   480→                                  <CheckCircle2 className="mr-1 size-2.5" /> QR uploaded
+   481→   481→                                </Badge>
+   482→   482→                              ) : (
+   483→   483→                                <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 text-[10px]">
+   484→   484→                                  No QR image
+   485→   485→                                </Badge>
+   486→   486→                              )}
+   487→   487→                            </div>
+   488→   488→                          )}
+   489→   489→                        </TableCell>
+   490→   490→                        <TableCell className="text-center">
+   491→   491→                          <div className="flex items-center justify-center">
+   492→   492→                            <Switch
+   493→   493→                              checked={pm.isActive}
+   494→   494→                              disabled={togglingId === pm.id}
+   495→   495→                              onCheckedChange={(v) => quickToggle(pm, v)}
+   496→   496→                              aria-label={`Toggle ${pm.label}`}
+   497→   497→                            />
+   498→   498→                          </div>
+   499→   499→                        </TableCell>
+   500→   500→                        <TableCell className="text-right">
+   501→   501→                          <div className="flex items-center justify-end gap-1">
+   502→   502→                            <Button variant="ghost" size="icon" onClick={() => openEdit(pm)}>
+   503→   503→                              <Pencil className="size-4" />
+   504→   504→                            </Button>
+   505→   505→                            <Button
+   506→   506→                              variant="ghost"
+   507→   507→                              size="icon"
+   508→   508→                              className="text-destructive disabled:opacity-30 disabled:cursor-not-allowed"
+   509→   509→                              onClick={() => del(pm)}
+   510→   510→                              disabled={pm.key === "qr" || pm.key === "cod"}
+   511→   511→                              title={pm.key === "qr" || pm.key === "cod" ? "Core payment methods cannot be deleted" : "Delete"}
+   512→   512→                            >
+   513→   513→                              <Trash2 className="size-4" />
+   514→   514→                            </Button>
+   515→   515→                          </div>
+   516→   516→                        </TableCell>
+   517→   517→                      </TableRow>
+   518→   518→                    );
+   519→   519→                  })}
+   520→   520→                </TableBody>
+   521→   521→              </Table>
+   522→   522→            </div>
+   523→   523→          )}
+   524→   524→        </CardContent>
+   525→   525→      </Card>
+   526→   526→
+   527→   527→      {/* Add / Edit dialog */}
+   528→   528→      <Dialog open={open} onOpenChange={setOpen}>
+   529→   529→        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+   530→   530→          <DialogHeader>
+   531→   531→            <DialogTitle>
+   532→   532→              {editing ? "Edit Payment Method" : "New Payment Method"}
+   533→   533→            </DialogTitle>
+   534→   534→            <DialogDescription>
+   535→   535→              Configure how customers can pay at checkout. Active methods are shown
+   536→   536→              on the checkout page.
+   537→   537→            </DialogDescription>
+   538→   538→          </DialogHeader>
+   539→   539→
+   540→   540→          <div className="space-y-3">
+   541→   541→            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+   542→   542→              <div className="space-y-1.5">
+   543→   543→                <Label>Label <span className="text-destructive">*</span></Label>
+   544→   544→                <Input
+   545→   545→                  value={form.label}
+   546→   546→                  onChange={(e) => onLabelChange(e.target.value)}
+   547→   547→                  placeholder="e.g. Cash on Delivery, UPI, Razorpay"
+   548→   548→                />
+   549→   549→                <p className="text-[11px] text-muted-foreground">
+   550→   550→                  Shown to customers at checkout.
+   551→   551→                </p>
+   552→   552→              </div>
+   553→   553→              <div className="space-y-1.5">
+   554→   554→                <Label>Key <span className="text-destructive">*</span></Label>
+   555→   555→                <div className="flex items-center gap-2">
+   556→   556→                  <Input
+   557→   557→                    value={form.key}
+   558→   558→                    onChange={(e) => onKeyChange(e.target.value)}
+   559→   559→                    placeholder="cod"
+   560→   560→                    className="font-mono"
+   561→   561→                  />
+   562→   562→                  <Button
+   563→   563→                    type="button"
+   564→   564→                    size="sm"
+   565→   565→                    variant={autoKey ? "secondary" : "outline"}
+   566→   566→                    className="shrink-0"
+   567→   567→                    onClick={() => {
+   568→   568→                      const next = !autoKey;
+   569→   569→                      setAutoKey(next);
+   570→   570→                      if (next) {
+   571→   571→                        setForm((f: any) => ({ ...f, key: generateKey(f.label) }));
+   572→   572→                      }
+   573→   573→                    }}
+   574→   574→                    title={autoKey ? "Auto is ON — click to override" : "Override is ON — click to recapture from label"}
+   575→   575→                  >
+   576→   576→                    {autoKey ? "Auto" : "Manual"}
+   577→   577→                  </Button>
+   578→   578→                </div>
+   579→   579→                <p className="text-[11px] text-muted-foreground">
+   580→   580→                  {editing
+   581→   581→                    ? "Unique identifier. Cannot be changed after creation."
+   582→   582→                    : "Lowercase identifier, auto-generated from label."}
+   583→   583→                </p>
+   584→   584→              </div>
+   585→   585→            </div>
+   586→   586→
+   587→   587→            <div className="space-y-1.5">
+   588→   588→              <Label>Description (optional)</Label>
+   589→   589→              <Textarea
+   590→   590→                rows={2}
+   591→   591→                value={form.description}
+   592→   592→                onChange={(e) => setForm({ ...form, description: e.target.value })}
+   593→   593→                placeholder="Pay using UPI / cash when your order is delivered"
+   594→   594→              />
+   595→   595→            </div>
+   596→   596→
+   597→   597→            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+   598→   598→              <div className="space-y-1.5">
+   599→   599→                <Label>Icon (lucide name)</Label>
+   600→   600→                <Input
+   601→   601→                  value={form.icon}
+   602→   602→                  onChange={(e) => setForm({ ...form, icon: e.target.value })}
+   603→   603→                  placeholder="Banknote, QrCode, Smartphone, CreditCard"
+   604→   604→                  className="font-mono"
+   605→   605→                />
+   606→   606→                <p className="text-[11px] text-muted-foreground">
+   607→   607→                  Lucide icon name. Examples: Banknote, QrCode, Smartphone, CreditCard.
+   608→   608→                </p>
+   609→   609→              </div>
+   610→   610→              <div className="space-y-1.5">
+   611→   611→                <Label>Gateway (optional)</Label>
+   612→   612→                <Input
+   613→   613→                  value={form.gateway}
+   614→   614→                  onChange={(e) => setForm({ ...form, gateway: e.target.value })}
+   615→   615→                  placeholder="razorpay, cashfree"
+   616→   616→                  className="font-mono"
+   617→   617→                />
+   618→   618→                <p className="text-[11px] text-muted-foreground">
+   619→   619→                  Payment gateway identifier. Leave blank for COD / QR / manual methods.
+   620→   620→                </p>
+   621→   621→              </div>
+   622→   622→            </div>
+   623→   623→
+   624→   624→            {/* ----------------------------------------------------------------- */}
+   625→   625→            {/* Razorpay credentials                                              */}
+   626→   626→            {/* ----------------------------------------------------------------- */}
+   627→   627→            {isRazorpayForm && (
+   628→   628→              <div className="space-y-3 rounded-md border border-emerald-200 bg-emerald-50/40 p-3 dark:border-emerald-900/50 dark:bg-emerald-950/20">
+   629→   629→                <div className="flex items-center gap-2 text-emerald-900 dark:text-emerald-200">
+   630→   630→                  <PlugZap className="size-4" />
+   631→   631→                  <h3 className="text-sm font-semibold">Razorpay Credentials</h3>
+   632→   632→                </div>
+   633→   633→                <p className="text-[11px] text-emerald-800 dark:text-emerald-300">
+   634→   634→                  Generate these from the Razorpay dashboard:{" "}
+   635→   635→                  <span className="font-mono">Settings → API Keys → Generate Key</span>.
+   636→   636→                  Stored securely in the PaymentMethod config — never sent to the browser.
+   637→   637→                </p>
+   638→   638→                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+   639→   639→                  <div className="space-y-1.5">
+   640→   640→                    <Label className="text-emerald-900 dark:text-emerald-200">Key ID</Label>
+   641→   641→                    <Input
+   642→   642→                      value={razorpayCreds.keyId ?? ""}
+   643→   643→                      onChange={(e) =>
+   644→   644→                        setRazorpayCreds((c) => ({ ...c, keyId: e.target.value }))
+   645→   645→                      }
+   646→   646→                      placeholder="rzp_test_XXXXXXXXXXXX"
+   647→   647→                      className="font-mono bg-white"
+   648→   648→                      autoComplete="off"
+   649→   649→                    />
+   650→   650→                  </div>
+   651→   651→                  <div className="space-y-1.5">
+   652→   652→                    <Label className="text-emerald-900 dark:text-emerald-200">Key Secret</Label>
+   653→   653→                    <div className="flex gap-2">
+   654→   654→                      <Input
+   655→   655→                        type={showSecret ? "text" : "password"}
+   656→   656→                        value={razorpayCreds.keySecret ?? ""}
+   657→   657→                        onChange={(e) =>
+   658→   658→                          setRazorpayCreds((c) => ({ ...c, keySecret: e.target.value }))
+   659→   659→                        }
+   660→   660→                        placeholder="••••••••••••••••"
+   661→   661→                        className="font-mono bg-white"
+   662→   662→                        autoComplete="off"
+   663→   663→                      />
+   664→   664→                      <Button
+   665→   665→                        type="button"
+   666→   666→                        size="icon"
+   667→   667→                        variant="outline"
+   668→   668→                        className="shrink-0"
+   669→   669→                        onClick={() => setShowSecret((v) => !v)}
+   670→   670→                        title={showSecret ? "Hide secret" : "Show secret"}
+   671→   671→                      >
+   672→   672→                        {showSecret ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+   673→   673→                      </Button>
+   674→   674→                    </div>
+   675→   675→                  </div>
+   676→   676→                </div>
+   677→   677→                <div className="flex flex-wrap items-center gap-2">
+   678→   678→                  <Button
+   679→   679→                    type="button"
+   680→   680→                    size="sm"
+   681→   681→                    variant="outline"
+   682→   682→                    className="border-emerald-300 text-emerald-800 hover:bg-emerald-100 dark:border-emerald-700 dark:text-emerald-200 dark:hover:bg-emerald-900/40"
+   683→   683→                    onClick={testRazorpay}
+   684→   684→                    disabled={testingRazorpay || saving || !editing}
+   685→   685→                  >
+   686→   686→                    {testingRazorpay ? (
+   687→   687→                      <Loader2 className="mr-1 size-3.5 animate-spin" />
+   688→   688→                    ) : (
+   689→   689→                      <PlugZap className="mr-1 size-3.5" />
+   690→   690→                    )}
+   691→   691→                    Test Connection
+   692→   692→                  </Button>
+   693→   693→                  <span className="text-[11px] text-emerald-700 dark:text-emerald-300">
+   694→   694→                    {editing
+   695→   695→                      ? "Saves credentials first, then creates a Rs. 1 test order on Razorpay."
+   696→   696→                      : "Save the method first to enable the test button."}
+   697→   697→                  </span>
+   698→   698→                </div>
+   699→   699→              </div>
+   700→   700→            )}
+   701→   701→
+   702→   702→            {/* ----------------------------------------------------------------- */}
+   703→   703→            {/* QR code image upload                                              */}
+   704→   704→            {/* ----------------------------------------------------------------- */}
+   705→   705→            {isQrForm && (
+   706→   706→              <div className="space-y-3 rounded-md border border-teal-200 bg-teal-50/40 p-3 dark:border-teal-900/50 dark:bg-teal-950/20">
+   707→   707→                <div className="flex items-center gap-2 text-teal-900 dark:text-teal-200">
+   708→   708→                  <Upload className="size-4" />
+   709→   709→                  <h3 className="text-sm font-semibold">QR Code Image</h3>
+   710→   710→                </div>
+   711→   711→                <p className="text-[11px] text-teal-800 dark:text-teal-300">
+   712→   712→                  Upload your UPI / QR code image. Customers will see it on the order
+   713→   713→                  confirmation page after placing a QR-paid order so they can scan &amp; pay.
+   714→   714→                  The admin manually marks the order as paid once the UPI transfer is confirmed.
+   715→   715→                </p>
+   716→   716→                <div className="flex flex-wrap items-start gap-4">
+   717→   717→                  {/* Preview / placeholder */}
+   718→   718→                  <div className="flex size-32 shrink-0 items-center justify-center rounded-md border border-teal-200 bg-white object-contain p-1 dark:border-teal-800 dark:bg-white">
+   719→   719→                    {qrImage ? (
+   720→   720→                      <img
+   721→   721→                        src={qrImage}
+   722→   722→                        alt="QR code preview"
+   723→   723→                        className="size-full object-contain"
+   724→   724→                      />
+   725→   725→                    ) : (
+   726→   726→                      <div className="flex flex-col items-center gap-1 text-teal-400">
+   727→   727→                        <Upload className="size-6" />
+   728→   728→                        <span className="text-[10px]">No image</span>
+   729→   729→                      </div>
+   730→   730→                    )}
+   731→   731→                  </div>
+   732→   732→                  <div className="flex flex-col gap-2">
+   733→   733→                    <input
+   734→   734→                      ref={qrFileInputRef}
+   735→   735→                      type="file"
+   736→   736→                      accept="image/*"
+   737→   737→                      onChange={onQrImagePicked}
+   738→   738→                      className="hidden"
+   739→   739→                    />
+   740→   740→                    <Button
+   741→   741→                      type="button"
+   742→   742→                      size="sm"
+   743→   743→                      variant="outline"
+   744→   744→                      className="border-teal-300 text-teal-800 hover:bg-teal-100 dark:border-teal-700 dark:text-teal-200 dark:hover:bg-teal-900/40"
+   745→   745→                      onClick={() => qrFileInputRef.current?.click()}
+   746→   746→                      disabled={!editing}
+   747→   747→                    >
+   748→   748→                      <Upload className="mr-1 size-3.5" />
+   749→   749→                      {qrImage ? "Replace QR Image" : "Upload QR Image"}
+   750→   750→                    </Button>
+   751→   751→                    <p className="text-[11px] text-teal-700 dark:text-teal-300">
+   752→   752→                      {editing
+   753→   753→                        ? "PNG / JPG up to 4MB. Saved to /uploads/qr/."
+   754→   754→                        : "Save the method first to enable upload."}
+   755→   755→                    </p>
+   756→   756→                    {qrImage && (
+   757→   757→                      <p className="text-[10px] font-mono text-teal-600 dark:text-teal-400 break-all">{qrImage}</p>
+   758→   758→                    )}
+   759→   759→                  </div>
+   760→   760→                </div>
+   761→   761→              </div>
+   762→   762→            )}
+   763→   763→
+   764→   764→            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+   765→   765→              <div className="space-y-1.5">
+   766→   766→                <Label>Display Order</Label>
+   767→   767→                <Input
+   768→   768→                  type="number"
+   769→   769→                  value={form.displayOrder}
+   770→   770→                  onChange={(e) =>
+   771→   771→                    setForm({ ...form, displayOrder: parseInt(e.target.value, 10) || 0 })
+   772→   772→                  }
+   773→   773→                />
+   774→   774→                <p className="text-[11px] text-muted-foreground">
+   775→   775→                  Lower numbers appear first at checkout.
+   776→   776→                </p>
+   777→   777→              </div>
+   778→   778→              <div className="flex items-end gap-2 pb-1.5">
+   779→   779→                <Switch
+   780→   780→                  checked={form.isActive}
+   781→   781→                  onCheckedChange={(v) => setForm({ ...form, isActive: v })}
+   782→   782→                />
+   783→   783→                <Label>Active (visible at checkout)</Label>
+   784→   784→              </div>
+   785→   785→            </div>
+   786→   786→          </div>
+   787→   787→
+   788→   788→          <DialogFooter>
+   789→   789→            <Button variant="outline" onClick={() => setOpen(false)}>
+   790→   790→              Cancel
+   791→   791→            </Button>
+   792→   792→            <Button onClick={save} disabled={saving}>
+   793→   793→              {saving && <Loader2 className="size-4 mr-1 animate-spin" />}
+   794→   794→              {editing ? "Update" : "Create"}
+   795→   795→            </Button>
+   796→   796→          </DialogFooter>
+   797→   797→        </DialogContent>
+   798→   798→      </Dialog>
+   799→   799→    </div>
+   800→   800→  );
+   801→   801→}
+   802→   802→

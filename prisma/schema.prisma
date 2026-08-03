@@ -714,6 +714,17 @@ model Review {
   title        String?   @db.VarChar(255)
   body         String?   @db.Text
   status       String    @default("pending") @db.VarChar(20) // pending | approved | rejected
+  /** JSON array of image URLs uploaded by the customer. Stored as a single
+   *  JSON string to stay portable across SQLite / Postgres. */
+  images       String?   @db.Text
+  /** AI moderation status: auto_approved | flagged | manual.
+   *  - auto_approved: AI scanned the review and approved it automatically.
+   *  - flagged: AI flagged the review for human review (spam/abuse detected).
+   *  - manual: a human admin handled the review (overrides AI). */
+  aiStatus     String?   @db.VarChar(20)
+  /** Optional AI-generated explanation for the moderation decision
+   *  (e.g. "Contains promotional links", "Detected abusive language"). */
+  aiNote       String?   @db.Text
   createdAt    DateTime  @default(now())
   adminReply   String?   @db.Text
   adminReplyAt DateTime?
@@ -725,6 +736,7 @@ model Review {
   @@index([productId])
   @@index([customerId])
   @@index([status])
+  @@index([aiStatus])
 }
 
 // ---------------------------------------------------------------------------

@@ -92,6 +92,10 @@ import {
   Send,
   AlertTriangle,
   ClipboardList,
+  Plus,
+  Pencil,
+  Search,
+  Lock as LockIcon,
 } from "lucide-react";
 import { useAdminStore } from "../admin-store";
 import {
@@ -479,6 +483,22 @@ export function OrderDetailView({ id }: { id: string }) {
   const [newNote, setNewNote] = useState("");
   const [savingNote, setSavingNote] = useState(false);
 
+  // Item editing (add / update qty / remove) — only allowed while the
+  // order is in the pre-fulfillment stage (pending or confirmed).
+  const [addItemOpen, setAddItemOpen] = useState(false);
+  const [itemSearch, setItemSearch] = useState("");
+  const [itemSearchResults, setItemSearchResults] = useState<
+    Array<{ id: string; name: string; sku?: string | null; primaryImage?: string | null; sellingPrice: number; mrp: number; stock: number }>
+  >([]);
+  const [searchingItems, setSearchingItems] = useState(false);
+  const [addItemProductId, setAddItemProductId] = useState<string | null>(null);
+  const [addItemQty, setAddItemQty] = useState(1);
+  const [addingItem, setAddingItem] = useState(false);
+  const [editItemId, setEditItemId] = useState<string | null>(null);
+  const [editItemQty, setEditItemQty] = useState(1);
+  const [savingItem, setSavingItem] = useState(false);
+  const [removingItemId, setRemovingItemId] = useState<string | null>(null);
+
   // Mobile action sheet
   const [mobileActionsOpen, setMobileActionsOpen] = useState(false);
 
@@ -604,6 +624,97 @@ export function OrderDetailView({ id }: { id: string }) {
       setNotes((prev) => prev.filter((n) => n.id !== noteId));
       qc.invalidateQueries({ queryKey: ["admin-order", id] });
       toast.success("Note deleted");
+    }
+  }
+
+  // -------- Item add / update / remove --------
+  // Items can only be modified while the order is in a pre-fulfillment
+  // stage (pending or confirmed). The server enforces this too.
+  const canEditItems =
+    !!order && (order.status === "pending" || order.status === "confirmed");
+
+  async function searchProductsForOrder(q: string) {
+    setItemSearch(q);
+    if (!q.trim()) {
+      setItemSearchResults([]);
+      return;
+    }
+    setSearchingItems(true);
+    try {
+      const res = await api.get<{
+        items: Array<{
+          id: string;
+          name: string;
+          sku?: string | null;
+          primaryImage?: string | null;
+          sellingPrice: number;
+          mrp: number;
+          stock: number;
+        }>;
+      }>(`/api/admin/products?search=${encodeURIComponent(q)}&pageSize=10`);
+      setItemSearchResults(res?.items ?? []);
+    } catch {
+      setItemSearchResults([]);
+    } finally {
+      setSearchingItems(false);
+    }
+  }
+
+  async function addItemToOrder() {
+    if (!addItemProductId) {
+      toast.error("Please select a product first");
+      return;
+    }
+    setAddingItem(true);
+    const r = await run(
+      () => api.post(`/api/admin/orders/${id}/items`, { productId: addItemProductId, qty: addItemQty }),
+      { success: "Item added to order", error: "Failed to add item", silent: true }
+    );
+    setAddingItem(false);
+    if (r) {
+      setAddItemOpen(false);
+      setAddItemProductId(null);
+      setAddItemQty(1);
+      setItemSearch("");
+      setItemSearchResults([]);
+      qc.invalidateQueries({ queryKey: ["admin-order", id] });
+      qc.invalidateQueries({ queryKey: ["admin-orders"] });
+      toast.success("Item added to order");
+    }
+  }
+
+  async function saveItemQty() {
+    if (!editItemId) return;
+    if (editItemQty < 1) {
+      toast.error("Quantity must be at least 1");
+      return;
+    }
+    setSavingItem(true);
+    const r = await run(
+      () => api.patch(`/api/admin/orders/${id}/item/${editItemId}`, { qty: editItemQty }),
+      { success: "Quantity updated", error: "Failed to update quantity", silent: true }
+    );
+    setSavingItem(false);
+    if (r) {
+      setEditItemId(null);
+      qc.invalidateQueries({ queryKey: ["admin-order", id] });
+      qc.invalidateQueries({ queryKey: ["admin-orders"] });
+      toast.success("Quantity updated");
+    }
+  }
+
+  async function removeItem(itemId: string) {
+    if (!confirm("Remove this item from the order? Totals will be recalculated.")) return;
+    setRemovingItemId(itemId);
+    const r = await run(
+      () => api.del(`/api/admin/orders/${id}/item/${itemId}`),
+      { success: "Item removed", error: "Failed to remove item", silent: true }
+    );
+    setRemovingItemId(null);
+    if (r) {
+      qc.invalidateQueries({ queryKey: ["admin-order", id] });
+      qc.invalidateQueries({ queryKey: ["admin-orders"] });
+      toast.success("Item removed");
     }
   }
 
@@ -1169,14 +1280,50 @@ export function OrderDetailView({ id }: { id: string }) {
 
       {/* ================================================================
           5. PRODUCTS TABLE
+          Items can only be added/edited/removed while the order is in a
+          pre-fulfillment stage (pending or confirmed). Once packed, the
+          table becomes read-only (a "locked" hint is shown).
           ================================================================ */}
       <Card>
-        <CardHeader className="pb-3">
+        <CardHeader className="pb-3 flex-row items-center justify-between space-y-0">
           <CardTitle className="text-base flex items-center gap-2">
             <Package className="size-4 text-emerald-600" /> Products ({order.items.length})
           </CardTitle>
+          {canEditItems ? (
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1.5 border-emerald-200 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-900/50 dark:text-emerald-300 dark:hover:bg-emerald-950/40"
+              onClick={() => {
+                setAddItemOpen(true);
+                setItemSearch("");
+                setItemSearchResults([]);
+                setAddItemProductId(null);
+                setAddItemQty(1);
+              }}
+            >
+              <Plus className="size-4" /> Add Product
+            </Button>
+          ) : (
+            <Badge
+              variant="outline"
+              className="gap-1 border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-300"
+            >
+              <LockIcon className="size-3" /> Items locked
+            </Badge>
+          )}
         </CardHeader>
         <CardContent className="p-0">
+          {!canEditItems && (
+            <div className="mx-4 mt-2 mb-1 rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-800 flex items-start gap-2 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
+              <AlertTriangle className="size-3.5 shrink-0 mt-0.5" />
+              <span>
+                Items are locked because the order is{" "}
+                <strong>{STATUS_VISUAL[order.status]?.label || order.status}</strong>.
+                Status, tracking, payment, and notes remain editable.
+              </span>
+            </div>
+          )}
           <div className="hidden md:block">
             <Table>
               <TableHeader>
@@ -1185,6 +1332,7 @@ export function OrderDetailView({ id }: { id: string }) {
                   <TableHead className="text-center">Qty</TableHead>
                   <TableHead className="text-right">Price</TableHead>
                   <TableHead className="text-right">Total</TableHead>
+                  {canEditItems && <TableHead className="w-[100px] text-right">Actions</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -1206,11 +1354,78 @@ export function OrderDetailView({ id }: { id: string }) {
                         </div>
                       </div>
                     </TableCell>
-                    <TableCell className="text-center tabular-nums">{it.qty}</TableCell>
+                    <TableCell className="text-center tabular-nums">
+                      {editItemId === it.id ? (
+                        <div className="flex items-center justify-center gap-1.5">
+                          <Input
+                            type="number"
+                            min={1}
+                            value={editItemQty}
+                            onChange={(e) => setEditItemQty(Math.max(1, parseInt(e.target.value || "1", 10)))}
+                            className="h-8 w-16 text-center"
+                          />
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="size-7 text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300 dark:hover:bg-emerald-950/40"
+                            onClick={saveItemQty}
+                            disabled={savingItem}
+                          >
+                            {savingItem ? <Loader2 className="size-3.5 animate-spin" /> : <CheckCircle2 className="size-3.5" />}
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="size-7"
+                            onClick={() => setEditItemId(null)}
+                            disabled={savingItem}
+                          >
+                            <XCircle className="size-3.5" />
+                          </Button>
+                        </div>
+                      ) : (
+                        it.qty
+                      )}
+                    </TableCell>
                     <TableCell className="text-right tabular-nums">{formatCurrency(it.mrp)}</TableCell>
                     <TableCell className="text-right font-semibold tabular-nums">
                       {formatCurrency(it.lineTotal)}
                     </TableCell>
+                    {canEditItems && (
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          {editItemId !== it.id && (
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="size-7"
+                              onClick={() => {
+                                setEditItemId(it.id);
+                                setEditItemQty(it.qty);
+                              }}
+                              disabled={removingItemId === it.id}
+                              title="Edit quantity"
+                            >
+                              <Pencil className="size-3.5" />
+                            </Button>
+                          )}
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="size-7 text-destructive hover:text-destructive"
+                            onClick={() => removeItem(it.id)}
+                            disabled={removingItemId === it.id || editItemId === it.id}
+                            title="Remove item"
+                          >
+                            {removingItemId === it.id ? (
+                              <Loader2 className="size-3.5 animate-spin" />
+                            ) : (
+                              <Trash2 className="size-3.5" />
+                            )}
+                          </Button>
+                        </div>
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))}
               </TableBody>
@@ -1229,6 +1444,36 @@ export function OrderDetailView({ id }: { id: string }) {
                       <span className="text-emerald-600"> (-{it.appliedDiscountPct}%)</span>
                     )}
                   </div>
+                  {canEditItems && (
+                    <div className="mt-1.5 flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-6 gap-1 px-2 text-xs"
+                        onClick={() => {
+                          setEditItemId(it.id);
+                          setEditItemQty(it.qty);
+                        }}
+                        disabled={removingItemId === it.id}
+                      >
+                        <Pencil className="size-3" /> Edit
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-6 gap-1 px-2 text-xs text-destructive hover:text-destructive"
+                        onClick={() => removeItem(it.id)}
+                        disabled={removingItemId === it.id}
+                      >
+                        {removingItemId === it.id ? (
+                          <Loader2 className="size-3 animate-spin" />
+                        ) : (
+                          <Trash2 className="size-3" />
+                        )}{" "}
+                        Remove
+                      </Button>
+                    </div>
+                  )}
                 </div>
                 <div className="text-sm font-semibold tabular-nums">
                   {formatCurrency(it.lineTotal)}
@@ -1236,6 +1481,33 @@ export function OrderDetailView({ id }: { id: string }) {
               </div>
             ))}
           </div>
+
+          {/* Mobile edit-qty inline panel */}
+          {canEditItems && editItemId && (
+            <div className="md:hidden border-t p-3 bg-muted/30">
+              <div className="flex items-center gap-2">
+                <Label className="text-xs">New Qty:</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  value={editItemQty}
+                  onChange={(e) => setEditItemQty(Math.max(1, parseInt(e.target.value || "1", 10)))}
+                  className="h-8 w-20 text-center"
+                />
+                <Button
+                  size="sm"
+                  className="h-8 gap-1 bg-emerald-600 hover:bg-emerald-700 text-white"
+                  onClick={saveItemQty}
+                  disabled={savingItem}
+                >
+                  {savingItem ? <Loader2 className="size-3.5 animate-spin" /> : <CheckCircle2 className="size-3.5" />} Save
+                </Button>
+                <Button size="sm" variant="ghost" className="h-8" onClick={() => setEditItemId(null)} disabled={savingItem}>
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -1555,6 +1827,115 @@ export function OrderDetailView({ id }: { id: string }) {
             >
               {savingPayment ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
               Apply Update
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ================================================================
+          Add Product dialog — search + select product, choose qty, then POST
+          to /api/admin/orders/[id]/items.
+          ================================================================ */}
+      <Dialog open={addItemOpen} onOpenChange={setAddItemOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Plus className="size-4 text-emerald-600" /> Add Product to Order
+            </DialogTitle>
+            <DialogDescription>
+              Search for a product to add. Order totals will be recalculated automatically.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+              <Input
+                value={itemSearch}
+                onChange={(e) => searchProductsForOrder(e.target.value)}
+                placeholder="Search by name or SKU…"
+                className="pl-8"
+                autoFocus
+              />
+              {searchingItems && (
+                <Loader2 className="absolute right-2.5 top-1/2 -translate-y-1/2 size-4 animate-spin text-muted-foreground" />
+              )}
+            </div>
+
+            {itemSearch.trim() && itemSearchResults.length > 0 && (
+              <div className="max-h-60 overflow-y-auto rounded-lg border bg-background">
+                {itemSearchResults.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => {
+                      setAddItemProductId(p.id);
+                      setItemSearch(p.name);
+                      setItemSearchResults([]);
+                    }}
+                    className={cn(
+                      "flex w-full items-center gap-3 border-b px-3 py-2 text-left last:border-b-0 transition-colors hover:bg-muted/50",
+                      addItemProductId === p.id && "bg-emerald-50 dark:bg-emerald-950/40"
+                    )}
+                  >
+                    <ProductThumb image={p.primaryImage} name={p.name} size={32} />
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-medium">{p.name}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {p.sku ? <span className="font-mono">{p.sku} · </span> : null}
+                        Stock: {p.stock}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-sm font-semibold tabular-nums">
+                        {formatCurrency(p.sellingPrice)}
+                      </div>
+                      {p.mrp > p.sellingPrice && (
+                        <div className="text-xs text-muted-foreground line-through tabular-nums">
+                          {formatCurrency(p.mrp)}
+                        </div>
+                      )}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {itemSearch.trim() && !searchingItems && itemSearchResults.length === 0 && (
+              <p className="text-center text-xs text-muted-foreground py-3">
+                No products found matching &ldquo;{itemSearch}&rdquo;
+              </p>
+            )}
+
+            {addItemProductId && (
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50/50 p-3 dark:border-emerald-900/50 dark:bg-emerald-950/20">
+                <div className="flex items-center gap-2 text-xs text-emerald-700 dark:text-emerald-300">
+                  <CheckCircle2 className="size-3.5" />
+                  <span>Product selected. Choose a quantity and confirm.</span>
+                </div>
+              </div>
+            )}
+
+            <div className="flex items-center gap-3">
+              <Label htmlFor="add-item-qty" className="text-sm whitespace-nowrap">Quantity</Label>
+              <Input
+                id="add-item-qty"
+                type="number"
+                min={1}
+                value={addItemQty}
+                onChange={(e) => setAddItemQty(Math.max(1, parseInt(e.target.value || "1", 10)))}
+                className="w-24"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAddItemOpen(false)}>Cancel</Button>
+            <Button
+              disabled={addingItem || !addItemProductId}
+              onClick={addItemToOrder}
+              className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white"
+            >
+              {addingItem ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
+              Add to Order
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -596,6 +596,8 @@ export interface Review {
   rating: number;
   title: string | null;
   body: string | null;
+  /** Customer-uploaded image URLs (max 6 per review). Empty when no images. */
+  images?: string[];
   createdAt: string;
   verifiedBuyer: boolean;
   // Admin reply — present when a pharmacy admin has responded to this review.

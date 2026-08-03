@@ -948,6 +948,40 @@ export const DEFAULT_TEMPLATES: Array<{
     variables: ["title", "message", "details"],
   },
   {
+    key: "admin_login_alert",
+    name: "Admin Login Alert",
+    channel: "email",
+    subject: "[Security] Admin Login: {{adminName}} ({{adminEmail}})",
+    variables: [
+      "adminName",
+      "adminEmail",
+      "loginDate",
+      "loginTime",
+      "ipAddress",
+      "browser",
+      "os",
+      "device",
+      "loginStatus",
+    ],
+    body: darkEmailTemplate({
+      eyebrow: "Admin Login Alert",
+      content: `<h1 style="margin:0 0 16px 0;font-size:20px;font-weight:600;color:#f1f5f9;">&#128274; Admin Login Alert</h1>
+<p style="margin:0 0 24px 0;font-size:15px;line-height:1.65;color:#cbd5e1;">An administrator account has logged in to the PMS Admin Panel. Please review the login details below. If you do not recognize this activity, please take immediate action to secure the account.</p>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#0f172a;border:1px solid #334155;border-radius:12px;margin-bottom:16px;">
+  <tr><td style="padding:12px 20px;border-bottom:1px solid #334155;font-size:14px;color:#94a3b8;">Admin Name</td><td style="padding:12px 20px;border-bottom:1px solid #334155;font-size:14px;font-weight:600;color:#f1f5f9;text-align:right;">{{adminName}}</td></tr>
+  <tr><td style="padding:12px 20px;border-bottom:1px solid #334155;font-size:14px;color:#94a3b8;">Email</td><td style="padding:12px 20px;border-bottom:1px solid #334155;font-size:14px;font-weight:600;color:#f1f5f9;text-align:right;">{{adminEmail}}</td></tr>
+  <tr><td style="padding:12px 20px;border-bottom:1px solid #334155;font-size:14px;color:#94a3b8;">Login Date</td><td style="padding:12px 20px;border-bottom:1px solid #334155;font-size:14px;font-weight:600;color:#f1f5f9;text-align:right;">{{loginDate}}</td></tr>
+  <tr><td style="padding:12px 20px;border-bottom:1px solid #334155;font-size:14px;color:#94a3b8;">Login Time</td><td style="padding:12px 20px;border-bottom:1px solid #334155;font-size:14px;font-weight:600;color:#f1f5f9;text-align:right;">{{loginTime}}</td></tr>
+  <tr><td style="padding:12px 20px;border-bottom:1px solid #334155;font-size:14px;color:#94a3b8;">IP Address</td><td style="padding:12px 20px;border-bottom:1px solid #334155;font-size:14px;font-weight:600;color:#f1f5f9;text-align:right;">{{ipAddress}}</td></tr>
+  <tr><td style="padding:12px 20px;border-bottom:1px solid #334155;font-size:14px;color:#94a3b8;">Browser</td><td style="padding:12px 20px;border-bottom:1px solid #334155;font-size:14px;font-weight:600;color:#f1f5f9;text-align:right;">{{browser}}</td></tr>
+  <tr><td style="padding:12px 20px;border-bottom:1px solid #334155;font-size:14px;color:#94a3b8;">Operating System</td><td style="padding:12px 20px;border-bottom:1px solid #334155;font-size:14px;font-weight:600;color:#f1f5f9;text-align:right;">{{os}}</td></tr>
+  <tr><td style="padding:12px 20px;border-bottom:1px solid #334155;font-size:14px;color:#94a3b8;">Device</td><td style="padding:12px 20px;border-bottom:1px solid #334155;font-size:14px;font-weight:600;color:#f1f5f9;text-align:right;">{{device}}</td></tr>
+  <tr><td style="padding:12px 20px;font-size:14px;color:#94a3b8;">Login Status</td><td style="padding:12px 20px;font-size:14px;font-weight:700;color:#10b981;text-align:right;">{{loginStatus}}</td></tr>
+</table>
+<p style="margin:0;font-size:12px;color:#64748b;line-height:1.5;">This is an automated security notification. If you did not initiate this login, please secure the admin account and contact the store owner immediately.</p>`,
+    }),
+  },
+  {
     key: "admin_new_order",
     name: "Admin Alert — New Order",
     channel: "email",

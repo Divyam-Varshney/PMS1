@@ -30,6 +30,7 @@ const FOLDER_MAP: Record<FileCategory, string> = {
   store: "store",
   prescriptions: "prescriptions",
   payments: "payments",
+  reviews: "reviews",
 };
 
 export class LocalProvider implements StorageProvider {

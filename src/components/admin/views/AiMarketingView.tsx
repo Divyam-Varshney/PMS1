@@ -1,15 +1,17 @@
 // ============================================================================
 // File: src/components/admin/views/AiMarketingView.tsx
-// Purpose: AI Marketing Content Generator — generates social media posts,
-//          email campaigns, and promotional content for products.
-//          Supports WhatsApp, Facebook, Instagram, Twitter/X, Email, SMS.
+// Purpose: AI Email Marketing — focused on email campaign generation.
+//          Generates: subject, preview text, headline, promotional
+//          description, CTA text, and a complete HTML email.
+//          Send options: "Send to All Customers" (broadcast) and
+//          "Send Test Email" (single recipient).
 // ============================================================================
 
 "use client";
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { api } from "../api";
+import { api, run } from "../api";
 import { PageHeader } from "../ui";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -21,30 +23,24 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  Wand2, Loader2, Copy, Check, MessageCircle, Facebook, Instagram,
-  Twitter, Mail, Smartphone, Sparkles, Code2, Eye, Download, FileCode,
+  Wand2, Loader2, Copy, Check, Mail, Sparkles, Code2, Eye, Download,
+  FileCode, Search, X, Plus, Send, Users, AlertCircle, CheckCircle2,
 } from "lucide-react";
 import { toast } from "sonner";
 
 interface MarketingContent {
-  whatsapp?: string;
-  facebook?: string;
-  instagram?: string;
-  twitter?: string;
   email?: { subject: string; body: string };
-  sms?: string;
+  previewText?: string;
+  headline?: string;
+  promotionalDescription?: string;
+  ctaText?: string;
+  campaignTitle?: string;
+  campaignDescription?: string;
+  suggestedEmoji?: string;
+  priority?: string;
   /** Complete responsive HTML email (full <!DOCTYPE html> document, inline CSS, table-based). */
   htmlEmail?: string;
 }
-
-const PLATFORMS = [
-  { id: "whatsapp", label: "WhatsApp", icon: MessageCircle, color: "text-emerald-600" },
-  { id: "facebook", label: "Facebook", icon: Facebook, color: "text-teal-600" },
-  { id: "instagram", label: "Instagram", icon: Instagram, color: "text-pink-600" },
-  { id: "twitter", label: "Twitter/X", icon: Twitter, color: "text-cyan-600" },
-  { id: "email", label: "Email", icon: Mail, color: "text-amber-600" },
-  { id: "sms", label: "SMS", icon: Smartphone, color: "text-rose-600" },
-];
 
 const TONES = [
   { value: "promotional", label: "Promotional (sales-focused)" },
@@ -53,52 +49,101 @@ const TONES = [
   { value: "educational", label: "Educational (health tips)" },
 ];
 
+interface ProductListItem {
+  id: string;
+  name: string;
+  sku?: string | null;
+  primaryImage?: string | null;
+  sellingPrice: number;
+  mrp: number;
+  stock: number;
+}
+
 export function AiMarketingView() {
-  const [selectedProductId, setSelectedProductId] = useState("");
-  const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>(["whatsapp", "facebook", "instagram", "email"]);
+  // Multi-product selection state
+  const [selectedProducts, setSelectedProducts] = useState<ProductListItem[]>([]);
+  const [productSearch, setProductSearch] = useState("");
+  const [searchResults, setSearchResults] = useState<ProductListItem[]>([]);
+  const [searching, setSearching] = useState(false);
+
   const [tone, setTone] = useState("promotional");
   const [generating, setGenerating] = useState(false);
   const [content, setContent] = useState<MarketingContent | null>(null);
   const [copiedField, setCopiedField] = useState<string | null>(null);
 
-  // Fetch products for the selector
-  const { data: productsData } = useQuery({
-    queryKey: ["admin-products-marketing"],
-    queryFn: () => api.get<{ items: any[]; total: number }>("/api/admin/products?pageSize=500"),
-  });
-  const products = productsData?.items ?? [];
+  // Send-target state
+  const [testEmail, setTestEmail] = useState("");
+  const [sendingTest, setSendingTest] = useState(false);
+  const [sendingBroadcast, setSendingBroadcast] = useState(false);
+  const [broadcastOpen, setBroadcastOpen] = useState(false);
 
-  function togglePlatform(id: string) {
-    setSelectedPlatforms((prev) =>
-      prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id]
-    );
+  // Customer count for the broadcast confirmation dialog
+  const { data: customerCount } = useQuery({
+    queryKey: ["admin-marketing-customer-count"],
+    queryFn: () => api.get<{ total: number }>("/api/admin/customers?pageSize=1"),
+    staleTime: 60_000,
+  });
+
+  // -------- Product search --------
+  async function searchProducts(q: string) {
+    setProductSearch(q);
+    if (!q.trim()) {
+      setSearchResults([]);
+      return;
+    }
+    setSearching(true);
+    try {
+      const res = await api.get<{ items: ProductListItem[] }>(
+        `/api/admin/products?search=${encodeURIComponent(q)}&pageSize=10`
+      );
+      // Exclude already-selected
+      setSearchResults((res?.items ?? []).filter((p) => !selectedProducts.some((s) => s.id === p.id)));
+    } catch {
+      setSearchResults([]);
+    } finally {
+      setSearching(false);
+    }
   }
 
+  function addProduct(p: ProductListItem) {
+    if (selectedProducts.some((s) => s.id === p.id)) return;
+    setSelectedProducts((prev) => [...prev, p]);
+    setProductSearch("");
+    setSearchResults([]);
+  }
+
+  function removeProduct(id: string) {
+    setSelectedProducts((prev) => prev.filter((p) => p.id !== id));
+  }
+
+  // -------- Generate --------
   async function generate() {
-    if (!selectedProductId) {
-      toast.error("Select a product first");
+    if (selectedProducts.length === 0) {
+      toast.error("Select at least one product first");
       return;
     }
     setGenerating(true);
     setContent(null);
-    try {
-      const r = await api.post<{ content: MarketingContent; productName: string }>(
-        "/api/admin/ai/generate-marketing",
-        {
-          productId: selectedProductId,
-          platforms: selectedPlatforms,
-          tone,
-        }
-      );
+    const r = await run(
+      () =>
+        api.post<{ content: MarketingContent; productName: string; productNames?: string[] }>(
+          "/api/admin/ai/generate-marketing",
+          {
+            productIds: selectedProducts.map((p) => p.id),
+            platforms: ["email"],
+            tone,
+          }
+        ),
+      { success: "Marketing email generated", error: "Generation failed", silent: true }
+    );
+    setGenerating(false);
+    if (r) {
       setContent(r.content);
-      toast.success(`Marketing content generated for ${r.productName}`);
-    } catch (e: any) {
-      toast.error(e?.message || "Generation failed");
-    } finally {
-      setGenerating(false);
+      toast.success(`Email content generated for ${r.productName}`);
     }
   }
 
+  // -------- Copy --------
   function copyToClipboard(text: string, field: string) {
     navigator.clipboard.writeText(text);
     setCopiedField(field);
@@ -106,58 +151,148 @@ export function AiMarketingView() {
     setTimeout(() => setCopiedField(null), 2000);
   }
 
+  // -------- Send test email --------
+  async function sendTestEmail() {
+    if (!content?.htmlEmail) {
+      toast.error("Generate the email first");
+      return;
+    }
+    if (!testEmail.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(testEmail.trim())) {
+      toast.error("Enter a valid recipient email");
+      return;
+    }
+    setSendingTest(true);
+    const r = await run(
+      () =>
+        api.post("/api/admin/ai/marketing-test-email", {
+          to: testEmail.trim(),
+          subject: content.email?.subject || "Marketing Email",
+          htmlBody: content.htmlEmail,
+        }),
+      { success: "Test email sent", error: "Failed to send test email", silent: true }
+    );
+    setSendingTest(false);
+    if (r) toast.success(`Test email sent to ${testEmail.trim()}`);
+  }
+
+  // -------- Broadcast to all customers --------
+  async function sendBroadcast() {
+    if (!content?.htmlEmail) {
+      toast.error("Generate the email first");
+      return;
+    }
+    setSendingBroadcast(true);
+    const r = await run(
+      () =>
+        api.post<{ sent: number; failed: number; total: number }>(
+          "/api/admin/ai/marketing-broadcast",
+          {
+            subject: content.email?.subject || "Marketing Email",
+            htmlBody: content.htmlEmail,
+          }
+        ),
+      { success: "Broadcast sent", error: "Broadcast failed", silent: true }
+    );
+    setSendingBroadcast(false);
+    if (r) {
+      setBroadcastOpen(false);
+      toast.success(`Broadcast complete: ${r.sent} sent, ${r.failed} failed (of ${r.total} customers)`);
+    }
+  }
+
   return (
     <div>
       <PageHeader
-        title="AI Marketing"
-        description="Generate social media posts, email campaigns, and promotional content for your products using AI."
+        title="AI Email Marketing"
+        description="Generate professional email campaigns with AI. Broadcast to all customers or send a single test email."
       />
 
       {/* Configuration Card */}
       <Card className="mb-4">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
-            <Sparkles className="size-4 text-amber-600" /> Generate Marketing Content
+            <Sparkles className="size-4 text-amber-600" /> Generate Email Campaign
           </CardTitle>
-          <CardDescription>Select a product, choose platforms and tone, then generate.</CardDescription>
+          <CardDescription>
+            Select one or more products, choose a tone, and the AI will generate a subject, preview text,
+            headline, promotional description, CTA, and a complete HTML email.
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {/* Product Selector */}
+          {/* Product multi-select */}
           <div className="space-y-1.5">
-            <Label className="text-xs font-medium">Product</Label>
-            <Select value={selectedProductId} onValueChange={setSelectedProductId}>
-              <SelectTrigger><SelectValue placeholder="Select a product" /></SelectTrigger>
-              <SelectContent>
-                {products.map((p: any) => (
-                  <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+            <Label className="text-xs font-medium">
+              Products <span className="text-muted-foreground">({selectedProducts.length} selected)</span>
+            </Label>
 
-          {/* Platform Toggles */}
-          <div className="space-y-1.5">
-            <Label className="text-xs font-medium">Platforms</Label>
-            <div className="flex flex-wrap gap-2">
-              {PLATFORMS.map((p) => {
-                const selected = selectedPlatforms.includes(p.id);
-                const Icon = p.icon;
-                return (
+            {/* Search box */}
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+              <Input
+                value={productSearch}
+                onChange={(e) => searchProducts(e.target.value)}
+                placeholder="Search products by name or SKU…"
+                className="pl-8"
+              />
+              {searching && (
+                <Loader2 className="absolute right-2.5 top-1/2 -translate-y-1/2 size-4 animate-spin text-muted-foreground" />
+              )}
+            </div>
+
+            {/* Search results */}
+            {productSearch.trim() && searchResults.length > 0 && (
+              <div className="max-h-56 overflow-y-auto rounded-lg border bg-background">
+                {searchResults.map((p) => (
                   <button
                     key={p.id}
-                    onClick={() => togglePlatform(p.id)}
-                    className={`flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition-all ${
-                      selected
-                        ? "border-amber-400 bg-amber-50 text-amber-700 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-300"
-                        : "border-border text-muted-foreground hover:border-amber-300"
-                    }`}
+                    type="button"
+                    onClick={() => addProduct(p)}
+                    className="flex w-full items-center gap-3 border-b px-3 py-2 text-left transition-colors last:border-b-0 hover:bg-muted/50"
                   >
-                    <Icon className={`size-3.5 ${selected ? p.color : ""}`} />
-                    {p.label}
+                    <Plus className="size-4 shrink-0 text-emerald-600" />
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-medium">{p.name}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {p.sku ? <span className="font-mono">{p.sku} · </span> : null}
+                        Stock: {p.stock}
+                      </div>
+                    </div>
+                    <div className="text-sm font-semibold tabular-nums">
+                      ₹{p.sellingPrice}
+                    </div>
                   </button>
-                );
-              })}
-            </div>
+                ))}
+              </div>
+            )}
+
+            {productSearch.trim() && !searching && searchResults.length === 0 && (
+              <p className="text-center text-xs text-muted-foreground py-3">
+                No products found matching &ldquo;{productSearch}&rdquo;
+              </p>
+            )}
+
+            {/* Selected products */}
+            {selectedProducts.length > 0 && (
+              <div className="flex flex-wrap gap-2 pt-1">
+                {selectedProducts.map((p) => (
+                  <Badge
+                    key={p.id}
+                    variant="outline"
+                    className="gap-1 border-emerald-200 bg-emerald-50 py-1.5 pl-2.5 pr-1 text-xs text-emerald-800 dark:border-emerald-900/50 dark:bg-emerald-950/40 dark:text-emerald-200"
+                  >
+                    {p.name}
+                    <button
+                      type="button"
+                      onClick={() => removeProduct(p.id)}
+                      className="ml-1 rounded-full p-0.5 hover:bg-emerald-200 dark:hover:bg-emerald-900/60"
+                      aria-label={`Remove ${p.name}`}
+                    >
+                      <X className="size-3" />
+                    </button>
+                  </Badge>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Tone Selector */}
@@ -176,11 +311,11 @@ export function AiMarketingView() {
           {/* Generate Button */}
           <Button
             onClick={generate}
-            disabled={generating || !selectedProductId || selectedPlatforms.length === 0}
+            disabled={generating || selectedProducts.length === 0}
             className="gap-1.5 bg-amber-600 hover:bg-amber-700 text-white"
           >
             {generating ? <Loader2 className="size-4 animate-spin" /> : <Wand2 className="size-4" />}
-            {generating ? "Generating..." : "Generate Marketing Content"}
+            {generating ? "Generating..." : "Generate Email Campaign"}
           </Button>
         </CardContent>
       </Card>
@@ -188,90 +323,102 @@ export function AiMarketingView() {
       {/* Results */}
       {content && (
         <div className="space-y-4">
-          {/* WhatsApp */}
-          {content.whatsapp && (
-            <ContentCard
-              title="WhatsApp Message"
-              icon={MessageCircle}
-              color="text-emerald-600"
-              text={content.whatsapp}
-              onCopy={() => copyToClipboard(content.whatsapp!, "whatsapp")}
-              copied={copiedField === "whatsapp"}
-            />
-          )}
-
-          {/* Facebook */}
-          {content.facebook && (
-            <ContentCard
-              title="Facebook Post"
-              icon={Facebook}
-              color="text-teal-600"
-              text={content.facebook}
-              onCopy={() => copyToClipboard(content.facebook!, "facebook")}
-              copied={copiedField === "facebook"}
-            />
-          )}
-
-          {/* Instagram */}
-          {content.instagram && (
-            <ContentCard
-              title="Instagram Caption"
-              icon={Instagram}
-              color="text-pink-600"
-              text={content.instagram}
-              onCopy={() => copyToClipboard(content.instagram!, "instagram")}
-              copied={copiedField === "instagram"}
-            />
-          )}
-
-          {/* Twitter */}
-          {content.twitter && (
-            <ContentCard
-              title="Twitter/X Post"
-              icon={Twitter}
-              color="text-cyan-600"
-              text={content.twitter}
-              onCopy={() => copyToClipboard(content.twitter!, "twitter")}
-              copied={copiedField === "twitter"}
-            />
-          )}
-
-          {/* Email */}
-          {content.email && (
+          {/* Email subject + preview */}
+          {content.email?.subject && (
             <Card>
               <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-2">
                   <CardTitle className="flex items-center gap-2 text-sm">
-                    <Mail className="size-4 text-amber-600" /> Email Campaign
+                    <Mail className="size-4 text-emerald-600" /> Email Subject & Preview
                   </CardTitle>
                   <Button
                     size="sm"
                     variant="ghost"
-                    onClick={() => copyToClipboard(`Subject: ${content.email!.subject}\n\n${content.email!.body}`, "email")}
+                    onClick={() =>
+                      copyToClipboard(
+                        `Subject: ${content.email!.subject}\nPreview: ${content.previewText ?? ""}`,
+                        "subject"
+                      )
+                    }
                     className="gap-1 text-xs"
                   >
-                    {copiedField === "email" ? <Check className="size-3" /> : <Copy className="size-3" />}
-                    {copiedField === "email" ? "Copied!" : "Copy"}
+                    {copiedField === "subject" ? <Check className="size-3" /> : <Copy className="size-3" />}
+                    {copiedField === "subject" ? "Copied!" : "Copy"}
                   </Button>
                 </div>
               </CardHeader>
               <CardContent className="space-y-2">
-                <Input value={content.email.subject} readOnly className="font-medium" />
-                <Textarea value={content.email.body} readOnly rows={6} className="text-sm" />
+                <div>
+                  <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">Subject</Label>
+                  <Input value={content.email.subject} readOnly className="mt-0.5 font-medium" />
+                </div>
+                <div>
+                  <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">Preview Text</Label>
+                  <Input
+                    value={content.previewText ?? ""}
+                    readOnly
+                    className="mt-0.5 text-muted-foreground"
+                    placeholder="(no preview text generated)"
+                  />
+                </div>
               </CardContent>
             </Card>
           )}
 
-          {/* SMS */}
-          {content.sms && (
-            <ContentCard
-              title="SMS Message"
-              icon={Smartphone}
-              color="text-amber-600"
-              text={content.sms}
-              onCopy={() => copyToClipboard(content.sms!, "sms")}
-              copied={copiedField === "sms"}
-            />
+          {/* Headline + Description + CTA */}
+          {(content.headline || content.promotionalDescription || content.ctaText) && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-sm">
+                  <Sparkles className="size-4 text-amber-600" /> Marketing Copy
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {content.headline && (
+                  <div>
+                    <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">Headline</Label>
+                    <Textarea value={content.headline} readOnly rows={2} className="mt-0.5 resize-none font-semibold" />
+                  </div>
+                )}
+                {content.promotionalDescription && (
+                  <div>
+                    <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                      Promotional Description
+                    </Label>
+                    <Textarea
+                      value={content.promotionalDescription}
+                      readOnly
+                      rows={3}
+                      className="mt-0.5 resize-none text-sm"
+                    />
+                  </div>
+                )}
+                <div className="flex flex-wrap items-center gap-3 pt-1">
+                  {content.ctaText && (
+                    <div className="flex items-center gap-2">
+                      <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">CTA Button</Label>
+                      <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/50 dark:bg-emerald-950/40 dark:text-emerald-300">
+                        {content.ctaText}
+                      </Badge>
+                    </div>
+                  )}
+                  {content.email?.body && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => copyToClipboard(content.email!.body, "body")}
+                      className="ml-auto gap-1 text-xs"
+                    >
+                      {copiedField === "body" ? <Check className="size-3" /> : <Copy className="size-3" />}
+                      {copiedField === "body" ? "Copied!" : "Copy plain-text body"}
+                    </Button>
+                  )}
+                </div>
+                {content.email?.body && (
+                  <Textarea value={content.email.body} readOnly rows={6} className="text-sm resize-none" />
+                )}
+              </CardContent>
+            </Card>
           )}
 
           {/* HTML Email (Responsive) */}
@@ -282,6 +429,68 @@ export function AiMarketingView() {
               onCopy={() => copyToClipboard(content.htmlEmail!, "htmlEmail")}
             />
           )}
+
+          {/* Send options */}
+          {content.htmlEmail && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-sm">
+                  <Send className="size-4 text-emerald-600" /> Send Email
+                </CardTitle>
+                <CardDescription className="text-xs">
+                  Send a test email to yourself first, then broadcast to all customers with verified emails.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {/* Test email */}
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+                  <div className="flex-1 space-y-1">
+                    <Label htmlFor="test-email" className="text-xs font-medium">Send Test Email To</Label>
+                    <Input
+                      id="test-email"
+                      type="email"
+                      value={testEmail}
+                      onChange={(e) => setTestEmail(e.target.value)}
+                      placeholder="you@example.com"
+                      className="max-w-md"
+                    />
+                  </div>
+                  <Button
+                    onClick={sendTestEmail}
+                    disabled={sendingTest || !testEmail.trim()}
+                    variant="outline"
+                    className="gap-1.5 border-emerald-200 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-900/50 dark:text-emerald-300 dark:hover:bg-emerald-950/40"
+                  >
+                    {sendingTest ? <Loader2 className="size-4 animate-spin" /> : <Mail className="size-4" />}
+                    Send Test
+                  </Button>
+                </div>
+
+                {/* Broadcast */}
+                <div className="flex flex-col gap-2 rounded-lg border border-emerald-200 bg-emerald-50/50 p-3 dark:border-emerald-900/50 dark:bg-emerald-950/20 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-start gap-2">
+                    <Users className="size-4 shrink-0 mt-0.5 text-emerald-600" />
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium">Send to All Customers</p>
+                      <p className="text-xs text-muted-foreground">
+                        Broadcasts the generated HTML email to every active customer with a verified email address.
+                        {customerCount?.total != null && (
+                          <> Approx. <strong>{customerCount.total}</strong> customer(s) on record.</>
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    onClick={() => setBroadcastOpen(true)}
+                    disabled={sendingBroadcast}
+                    className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white sm:self-end"
+                  >
+                    <Users className="size-4" /> Broadcast to All
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </div>
       )}
 
@@ -290,56 +499,54 @@ export function AiMarketingView() {
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12 text-center">
             <Sparkles className="mb-3 size-10 text-amber-400" />
-            <p className="text-sm font-medium text-foreground">No marketing content generated yet</p>
+            <p className="text-sm font-medium text-foreground">No email campaign generated yet</p>
             <p className="mt-1 text-xs text-muted-foreground max-w-md">
-              Select a product above, choose your platforms and tone, then click "Generate Marketing Content".
+              Search and select one or more products above, choose a tone, then click
+              &ldquo;Generate Email Campaign&rdquo;.
             </p>
           </CardContent>
         </Card>
       )}
+
+      {/* Broadcast confirmation dialog */}
+      {broadcastOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-md rounded-xl border bg-background p-5 shadow-xl">
+            <div className="flex items-start gap-3">
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
+                <AlertCircle className="size-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h3 className="text-base font-semibold">Confirm Broadcast</h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  This will send the generated email to <strong>every active customer with a verified email</strong>.
+                  Sends are rate-limited (1 per second) to respect SMTP provider limits.
+                  {customerCount?.total != null && (
+                    <> Approx. <strong>{customerCount.total}</strong> customer(s) on record.</>
+                  )}
+                </p>
+                <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">
+                  ⚠️ Make sure you have already sent a test email and verified the rendering.
+                </p>
+              </div>
+            </div>
+            <div className="mt-4 flex items-center justify-end gap-2">
+              <Button variant="outline" onClick={() => setBroadcastOpen(false)} disabled={sendingBroadcast}>
+                Cancel
+              </Button>
+              <Button
+                onClick={sendBroadcast}
+                disabled={sendingBroadcast}
+                className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white"
+              >
+                {sendingBroadcast ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
+                {sendingBroadcast ? "Sending..." : "Confirm & Send"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// ContentCard — reusable card for displaying generated text content
-// ---------------------------------------------------------------------------
-
-function ContentCard({
-  title,
-  icon: Icon,
-  color,
-  text,
-  onCopy,
-  copied,
-}: {
-  title: string;
-  icon: React.ComponentType<{ className?: string }>;
-  color: string;
-  text: string;
-  onCopy: () => void;
-  copied: boolean;
-}) {
-  return (
-    <Card>
-      <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
-          <CardTitle className="flex items-center gap-2 text-sm">
-            <Icon className={`size-4 ${color}`} /> {title}
-          </CardTitle>
-          <Button size="sm" variant="ghost" onClick={onCopy} className="gap-1 text-xs">
-            {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
-            {copied ? "Copied!" : "Copy"}
-          </Button>
-        </div>
-      </CardHeader>
-      <CardContent>
-        <Textarea value={text} readOnly rows={4} className="text-sm resize-none" />
-        <div className="mt-2 flex items-center gap-2">
-          <Badge variant="outline" className="text-[10px]">{text.length} characters</Badge>
-        </div>
-      </CardContent>
-    </Card>
   );
 }
 
@@ -372,7 +579,6 @@ function HtmlEmailCard({
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      // Revoke on the next tick so the download has time to start.
       setTimeout(() => URL.revokeObjectURL(url), 0);
       toast.success("HTML file downloaded");
     } catch (e: any) {

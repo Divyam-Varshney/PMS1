@@ -87,8 +87,19 @@ export async function PATCH(req: Request, { params }: Ctx) {
 
   const order = await db.order.findUnique({ where: { id } });
   if (!order) return notFound("Order not found");
-  if (order.status === "cancelled" || order.status === "delivered") {
-    return err("Cannot modify a delivered/cancelled order", 400);
+  // Item quantities can only be updated while the order is still in
+  // pre-fulfillment stages (pending / confirmed). Once packed, locked.
+  if (
+    order.status === "cancelled" ||
+    order.status === "delivered" ||
+    order.status === "packed" ||
+    order.status === "out_for_delivery" ||
+    order.status === "returned"
+  ) {
+    return err(
+      "Items are locked once the order is packed. Only pending or confirmed orders can be modified.",
+      400
+    );
   }
 
   const item = await db.orderItem.findUnique({ where: { id: itemId } });
@@ -107,8 +118,19 @@ export async function DELETE(_req: Request, { params }: Ctx) {
 
   const order = await db.order.findUnique({ where: { id } });
   if (!order) return notFound("Order not found");
-  if (order.status === "cancelled" || order.status === "delivered") {
-    return err("Cannot modify a delivered/cancelled order", 400);
+  // Items can only be removed while the order is still in pre-fulfillment
+  // stages (pending / confirmed). Once packed, the order is locked.
+  if (
+    order.status === "cancelled" ||
+    order.status === "delivered" ||
+    order.status === "packed" ||
+    order.status === "out_for_delivery" ||
+    order.status === "returned"
+  ) {
+    return err(
+      "Items are locked once the order is packed. Only pending or confirmed orders can be modified.",
+      400
+    );
   }
 
   const item = await db.orderItem.findUnique({ where: { id: itemId } });

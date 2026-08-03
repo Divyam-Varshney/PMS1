@@ -361,25 +361,29 @@ export function PaymentMethodsView() {
   const isQrForm = form.key === "qr";
 
   return (
-    <div>
+    <div className="space-y-4">
       <PageHeader
         title="Payment Methods"
         description="Modular checkout payment options. Active methods appear at checkout."
         actions={
-          <Button onClick={openNew}>
-            <Plus className="size-4 mr-1" /> Add Method
+          <Button onClick={openNew} className="gap-1.5">
+            <Plus className="size-4" /> Add Method
           </Button>
         }
       />
 
       {/* Info box */}
-      <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900 flex gap-2 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-100">
+      <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs sm:text-sm text-emerald-900 flex gap-2 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-100">
         <Info className="size-4 shrink-0 mt-0.5" />
-        <div>
-          Payment methods are <strong>modular</strong>. Add new methods (UPI, Razorpay,
-          Cashfree, etc.) without code changes. <strong>Active methods appear at checkout.</strong>
-          {" "}For Razorpay, enter your Key ID + Key Secret here — they are stored securely in the
-          payment method&apos;s config (not in Settings).
+        <div className="space-y-0.5">
+          <p>
+            Payment methods are <strong>modular</strong>. Add new methods (UPI, Razorpay,
+            Cashfree, etc.) without code changes. <strong>Active methods appear at checkout.</strong>
+          </p>
+          <p className="text-emerald-800/90 dark:text-emerald-200/90">
+            For Razorpay, enter your Key ID + Key Secret here — they are stored securely in the
+            payment method&apos;s config (not in Settings).
+          </p>
         </div>
       </div>
 
@@ -402,7 +406,7 @@ export function PaymentMethodsView() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <Table>
+              <Table className="min-w-[640px]">
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-12 text-right">Order</TableHead>

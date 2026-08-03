@@ -22,7 +22,9 @@ import { BackToTop } from "./back-to-top";
 import { CompareBar } from "./compare-bar";
 import { HealthAssistantWidget } from "./health-assistant-widget";
 import { WelcomePopup } from "./welcome-popup";
+import { NotificationOnboarding } from "./notification-onboarding";
 import { usePublicSettings } from "./use-public-settings";
+import { useCustomer } from "./use-customer";
 import { useUI } from "@/lib/store";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Lock, X } from "lucide-react";
@@ -30,6 +32,7 @@ import { useState } from "react";
 
 export function CustomerLayout({ children }: { children: ReactNode }) {
   const { settings, isStoreOpen, storeStatusMessage } = usePublicSettings();
+  const { isAuthenticated } = useCustomer();
   const navigate = useUI((s) => s.navigate);
   const [dismissedBanner, setDismissedBanner] = useState(false);
 
@@ -108,6 +111,7 @@ export function CustomerLayout({ children }: { children: ReactNode }) {
       <BackToTop />
       <HealthAssistantWidget />
       <WelcomePopup />
+      <NotificationOnboarding isAuthenticated={isAuthenticated} />
     </div>
   );
 }

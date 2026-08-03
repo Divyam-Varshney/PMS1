@@ -12,7 +12,7 @@
 
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Star, Loader2, BadgeCheck, MessageSquarePlus, MessageCircle } from "lucide-react";
+import { Star, Loader2, BadgeCheck, MessageSquarePlus, MessageCircle, ImagePlus, X } from "lucide-react";
 import { api, qk, Review } from "@/components/customer/api";
 import { useCustomer } from "@/components/customer/use-customer";
 import { useUI } from "@/lib/store";
@@ -24,6 +24,8 @@ import { formatDate } from "@/lib/format";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
+const MAX_IMAGES = 6;
+
 export function ReviewsSection({ productId }: { productId: string }) {
   const { customer } = useCustomer();
   const navigate = useUI((s) => s.navigate);
@@ -33,6 +35,14 @@ export function ReviewsSection({ productId }: { productId: string }) {
   const [hoverRating, setHoverRating] = useState(0);
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
+  // Customer-uploaded review images. Stored as { url, file } pairs while
+  // uploading, then just { url } after a successful upload. URLs are sent
+  // to POST /api/reviews as the `images` array.
+  const [uploadedImages, setUploadedImages] = useState<string[]>([]);
+  const [uploadingImage, setUploadingImage] = useState(false);
+
+  // Lightbox for viewing customer-uploaded images on existing reviews.
+  const [lightbox, setLightbox] = useState<string | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: qk.reviews(productId),
@@ -42,7 +52,7 @@ export function ReviewsSection({ productId }: { productId: string }) {
 
   const submit = useMutation({
     mutationFn: () =>
-      api.post("/api/reviews", { productId, rating, title, body }),
+      api.post("/api/reviews", { productId, rating, title, body, images: uploadedImages }),
     onSuccess: () => {
       toast.success("Review submitted! It will appear after admin approval.");
       qc.invalidateQueries({ queryKey: qk.reviews(productId) });
@@ -50,9 +60,44 @@ export function ReviewsSection({ productId }: { productId: string }) {
       setTitle("");
       setBody("");
       setRating(5);
+      setUploadedImages([]);
     },
     onError: (e: Error) => toast.error(e.message),
   });
+
+  // ---- Image upload handler -----------------------------------------------
+  // Uploads selected files to /api/reviews/upload (multipart) and appends the
+  // returned URLs to `uploadedImages`. Enforces the MAX_IMAGES limit.
+  async function handleImageUpload(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    const remaining = MAX_IMAGES - uploadedImages.length;
+    if (remaining <= 0) {
+      toast.error(`You can upload at most ${MAX_IMAGES} images per review`);
+      return;
+    }
+    const slice = Array.from(files).slice(0, remaining);
+    if (slice.length < Array.from(files).length) {
+      toast.info(`Only the first ${slice.length} image(s) were uploaded (max ${MAX_IMAGES} per review).`);
+    }
+    setUploadingImage(true);
+    try {
+      const fd = new FormData();
+      for (const f of slice) fd.append("files", f);
+      const r = await api.post<{ urls: string[] }>("/api/reviews/upload", fd);
+      if (r?.urls?.length) {
+        setUploadedImages((prev) => [...prev, ...r.urls].slice(0, MAX_IMAGES));
+        toast.success(`${r.urls.length} image(s) added`);
+      }
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to upload images");
+    } finally {
+      setUploadingImage(false);
+    }
+  }
+
+  function removeUploadedImage(url: string) {
+    setUploadedImages((prev) => prev.filter((u) => u !== url));
+  }
 
   const avgRating =
     reviews.length > 0
@@ -164,6 +209,62 @@ export function ReviewsSection({ productId }: { productId: string }) {
             rows={3}
             maxLength={1000}
           />
+
+          {/* Image upload */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <label className="text-xs font-medium text-muted-foreground">
+                Add photos (optional, up to {MAX_IMAGES})
+              </label>
+              <span className="text-[11px] text-muted-foreground">
+                {uploadedImages.length}/{MAX_IMAGES}
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {uploadedImages.map((url) => (
+                <div
+                  key={url}
+                  className="relative size-16 overflow-hidden rounded-md border bg-muted/30"
+                >
+                  <img src={url} alt="Review upload" className="size-full object-cover" />
+                  <button
+                    type="button"
+                    onClick={() => removeUploadedImage(url)}
+                    className="absolute right-0.5 top-0.5 rounded-full bg-black/60 p-0.5 text-white hover:bg-black/80"
+                    aria-label="Remove image"
+                  >
+                    <X className="size-3" />
+                  </button>
+                </div>
+              ))}
+              {uploadedImages.length < MAX_IMAGES && (
+                <label
+                  className="flex size-16 cursor-pointer flex-col items-center justify-center gap-1 rounded-md border border-dashed text-muted-foreground transition-colors hover:border-emerald-400 hover:text-emerald-600"
+                  title="Upload images"
+                >
+                  {uploadingImage ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <ImagePlus className="size-4" />
+                  )}
+                  <span className="text-[10px]">Upload</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => {
+                      handleImageUpload(e.target.files);
+                      // Reset the input so selecting the same file again still fires onChange.
+                      e.target.value = "";
+                    }}
+                    disabled={uploadingImage}
+                  />
+                </label>
+              )}
+            </div>
+          </div>
+
           <div className="flex justify-end gap-2">
             <Button
               type="button"
@@ -240,6 +341,24 @@ export function ReviewsSection({ productId }: { productId: string }) {
               {r.body && (
                 <p className="mt-0.5 text-sm text-muted-foreground">{r.body}</p>
               )}
+
+              {/* Customer-uploaded review images (clickable lightbox) */}
+              {Array.isArray((r as any).images) && (r as any).images.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {(r as any).images.map((img: string, i: number) => (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => setLightbox(img)}
+                      className="relative size-16 overflow-hidden rounded-md border bg-muted/30 hover:border-emerald-400 transition-colors"
+                      aria-label={`View image ${i + 1}`}
+                    >
+                      <img src={img} alt={`Review photo ${i + 1}`} className="size-full object-cover" />
+                    </button>
+                  ))}
+                </div>
+              )}
+
               <p className="mt-1.5 text-[11px] text-muted-foreground/70">
                 {formatDate(r.createdAt)}
               </p>
@@ -263,6 +382,27 @@ export function ReviewsSection({ productId }: { productId: string }) {
               )}
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Image lightbox */}
+      {lightbox && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+          onClick={() => setLightbox(null)}
+        >
+          <button
+            className="absolute right-4 top-4 rounded-full bg-white/15 p-2 text-white hover:bg-white/30"
+            aria-label="Close"
+          >
+            <X className="size-5" />
+          </button>
+          <img
+            src={lightbox}
+            alt="Review image"
+            className="max-h-[85vh] max-w-[90vw] rounded-lg object-contain"
+            onClick={(e) => e.stopPropagation()}
+          />
         </div>
       )}
     </div>

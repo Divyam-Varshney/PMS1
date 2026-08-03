@@ -41,3 +41,4 @@ upload/
 db/
 .zscripts/mini-service-*.log
 tsconfig.tsbuildinfo
+agent-ctx/

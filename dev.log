@@ -1,0 +1,289 @@
+$ node scripts/with-env.mjs next dev --turbo -p 3000
+▲ Next.js 16.2.10 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://21.0.15.243:3000
+- Environments: .env
+✓ Ready in 281ms
+
+⚠ metadataBase property in metadata export is not set for resolving social open graph or twitter images, using "http://localhost:3000". See https://nextjs.org/docs/app/api-reference/functions/generate-metadata#metadatabase
+ GET / 200 in 584ms (next.js: 167ms, application-code: 417ms)
+ GET / 200 in 102ms (next.js: 8ms, application-code: 94ms)
+ GET / 200 in 390ms (next.js: 3ms, application-code: 387ms)
+ GET /api/auth/me 200 in 343ms (next.js: 323ms, application-code: 20ms)
+ GET /api/cart 200 in 198ms (next.js: 78ms, application-code: 120ms)
+ GET /api/catalog/brands?featured=true 200 in 1588ms (next.js: 184ms, application-code: 1403ms)
+ GET /api/catalog/categories 200 in 1610ms (next.js: 28ms, application-code: 1582ms)
+ GET /api/catalog/featured 200 in 1915ms (next.js: 147ms, application-code: 1769ms)
+ GET /api/deals 200 in 1837ms (next.js: 90ms, application-code: 1747ms)
+ GET /api/settings/public 200 in 2.5s (next.js: 226ms, application-code: 2.2s)
+ GET /api/catalog/bundles 200 in 2.2s (next.js: 111ms, application-code: 2.1s)
+ GET /api/catalog/home-feed 200 in 1416ms (next.js: 71ms, application-code: 1344ms)
+ GET / 200 in 168ms (next.js: 9ms, application-code: 159ms)
+ GET /api/auth/me 200 in 55ms (next.js: 10ms, application-code: 46ms)
+ GET /api/cart 200 in 58ms (next.js: 14ms, application-code: 44ms)
+ GET /api/deals 200 in 257ms (next.js: 16ms, application-code: 240ms)
+ GET /api/catalog/categories 200 in 428ms (next.js: 3ms, application-code: 425ms)
+ GET /api/catalog/bundles 200 in 689ms (next.js: 54ms, application-code: 635ms)
+ GET /api/catalog/featured 200 in 693ms (next.js: 59ms, application-code: 634ms)
+ GET /api/settings/public 200 in 750ms (next.js: 3ms, application-code: 747ms)
+ GET /api/catalog/brands?featured=true 200 in 677ms (next.js: 8ms, application-code: 669ms)
+ GET /api/catalog/home-feed 200 in 900ms (next.js: 6ms, application-code: 894ms)
+ GET /api/delivery/localities 200 in 338ms (next.js: 33ms, application-code: 305ms)
+ GET /api/settings/public 200 in 489ms (next.js: 6ms, application-code: 483ms)
+ POST /api/auth/login 400 in 348ms (next.js: 76ms, application-code: 272ms)
+ POST /api/auth/login 400 in 209ms (next.js: 3ms, application-code: 206ms)
+ POST /api/auth/register 200 in 5.1s (next.js: 319ms, application-code: 4.8s)
+ POST /api/auth/verify-otp 400 in 193ms (next.js: 176ms, application-code: 17ms)
+ POST /api/auth/verify-otp 200 in 860ms (next.js: 3ms, application-code: 857ms)
+ GET / 200 in 179ms (next.js: 3ms, application-code: 176ms)
+ GET /api/deals 200 in 336ms (next.js: 18ms, application-code: 318ms)
+ GET /api/catalog/bundles 200 in 506ms (next.js: 1812µs, application-code: 504ms)
+ GET /api/catalog/featured 200 in 220ms (next.js: 1972µs, application-code: 218ms)
+ GET /api/auth/me 200 in 747ms (next.js: 11ms, application-code: 736ms)
+ GET /api/settings/public 200 in 975ms (next.js: 2ms, application-code: 973ms)
+ GET /api/catalog/home-feed 200 in 987ms (next.js: 24ms, application-code: 963ms)
+ GET /api/delivery/localities 200 in 434ms (next.js: 39ms, application-code: 395ms)
+ GET /api/cart 200 in 1756ms (next.js: 16ms, application-code: 1740ms)
+ GET /api/push/vapid-public 200 in 79ms (next.js: 64ms, application-code: 15ms)
+[browser] [notif-onboarding] subscribe failed: NotAllowedError: Registration failed - permission denied (src/components/customer/notification-onboarding.tsx:236:15)
+ GET / 200 in 464ms (next.js: 2ms, application-code: 462ms)
+ GET /api/auth/me 200 in 27ms (next.js: 14ms, application-code: 12ms)
+ GET /api/cart 200 in 30ms (next.js: 3ms, application-code: 27ms)
+ GET /api/catalog/categories 200 in 478ms (next.js: 17ms, application-code: 461ms)
+ GET /api/catalog/featured 200 in 569ms (next.js: 14ms, application-code: 555ms)
+ GET /api/deals 200 in 668ms (next.js: 1214µs, application-code: 666ms)
+ GET /api/catalog/brands?featured=true 200 in 679ms (next.js: 2ms, application-code: 677ms)
+ GET /api/catalog/bundles 200 in 810ms (next.js: 5ms, application-code: 804ms)
+ GET /api/settings/public 200 in 849ms (next.js: 7ms, application-code: 842ms)
+ GET / 200 in 379ms (next.js: 4ms, application-code: 375ms)
+ GET /api/catalog/home-feed 200 in 994ms (next.js: 3ms, application-code: 991ms)
+ GET /api/auth/me 200 in 18ms (next.js: 13ms, application-code: 5ms)
+ GET /api/cart 200 in 51ms (next.js: 2ms, application-code: 49ms)
+ GET /api/deals 200 in 247ms (next.js: 13ms, application-code: 234ms)
+ GET /api/settings/public 200 in 273ms (next.js: 9ms, application-code: 264ms)
+ GET /api/catalog/home-feed 200 in 1046ms (next.js: 5ms, application-code: 1041ms)
+ GET /api/catalog/featured 200 in 1165ms (next.js: 16ms, application-code: 1149ms)
+ GET /api/catalog/categories 200 in 1156ms (next.js: 8ms, application-code: 1148ms)
+ GET /api/catalog/bundles 200 in 1217ms (next.js: 10ms, application-code: 1207ms)
+ GET /api/catalog/brands?featured=true 200 in 1079ms (next.js: 2ms, application-code: 1077ms)
+ POST /api/auth/login 200 in 607ms (next.js: 5ms, application-code: 601ms)
+ GET / 200 in 204ms (next.js: 4ms, application-code: 200ms)
+ GET /api/auth/me 200 in 284ms (next.js: 9ms, application-code: 274ms)
+ GET /api/deals 200 in 320ms (next.js: 23ms, application-code: 297ms)
+ GET /api/settings/public 200 in 591ms (next.js: 2ms, application-code: 588ms)
+ GET /api/catalog/bundles 200 in 667ms (next.js: 1758µs, application-code: 666ms)
+ GET /api/catalog/featured 200 in 761ms (next.js: 4ms, application-code: 756ms)
+ GET /api/catalog/categories 200 in 613ms (next.js: 2ms, application-code: 611ms)
+ GET /api/cart 200 in 925ms (next.js: 22ms, application-code: 903ms)
+ GET /api/catalog/brands?featured=true 200 in 699ms (next.js: 1704µs, application-code: 698ms)
+ GET /api/catalog/home-feed 200 in 1118ms (next.js: 6ms, application-code: 1112ms)
+ GET /api/wishlist 200 in 980ms (next.js: 50ms, application-code: 931ms)
+ GET /api/push/vapid-public 200 in 11ms (next.js: 6ms, application-code: 6ms)
+[browser] [notif-onboarding] subscribe failed: NotAllowedError: Registration failed - permission denied (src/components/customer/notification-onboarding.tsx:236:15)
+ GET /api/push/vapid-public 200 in 7ms (next.js: 2ms, application-code: 4ms)
+ POST /api/admin-auth/login 200 in 5.1s (next.js: 311ms, application-code: 4.8s)
+ GET /admin 200 in 381ms (next.js: 25ms, application-code: 356ms)
+ GET /api/admin-auth/me 200 in 313ms (next.js: 72ms, application-code: 241ms)
+ GET /api/admin/counts 200 in 674ms (next.js: 30ms, application-code: 643ms)
+ GET /api/admin/notifications-list?limit=30 200 in 907ms (next.js: 89ms, application-code: 818ms)
+ GET /api/admin/settings/store-status 200 in 912ms (next.js: 29ms, application-code: 884ms)
+prisma:error 
+Invalid `__TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$db$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["db"].order.findMany()` invocation in
+/home/z/my-project/.next/dev/server/chunks/[root-of-the-server]__1jwwzb_._.js:2583:140
+
+  2580 const startOfLastWeek = new Date(now);
+  2581 startOfLastWeek.setDate(startOfLastWeek.getDate() - 14);
+  2582 const [thisWeekOrders, lastWeekOrders, lowStockProducts, topProducts, allProducts] = await Promise.all([
+→ 2583     __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$db$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["db"].order.findMany({
+             where: {
+               createdAt: {
+                 gte: new Date("2026-07-27T18:58:19.629Z")
+               },
+               paymentStatus: "paid"
+             },
+             select: {
+               grandTotal: true,
+               createdAt: true,
+               status: true,
+               items: {
+                 select: {
+                   name: true,
+                   qty: true,
+                   price: true,
+                   ~~~~~
+           ?       id?: true,
+           ?       orderId?: true,
+           ?       productId?: true,
+           ?       sku?: true,
+           ?       image?: true,
+           ?       mrp?: true,
+           ?       sellingPrice?: true,
+           ?       appliedDiscountPct?: true,
+           ?       discountAmount?: true,
+           ?       lineTotal?: true,
+           ?       createdAt?: true,
+           ?       order?: true,
+           ?       product?: true
+                 }
+               }
+             }
+           })
+
+Unknown field `price` for select statement on model `OrderItem`. Available options are marked with ?.
+[dashboard/ai-insights] error: 
+Invalid `__TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$db$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["db"].order.findMany()` invocation in
+/home/z/my-project/.next/dev/server/chunks/[root-of-the-server]__1jwwzb_._.js:2583:140
+
+  2580 const startOfLastWeek = new Date(now);
+  2581 startOfLastWeek.setDate(startOfLastWeek.getDate() - 14);
+  2582 const [thisWeekOrders, lastWeekOrders, lowStockProducts, topProducts, allProducts] = await Promise.all([
+→ 2583     __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$db$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["db"].order.findMany({
+             where: {
+               createdAt: {
+                 gte: new Date("2026-07-27T18:58:19.629Z")
+               },
+               paymentStatus: "paid"
+             },
+             select: {
+               grandTotal: true,
+               createdAt: true,
+               status: true,
+               items: {
+                 select: {
+                   name: true,
+                   qty: true,
+                   price: true,
+                   ~~~~~
+           ?       id?: true,
+           ?       orderId?: true,
+           ?       productId?: true,
+           ?       sku?: true,
+           ?       image?: true,
+           ?       mrp?: true,
+           ?       sellingPrice?: true,
+           ?       appliedDiscountPct?: true,
+           ?       discountAmount?: true,
+           ?       lineTotal?: true,
+           ?       createdAt?: true,
+           ?       order?: true,
+           ?       product?: true
+                 }
+               }
+             }
+           })
+
+Unknown field `price` for select statement on model `OrderItem`. Available options are marked with ?.
+ GET /api/admin/dashboard/ai-insights 200 in 1990ms (next.js: 74ms, application-code: 1915ms)
+ GET /api/admin/dashboard/analytics 200 in 2.3s (next.js: 38ms, application-code: 2.3s)
+ GET /api/admin/app-notifs/analytics?days=30 200 in 819ms (next.js: 331ms, application-code: 488ms)
+ GET /api/admin/notifications-list?limit=30 200 in 517ms (next.js: 4ms, application-code: 513ms)
+ GET /api/admin/app-notifs/history?page=1&pageSize=30 200 in 1331ms (next.js: 187ms, application-code: 1144ms)
+ GET /api/admin/counts 200 in 744ms (next.js: 2ms, application-code: 742ms)
+ GET /api/admin/notifications-list?limit=30 200 in 457ms (next.js: 1983µs, application-code: 455ms)
+ POST /api/admin-auth/logout 200 in 295ms (next.js: 269ms, application-code: 26ms)
+ POST /api/auth/login 200 in 509ms (next.js: 3ms, application-code: 506ms)
+ GET / 200 in 176ms (next.js: 5ms, application-code: 171ms)
+ GET /api/auth/me 200 in 246ms (next.js: 2ms, application-code: 244ms)
+ GET /api/settings/public 200 in 261ms (next.js: 6ms, application-code: 255ms)
+ GET /api/deals 200 in 275ms (next.js: 1459µs, application-code: 273ms)
+ GET /api/cart 200 in 631ms (next.js: 5ms, application-code: 626ms)
+ GET /api/catalog/featured 200 in 657ms (next.js: 4ms, application-code: 653ms)
+ GET /api/catalog/bundles 200 in 801ms (next.js: 1719µs, application-code: 800ms)
+ GET /api/catalog/brands?featured=true 200 in 635ms (next.js: 12ms, application-code: 623ms)
+ GET /api/catalog/categories 200 in 643ms (next.js: 5ms, application-code: 638ms)
+ GET /api/catalog/home-feed 200 in 1458ms (next.js: 1830µs, application-code: 1456ms)
+ GET /api/wishlist 200 in 1097ms (next.js: 3ms, application-code: 1094ms)
+ GET /api/customer/orders 200 in 507ms (next.js: 47ms, application-code: 460ms)
+ GET /api/customer/loyalty 200 in 724ms (next.js: 52ms, application-code: 672ms)
+ GET /api/stock-subscriptions 200 in 680ms (next.js: 59ms, application-code: 620ms)
+ GET /api/customer/reminders 200 in 792ms (next.js: 101ms, application-code: 691ms)
+ GET /api/customer/frequently-reordered 200 in 740ms (next.js: 216ms, application-code: 525ms)
+ GET /api/customer/refill-reminders 200 in 901ms (next.js: 331ms, application-code: 569ms)
+ GET /api/customer/stats 200 in 651ms (next.js: 91ms, application-code: 560ms)
+ GET /api/app-notifs/preferences 200 in 1226ms (next.js: 74ms, application-code: 1152ms)
+ GET /api/customer/history 200 in 675ms (next.js: 58ms, application-code: 617ms)
+ GET / 200 in 191ms (next.js: 3ms, application-code: 189ms)
+ GET /api/auth/me 200 in 303ms (next.js: 12ms, application-code: 292ms)
+ GET /api/deals 200 in 290ms (next.js: 2ms, application-code: 287ms)
+ GET /api/catalog/bundles 200 in 530ms (next.js: 2ms, application-code: 528ms)
+ GET /api/catalog/featured 200 in 530ms (next.js: 24ms, application-code: 506ms)
+ GET /api/catalog/categories 200 in 329ms (next.js: 2ms, application-code: 327ms)
+ GET /api/catalog/brands?featured=true 200 in 306ms (next.js: 1485µs, application-code: 304ms)
+ GET /api/cart 200 in 677ms (next.js: 15ms, application-code: 662ms)
+ GET /api/settings/public 200 in 1007ms (next.js: 4ms, application-code: 1003ms)
+ GET /api/wishlist 200 in 600ms (next.js: 5ms, application-code: 595ms)
+ GET /api/stock-subscriptions 200 in 601ms (next.js: 7ms, application-code: 594ms)
+ GET /api/customer/reminders 200 in 687ms (next.js: 15ms, application-code: 672ms)
+ GET /api/customer/refill-reminders 200 in 682ms (next.js: 2ms, application-code: 680ms)
+ GET /api/app-notifs/preferences 200 in 821ms (next.js: 6ms, application-code: 816ms)
+ GET /api/customer/frequently-reordered 200 in 552ms (next.js: 7ms, application-code: 545ms)
+ GET /api/customer/stats 200 in 461ms (next.js: 3ms, application-code: 458ms)
+ GET /api/customer/history 200 in 612ms (next.js: 8ms, application-code: 605ms)
+✓ Compiled in 547ms
+ GET /api/auth/me 200 in 328ms (next.js: 28ms, application-code: 301ms)
+ GET /api/wishlist 200 in 518ms (next.js: 23ms, application-code: 496ms)
+ GET /api/customer/reminders 200 in 509ms (next.js: 3ms, application-code: 506ms)
+ GET /api/stock-subscriptions 200 in 550ms (next.js: 10ms, application-code: 540ms)
+ GET /api/customer/refill-reminders 200 in 701ms (next.js: 5ms, application-code: 696ms)
+ GET /api/app-notifs/preferences 200 in 770ms (next.js: 13ms, application-code: 757ms)
+ GET /api/customer/frequently-reordered 200 in 522ms (next.js: 4ms, application-code: 518ms)
+ GET /api/customer/stats 200 in 478ms (next.js: 4ms, application-code: 474ms)
+ GET /api/customer/history 200 in 662ms (next.js: 2ms, application-code: 660ms)
+ GET / 200 in 267ms (next.js: 20ms, application-code: 247ms)
+ GET / 200 in 242ms (next.js: 9ms, application-code: 233ms)
+ GET /api/catalog/categories 200 in 500ms (next.js: 39ms, application-code: 461ms)
+ GET /api/catalog/featured 200 in 640ms (next.js: 17ms, application-code: 623ms)
+ GET /api/auth/me 200 in 718ms (next.js: 6ms, application-code: 712ms)
+ GET /api/catalog/bundles 200 in 777ms (next.js: 14ms, application-code: 763ms)
+ GET /api/settings/public 200 in 895ms (next.js: 10ms, application-code: 885ms)
+ GET /api/catalog/brands?featured=true 200 in 399ms (next.js: 2ms, application-code: 397ms)
+ GET /api/deals 200 in 302ms (next.js: 3ms, application-code: 299ms)
+ GET /api/cart 200 in 1035ms (next.js: 11ms, application-code: 1024ms)
+ GET /api/catalog/home-feed 200 in 1109ms (next.js: 3ms, application-code: 1107ms)
+ GET /api/wishlist 200 in 841ms (next.js: 47ms, application-code: 794ms)
+ GET /api/stock-subscriptions 200 in 856ms (next.js: 11ms, application-code: 844ms)
+ GET /api/customer/reminders 200 in 884ms (next.js: 14ms, application-code: 870ms)
+ GET /api/app-notifs/preferences 200 in 990ms (next.js: 8ms, application-code: 982ms)
+ GET /api/customer/refill-reminders 200 in 949ms (next.js: 15ms, application-code: 935ms)
+ GET /api/customer/frequently-reordered 200 in 514ms (next.js: 5ms, application-code: 509ms)
+ GET /api/customer/stats 200 in 528ms (next.js: 4ms, application-code: 524ms)
+ GET /api/customer/history 200 in 647ms (next.js: 1766µs, application-code: 645ms)
+ GET / 200 in 215ms (next.js: 3ms, application-code: 211ms)
+ GET /api/auth/me 200 in 29ms (next.js: 4ms, application-code: 25ms)
+ GET /api/cart 200 in 31ms (next.js: 6ms, application-code: 25ms)
+ GET /api/catalog/categories 200 in 509ms (next.js: 22ms, application-code: 487ms)
+ GET /api/catalog/featured 200 in 655ms (next.js: 17ms, application-code: 638ms)
+ GET /api/catalog/bundles 200 in 782ms (next.js: 9ms, application-code: 773ms)
+ GET /api/catalog/brands?featured=true 200 in 755ms (next.js: 3ms, application-code: 753ms)
+ GET /api/deals 200 in 759ms (next.js: 6ms, application-code: 753ms)
+ GET /api/settings/public 200 in 897ms (next.js: 6ms, application-code: 891ms)
+ GET / 200 in 155ms (next.js: 4ms, application-code: 152ms)
+ GET /api/catalog/home-feed 200 in 673ms (next.js: 4ms, application-code: 669ms)
+ GET /api/auth/me 200 in 17ms (next.js: 9ms, application-code: 8ms)
+ GET /api/cart 200 in 32ms (next.js: 9ms, application-code: 22ms)
+ GET /api/settings/public 200 in 255ms (next.js: 5ms, application-code: 250ms)
+ GET /api/deals 200 in 715ms (next.js: 15ms, application-code: 700ms)
+ GET /api/catalog/home-feed 200 in 930ms (next.js: 8ms, application-code: 921ms)
+ GET /api/catalog/categories 200 in 976ms (next.js: 12ms, application-code: 964ms)
+ GET /api/catalog/bundles 200 in 1095ms (next.js: 5ms, application-code: 1090ms)
+ GET /api/catalog/brands?featured=true 200 in 1025ms (next.js: 2ms, application-code: 1023ms)
+ GET /api/catalog/featured 200 in 1339ms (next.js: 9ms, application-code: 1330ms)
+ POST /api/auth/login 200 in 526ms (next.js: 4ms, application-code: 522ms)
+ GET / 200 in 134ms (next.js: 1960µs, application-code: 132ms)
+ GET /api/settings/public 200 in 230ms (next.js: 2ms, application-code: 228ms)
+ GET /api/auth/me 200 in 310ms (next.js: 12ms, application-code: 298ms)
+ GET /api/deals 200 in 340ms (next.js: 34ms, application-code: 306ms)
+ GET /api/catalog/categories 200 in 402ms (next.js: 1552µs, application-code: 400ms)
+ GET /api/catalog/bundles 200 in 799ms (next.js: 4ms, application-code: 796ms)
+ GET /api/catalog/brands?featured=true 200 in 584ms (next.js: 1814µs, application-code: 582ms)
+ GET /api/catalog/featured 200 in 847ms (next.js: 19ms, application-code: 828ms)
+ GET /api/cart 200 in 1048ms (next.js: 17ms, application-code: 1031ms)
+ GET /api/wishlist 200 in 1081ms (next.js: 3ms, application-code: 1078ms)
+ GET /api/catalog/home-feed 200 in 1464ms (next.js: 2ms, application-code: 1462ms)
+ GET /api/push/vapid-public 200 in 11ms (next.js: 5ms, application-code: 6ms)
+[browser] [notif-onboarding] subscribe failed: NotAllowedError: Registration failed - permission denied (src/components/customer/notification-onboarding.tsx:236:15)
+[push] send failed (status=0): The subscription p256dh value should be 65 bytes long.
+ POST /api/app-notifs/test 502 in 1583ms (next.js: 847ms, application-code: 736ms)
+ POST /api/admin-auth/login 200 in 4.4s (next.js: 4ms, application-code: 4.4s)
+[push] send failed (status=0): The subscription p256dh value should be 65 bytes long.
+ POST /api/admin/app-notifs/test 502 in 1390ms (next.js: 232ms, application-code: 1157ms)

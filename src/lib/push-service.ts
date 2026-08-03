@@ -55,6 +55,7 @@ export interface PushPayload {
   tag?: string;
   deepLink?: string;
   priority?: "normal" | "high";
+  logId?: string; // AppNotifLog row ID — used by the SW to beacon back delivery/click
   metadata?: Record<string, unknown>;
 }
 
@@ -84,6 +85,7 @@ export async function sendPushToCustomer(
     tag: payload.tag || "pms-notification",
     deepLink: payload.deepLink || "/",
     priority: payload.priority || "normal",
+    logId: payload.logId || null,
     metadata: payload.metadata,
   });
 

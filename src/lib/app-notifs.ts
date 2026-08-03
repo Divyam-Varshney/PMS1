@@ -166,21 +166,9 @@ export async function sendAutoNotification(
     const title = interpolate(template.title, variables);
     const body = interpolate(template.fullMessage, variables);
 
-    // 5. Send
-    const result = await sendPushToCustomer(customerId, {
-      title,
-      body,
-      icon: template.icon || undefined,
-      image: template.bannerImage || undefined,
-      tag: template.key,
-      deepLink: template.deepLink || "/",
-      priority: (template.priority as "normal" | "high") || "normal",
-      metadata: { ...metadata, templateKey, variables },
-    });
-
-    // 6. Log
-    const status: "sent" | "failed" =
-      result.sent > 0 ? "sent" : result.failed > 0 ? "failed" : "skipped";
+    // 5. Pre-create the log row so we have an ID to embed in the push payload.
+    //    The SW uses the logId to beacon back delivery + click events.
+    //    Status starts as "pending" and is updated based on the send result.
     const log = await db.appNotifLog.create({
       data: {
         customerId,
@@ -189,12 +177,36 @@ export async function sendAutoNotification(
         title,
         body,
         category: template.category,
+        status: "skipped", // provisional — updated below
+        metadata: JSON.stringify({ ...metadata, variables }),
+      },
+    });
+
+    // 6. Send — include the logId in the payload so the SW can beacon back.
+    const result = await sendPushToCustomer(customerId, {
+      title,
+      body,
+      icon: template.icon || undefined,
+      image: template.bannerImage || undefined,
+      tag: template.key,
+      deepLink: template.deepLink || "/",
+      priority: (template.priority as "normal" | "high") || "normal",
+      metadata: { ...metadata, templateKey, variables, logId: log.id },
+    });
+
+    // 7. Update the log row with the actual outcome.
+    const status: "sent" | "failed" | "skipped" =
+      result.sent > 0 ? "sent" : result.failed > 0 ? "failed" : "skipped";
+    await db.appNotifLog.update({
+      where: { id: log.id },
+      data: {
         status,
         error:
           status === "failed"
             ? `web-push: ${result.failed} failed, ${result.pruned} pruned`
             : null,
-        metadata: JSON.stringify({ ...metadata, variables, result }),
+        metadata: JSON.stringify({ ...metadata, variables, result, logId: log.id }),
+        sentAt: status === "sent" ? new Date() : null,
       },
     });
 
@@ -298,6 +310,25 @@ export async function broadcastCampaign(
         if (subCount === 0) {
           return { kind: "skipped" as const };
         }
+
+        // Pre-create the log row so we have an ID to embed in the push
+        // payload (for delivery + click tracking by the SW).
+        let logId: string | null = null;
+        try {
+          const log = await db.appNotifLog.create({
+            data: {
+              customerId: c.id,
+              templateKey: null,
+              title: payload.title,
+              body: payload.body,
+              category: "campaign",
+              status: "skipped", // provisional
+              metadata: JSON.stringify({ ...payload.metadata, broadcast: true }),
+            },
+          });
+          logId = log.id;
+        } catch {}
+
         const res = await sendPushToCustomer(c.id, {
           title: payload.title,
           body: payload.body,
@@ -306,26 +337,29 @@ export async function broadcastCampaign(
           tag: payload.tag || "pms-campaign",
           deepLink: payload.deepLink || "/",
           priority: payload.priority || "normal",
-          metadata: { ...payload.metadata, broadcast: true },
+          logId: logId || undefined,
+          metadata: { ...payload.metadata, broadcast: true, logId },
         });
-        // Log to AppNotifLog (campaign category)
-        try {
-          await db.appNotifLog.create({
-            data: {
-              customerId: c.id,
-              templateKey: null,
-              title: payload.title,
-              body: payload.body,
-              category: "campaign",
-              status: res.sent > 0 ? "sent" : res.failed > 0 ? "failed" : "skipped",
-              error:
-                res.failed > 0
-                  ? `${res.failed} failed, ${res.pruned} pruned`
-                  : null,
-              metadata: JSON.stringify({ ...payload.metadata, res }),
-            },
-          });
-        } catch {}
+
+        // Update the log row with the actual outcome.
+        const status: "sent" | "failed" | "skipped" =
+          res.sent > 0 ? "sent" : res.failed > 0 ? "failed" : "skipped";
+        if (logId) {
+          try {
+            await db.appNotifLog.update({
+              where: { id: logId },
+              data: {
+                status,
+                error:
+                  status === "failed"
+                    ? `${res.failed} failed, ${res.pruned} pruned`
+                    : null,
+                metadata: JSON.stringify({ ...payload.metadata, res, logId }),
+                sentAt: status === "sent" ? new Date() : null,
+              },
+            });
+          } catch {}
+        }
         return { kind: "sent" as const, res };
       })
     );
@@ -502,7 +536,10 @@ export async function getAnalytics(days = 30): Promise<AppNotifAnalytics> {
 
 export async function retryFailedNotifications(limit = 50): Promise<{ retried: number; succeeded: number; stillFailed: number }> {
   const failed = await db.appNotifLog.findMany({
-    where: { status: "failed", retryCount: { lt: 3 }, error: { not: "No active push subscriptions" } },
+    where: {
+      status: "failed",
+      retryCount: { lt: 3 },
+    },
     take: limit,
     orderBy: { createdAt: "desc" },
   });
@@ -512,24 +549,30 @@ export async function retryFailedNotifications(limit = 50): Promise<{ retried: n
   for (const log of failed) {
     retried++;
     try {
-      // Parse metadata for variables
+      // Parse metadata for the deep link + any other context.
       const meta = log.metadata ? JSON.parse(log.metadata) : {};
+
       const result = await sendPushToCustomer(log.customerId, {
         title: log.title,
         body: log.body,
-        url: meta.url || "/?view=orders",
         icon: "/icon.png",
-        badge: "/icon.png",
         tag: `retry-${log.id}`,
+        deepLink: meta.deepLink || meta.url || "/",
         priority: "normal",
-        data: { ...meta, retry: true },
+        logId: log.id,
+        metadata: { ...meta, retry: true, retryCount: log.retryCount + 1 },
       });
 
       if (result.sent > 0) {
         succeeded++;
         await db.appNotifLog.update({
           where: { id: log.id },
-          data: { status: "sent", sentAt: new Date(), retryCount: { increment: 1 }, error: null },
+          data: {
+            status: "sent",
+            sentAt: new Date(),
+            retryCount: { increment: 1 },
+            error: null,
+          },
         });
       } else {
         stillFailed++;
@@ -540,10 +583,12 @@ export async function retryFailedNotifications(limit = 50): Promise<{ retried: n
       }
     } catch (err) {
       stillFailed++;
-      await db.appNotifLog.update({
-        where: { id: log.id },
-        data: { retryCount: { increment: 1 } },
-      });
+      try {
+        await db.appNotifLog.update({
+          where: { id: log.id },
+          data: { retryCount: { increment: 1 } },
+        });
+      } catch {}
     }
   }
 

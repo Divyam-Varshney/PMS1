@@ -33,7 +33,7 @@ import {
 } from "@/components/ui/select";
 import {
   Bell, Send, Loader2, Wand2, Smartphone, History, Users,
-  CheckCircle2, XCircle, AlertCircle, Sparkles, ArrowRight,
+  CheckCircle2, XCircle, AlertCircle, Sparkles, ArrowRight, RefreshCw,
 } from "lucide-react";
 import { formatDateTime } from "@/lib/format";
 import { toast } from "sonner";
@@ -489,8 +489,127 @@ function CampaignTab() {
 
         {/* Quick stats */}
         <AnalyticsMini />
+
+        {/* Test + Retry tools */}
+        <DiagnosticsCard />
       </div>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Diagnostics card — admin tools to test push + retry failed notifications
+// ---------------------------------------------------------------------------
+
+function DiagnosticsCard() {
+  const qc = useQueryClient();
+  const [testCustomerId, setTestCustomerId] = useState("");
+  const [testBusy, setTestBusy] = useState(false);
+  const [retryBusy, setRetryBusy] = useState(false);
+
+  const handleTest = async () => {
+    if (!testCustomerId.trim()) {
+      toast.error("Enter a customer ID first");
+      return;
+    }
+    setTestBusy(true);
+    try {
+      const res = await fetch("/api/admin/app-notifs/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ customerId: testCustomerId.trim() }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        toast.error(json.error || "Test failed");
+        return;
+      }
+      toast.success(`Test sent to ${json.data?.customerName || "customer"} — ${json.data?.sent} delivered.`);
+      qc.invalidateQueries({ queryKey: ["admin", "app-notifs", "history"] });
+    } catch (e: any) {
+      toast.error(`Test failed: ${e?.message || "unknown error"}`);
+    } finally {
+      setTestBusy(false);
+    }
+  };
+
+  const handleRetry = async () => {
+    setRetryBusy(true);
+    try {
+      const res = await fetch("/api/admin/app-notifs/retry?limit=50", { method: "POST" });
+      const json = await res.json();
+      if (!res.ok) {
+        toast.error(json.error || "Retry failed");
+        return;
+      }
+      const d = json.data || {};
+      toast.success(`Retry complete — ${d.succeeded || 0} succeeded, ${d.stillFailed || 0} still failing (of ${d.retried || 0}).`);
+      qc.invalidateQueries({ queryKey: ["admin", "app-notifs", "history"] });
+      qc.invalidateQueries({ queryKey: ["admin", "app-notifs", "analytics"] });
+    } catch (e: any) {
+      toast.error(`Retry failed: ${e?.message || "unknown error"}`);
+    } finally {
+      setRetryBusy(false);
+    }
+  };
+
+  return (
+    <Card className="border-border/60">
+      <CardHeader className="pb-3">
+        <CardTitle className="flex items-center gap-2 text-base">
+          <AlertCircle className="size-4 text-amber-600" /> Diagnostics
+        </CardTitle>
+        <CardDescription className="text-xs">
+          Send a test push to a single customer, or retry failed notifications.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {/* Test to single customer */}
+        <div className="space-y-2">
+          <Label htmlFor="test-customer" className="text-xs">Send test to a customer</Label>
+          <div className="flex gap-2">
+            <Input
+              id="test-customer"
+              value={testCustomerId}
+              onChange={(e) => setTestCustomerId(e.target.value)}
+              placeholder="Customer ID (e.g. clxxxxx...)"
+              className="text-xs font-mono"
+            />
+            <Button
+              size="sm"
+              onClick={handleTest}
+              disabled={testBusy || !testCustomerId.trim()}
+              variant="outline"
+              className="shrink-0 gap-1.5"
+            >
+              {testBusy ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />}
+              Test
+            </Button>
+          </div>
+          <p className="text-[10px] text-muted-foreground">
+            Find the customer ID from the Customers page or notification history.
+          </p>
+        </div>
+
+        {/* Retry failed */}
+        <div className="space-y-2 border-t border-border/60 pt-3">
+          <Label className="text-xs">Retry failed notifications</Label>
+          <p className="text-[10px] text-muted-foreground">
+            Re-sends up to 50 failed notifications (max 3 retries each). Use this after fixing a server issue.
+          </p>
+          <Button
+            size="sm"
+            onClick={handleRetry}
+            disabled={retryBusy}
+            variant="outline"
+            className="w-full gap-1.5"
+          >
+            {retryBusy ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
+            Retry Failed (max 50)
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 

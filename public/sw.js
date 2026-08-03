@@ -1,50 +1,46 @@
 // ============================================================================
 // File: public/sw.js
-// Purpose: Service Worker for PMS Pharmacy. Handles Web Push delivery +
-//          notification click navigation. Registered by SWRegister on idle.
+// Purpose: Service Worker for PMS Pharmacy. Handles Web Push delivery,
+//          notification click navigation, and subscription lifecycle events.
 //
-// Lifecycle:
-//   install   → skipWaiting (activate new SW immediately, don't wait for
-//               all tabs to close).
-//   activate  → clients.claim() so the SW controls the page on first install
-//               (otherwise the user has to refresh before push works).
-//   push      → parse JSON payload, showNotification with title / body /
-//               icon / image / tag / priority (renotify + requireInteraction
-//               for "high" priority templates).
-//   notificationclick → focus an existing PMS tab if one is open, else open
-//               a new one. Navigate to the deep link from the payload.
+//  Events handled:
+//    install                  → skipWaiting (activate new SW immediately)
+//    activate                 → clients.claim (control page on first install)
+//    push                     → showNotification with title/body/icon/image/tag/deepLink
+//    notificationclick        → focus existing PMS tab + navigate to deep link
+//    pushsubscriptionchange   → re-subscribe + notify server of new endpoint
+//    message                  → SKIP_WAITING (update flow)
+//
+//  Payload shape (sent by src/lib/push-service.ts):
+//    {
+//      title: string,
+//      body: string,
+//      icon?: string,           // small icon (left of title)
+//      image?: string,          // large banner image (below body)
+//      tag?: string,            // grouping tag (replaces existing notif with same tag)
+//      deepLink?: string,       // /relative path to open on click
+//      priority?: "normal" | "high",
+//      logId?: string,          // AppNotifLog row ID for click tracking
+//      metadata?: object
+//    }
 // ============================================================================
 
 self.addEventListener("install", (event) => {
-  // Skip waiting so the new SW activates immediately on next navigation.
   self.skipWaiting();
 });
 
 self.addEventListener("activate", (event) => {
-  // Take control of all open clients (pages) immediately on activation.
   event.waitUntil(self.clients.claim());
 });
 
 // ---------------------------------------------------------------------------
 // PUSH event — show a notification from the server-sent payload.
-// Payload shape (sent by src/lib/push-service.ts):
-//   {
-//     title: string,
-//     body: string,
-//     icon?: string,         // small icon (left of title)
-//     image?: string,        // large banner image (below body)
-//     tag?: string,          // grouping tag (replaces existing notif with same tag)
-//     deepLink?: string,     // /relative path to open on click
-//     priority?: "normal" | "high",
-//     metadata?: object      // arbitrary debug data, unused by SW
-//   }
 // ---------------------------------------------------------------------------
 self.addEventListener("push", (event) => {
   let payload = {};
   try {
     payload = event.data ? event.data.json() : {};
   } catch (e) {
-    // Fallback: treat as plain text
     payload = { title: "PMS Pharmacy", body: event.data ? event.data.text() : "" };
   }
 
@@ -55,21 +51,43 @@ self.addEventListener("push", (event) => {
   const tag = payload.tag || "pms-default";
   const priority = payload.priority || "normal";
   const deepLink = payload.deepLink || "/";
+  const logId = payload.logId || null;
 
-  // High-priority notifications persist until the user interacts.
   const options = {
     body,
     icon,
     badge: "/icon.png",
     tag,
-    data: { deepLink, ...(payload.metadata || {}) },
+    data: {
+      deepLink,
+      logId,
+      ...(payload.metadata || {}),
+    },
     requireInteraction: priority === "high",
     renotify: priority === "high",
     vibrate: [80, 30, 80],
   };
   if (image) options.image = image;
 
-  event.waitUntil(self.registration.showNotification(title, options));
+  event.waitUntil(
+    (async () => {
+      // Show the notification. Also bump the AppNotifLog "sent" status if a
+      // logId was provided — this lets us track delivery vs. click rates.
+      await self.registration.showNotification(title, options);
+
+      // Fire-and-forget delivery beacon. The endpoint is best-effort — if
+      // it fails (e.g. offline), we just skip the bump. Using keepalive so
+      // the SW doesn't have to stay alive for the response.
+      if (logId) {
+        try {
+          await fetch("/api/app-notifs/log/" + logId + "/delivered", {
+            method: "POST",
+            keepalive: true,
+          });
+        } catch {}
+      }
+    })()
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -79,7 +97,9 @@ self.addEventListener("push", (event) => {
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
 
-  const deepLink = (event.notification.data && event.notification.data.deepLink) || "/";
+  const data = event.notification.data || {};
+  const deepLink = data.deepLink || "/";
+  const logId = data.logId || null;
   // Normalize: ensure leading slash so we always navigate within the PMS origin.
   const targetUrl = deepLink.startsWith("http")
     ? deepLink
@@ -99,17 +119,25 @@ self.addEventListener("notificationclick", (event) => {
           const clientUrl = new URL(client.url);
           const targetOrigin = new URL(targetUrl, self.location.origin).origin;
           if (clientUrl.origin === targetOrigin) {
-            client.postMessage({ type: "NOTIF_CLICK", deepLink: targetUrl });
+            client.postMessage({
+              type: "NOTIF_CLICK",
+              deepLink: targetUrl,
+              logId,
+            });
             try { await client.focus(); } catch {}
             return;
           }
         } catch {}
       }
 
-      // No matching tab — open a new one.
+      // No matching tab — open a new one with the deep link as the URL.
+      // The SPA's hashchange listener will pick it up on load.
       if (self.clients.openWindow) {
         try {
-          await self.clients.openWindow(targetUrl);
+          // Convert /?v=orders or /account/orders → /#v=orders so the SPA
+          // picks it up from the initial URL hash.
+          const hashUrl = await normalizeForNewTab(targetUrl);
+          await self.clients.openWindow(hashUrl);
         } catch {}
       }
     })()
@@ -117,10 +145,117 @@ self.addEventListener("notificationclick", (event) => {
 });
 
 // ---------------------------------------------------------------------------
-// MESSAGE — listen for messages from the page (e.g. SW_READY ping).
+// Convert a deep link into a URL the SPA will route correctly when opened
+// in a NEW tab (no existing client). The SPA listens to window.location.hash
+// on initial load, so we need to put the route into the hash fragment.
+// ---------------------------------------------------------------------------
+async function normalizeForNewTab(targetUrl) {
+  // Already has a hash — keep as-is.
+  if (targetUrl.includes("#")) return targetUrl;
+
+  // /?v=orders&productId=xxx → /#v=orders&productId=xxx
+  if (targetUrl.startsWith("/?")) {
+    return "/#" + targetUrl.substring(2);
+  }
+  if (targetUrl.startsWith("?")) {
+    return "/#" + targetUrl.substring(1);
+  }
+
+  // Legacy path-style deep links → map to hash.
+  const pathMap = {
+    "/account/orders": "/#v=orders",
+    "/account": "/#v=account",
+    "/account/profile": "/#v=profile",
+    "/account/addresses": "/#v=addresses",
+    "/shop": "/#v=shop",
+    "/cart": "/#v=cart",
+    "/checkout": "/#v=checkout",
+    "/prescription": "/#v=prescription",
+    "/track-order": "/#v=track-order",
+    "/categories": "/#v=categories",
+    "/wishlist": "/#v=wishlist",
+    "/about": "/#v=about",
+    "/contact": "/#v=contact",
+  };
+  if (pathMap[targetUrl]) return pathMap[targetUrl];
+  // Default — open the home page.
+  return "/#v=home";
+}
+
+// ---------------------------------------------------------------------------
+// PUSH SUBSCRIPTION CHANGE — the browser rotates the push endpoint (e.g.
+// when the user clears site data, or the push service expires the old
+// endpoint). We need to:
+//   1. Unsubscribe the old subscription (if any)
+//   2. Subscribe to a new one with the same VAPID key
+//   3. POST the new endpoint to the server so future pushes reach the device
+// ---------------------------------------------------------------------------
+self.addEventListener("pushsubscriptionchange", (event) => {
+  event.waitUntil(
+    (async () => {
+      const oldEndpoint = event.oldSubscription
+        ? event.oldSubscription.endpoint
+        : null;
+
+      // Try to fetch the VAPID public key from the server.
+      let vapidKey = null;
+      try {
+        const res = await fetch("/api/push/vapid-public");
+        const json = await res.json();
+        vapidKey = json?.data?.publicKey || null;
+      } catch {}
+
+      if (!vapidKey) {
+        console.warn("[sw] pushsubscriptionchange: no VAPID key available, cannot re-subscribe");
+        return;
+      }
+
+      // Subscribe to a new push subscription.
+      try {
+        const newSub = await self.registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(vapidKey),
+        });
+        const sub = newSub.toJSON();
+
+        // Notify the server — POST the new endpoint + unsubscribe the old.
+        await fetch("/api/push/subscribe", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          keepalive: true,
+          body: JSON.stringify({
+            endpoint: sub.endpoint,
+            keys: sub.keys,
+            oldEndpoint,
+          }),
+        });
+      } catch (err) {
+        console.error("[sw] pushsubscriptionchange: re-subscribe failed:", err);
+      }
+    })()
+  );
+});
+
+// ---------------------------------------------------------------------------
+// MESSAGE — listen for messages from the page (e.g. SKIP_WAITING for SW
+// updates, or a ping to verify the SW is alive).
 // ---------------------------------------------------------------------------
 self.addEventListener("message", (event) => {
   if (event.data && event.data.type === "SKIP_WAITING") {
     self.skipWaiting();
   }
 });
+
+// ---------------------------------------------------------------------------
+// Helper — convert base64url VAPID key to Uint8Array (for subscribe()).
+// ---------------------------------------------------------------------------
+function urlBase64ToUint8Array(base64Url) {
+  const padding = "=".repeat((4 - (base64Url.length % 4)) % 4);
+  const base64 = (base64Url + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const raw = atob(base64);
+  const arr = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) {
+    arr[i] = raw.charCodeAt(i);
+  }
+  return arr;
+}

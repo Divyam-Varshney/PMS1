@@ -1,8 +1,20 @@
 // ============================================================================
 // File: src/components/customer/notification-onboarding.tsx
 // Purpose: One-time onboarding dialog for App Notifications. Uses a toggle
-//          switch instead of a button. Handles the full subscribe flow
-//          (permission → SW → VAPID → PushManager → POST → preferences).
+//          switch instead of a button. Handles the full subscribe flow:
+//            __ensurePushReady → requestPermission → getSubscription →
+//            subscribe (if needed) → POST /api/push/subscribe → PUT preferences
+//
+//  CRITICAL FIX (Phase 39.5 audit):
+//  --------------------------------
+//  Previously, the toggle called `navigator.serviceWorker.ready` which could
+//  resolve BEFORE the SW was actually active — causing:
+//
+//    "Failed to execute 'subscribe' on 'PushManager':
+//     Subscription failed - no active Service Worker"
+//
+//  Fix: use the new `window.__ensurePushReady()` helper from sw-register.tsx,
+//  which guarantees an ACTIVE ServiceWorkerRegistration before subscribing.
 //
 //  Key design decisions:
 //    • Toggle switch (not button) — smoother UX, no double-click issue
@@ -98,12 +110,16 @@ export function NotificationOnboarding({
 
         // Check permission
         if (Notification.permission === "granted") {
-          // Check if we have a subscription
+          // Check if we have a subscription (use the helper — it ensures the
+          // SW is registered AND active before checking).
           let hasSub = false;
           try {
-            const reg = await navigator.serviceWorker.ready;
-            const sub = await reg.pushManager.getSubscription();
-            hasSub = !!sub;
+            const ensureReady = window.__ensurePushReady;
+            const reg = ensureReady ? await ensureReady() : await navigator.serviceWorker.ready;
+            if (reg) {
+              const sub = await reg.pushManager.getSubscription();
+              hasSub = !!sub;
+            }
           } catch {}
 
           if (hasSub) {
@@ -154,8 +170,20 @@ export function NotificationOnboarding({
 
       setToggleState("subscribing");
 
-      // 2. Wait for SW
-      const reg = await navigator.serviceWorker.ready;
+      // 2. Ensure the SW is registered AND active. This is the critical fix —
+      //    navigator.serviceWorker.ready can resolve before the SW is active,
+      //    causing "no active Service Worker" errors from pushManager.subscribe.
+      //    The __ensurePushReady helper guarantees an active registration.
+      let reg: ServiceWorkerRegistration | null = null;
+      if (typeof window.__ensurePushReady === "function") {
+        reg = await window.__ensurePushReady();
+      } else {
+        // Fallback — direct ready call (less robust)
+        reg = await navigator.serviceWorker.ready;
+      }
+      if (!reg) {
+        throw new Error("Service Worker failed to activate. Please refresh the page and try again.");
+      }
 
       // 3. Check if already subscribed (avoid duplicate registration error)
       let subscription = await reg.pushManager.getSubscription();
@@ -173,7 +201,7 @@ export function NotificationOnboarding({
 
         subscription = await reg.pushManager.subscribe({
           userVisibleOnly: true,
-          applicationServerKey,
+          applicationServerKey: applicationServerKey as BufferSource,
         });
       }
 
@@ -185,6 +213,7 @@ export function NotificationOnboarding({
         body: JSON.stringify({
           endpoint: sub.endpoint,
           keys: sub.keys,
+          userAgent: navigator.userAgent.slice(0, 500),
         }),
       });
 

@@ -105,12 +105,12 @@ export async function PATCH(req: Request, { params }: Ctx) {
   }
 
   if (appNotifTemplateKey && order.customer?.id) {
-    sendAutoNotification({
-      customerId: order.customer.id,
-      templateKey: appNotifTemplateKey,
-      variables: { ...vars, customerName: order.customer.name, storeName: "Pradeep Medical Store" },
-      metadata: { orderId: id, paymentStatus: body.paymentStatus },
-    }).catch((e) => console.error(`[payment] app notif failed:`, e?.message));
+    sendAutoNotification(
+      order.customer.id,
+      appNotifTemplateKey,
+      { ...vars, customerName: order.customer.name, storeName: "Pradeep Medical Store" },
+      { orderId: id, paymentStatus: body.paymentStatus }
+    ).catch((e) => console.error(`[payment] app notif failed:`, e?.message));
   }
 
   return ok(updated);

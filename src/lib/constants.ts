@@ -101,23 +101,34 @@ export const ADMIN_ROLES = {
 /// and the permission helper in src/lib/permissions.ts.
 export const ADMIN_PERMISSIONS = [
   "dashboard",
+  // Catalog
   "products",
   "categories",
   "brands",
+  // Sales
   "orders",
+  "prescriptions",
+  "manual-requests",
   "customers",
   "reviews",
-  "reports",
-  "delivery-zones",
+  // Marketing
   "offers",
-  "vouchers",
-  "loyalty",
-  "notifications",
-  "payment-methods",
-  "settings",
-  "templates",
-  "newsletter",
   "deals",
+  "campaigns",
+  "ai-marketing",
+  "vouchers",
+  "newsletter",
+  "app-notifications",
+  "templates",
+  // Operations
+  "delivery-zones",
+  "payment-methods",
+  "reports",
+  // System
+  "backups",
+  "database",
+  "error-logs",
+  "settings",
   "admins",
 ] as const;
 
@@ -131,21 +142,76 @@ export const ADMIN_PERMISSION_LABELS: Record<AdminPermissionKey, string> = {
   categories: "Categories",
   brands: "Brands",
   orders: "Orders",
+  prescriptions: "Prescriptions",
+  "manual-requests": "Manual Requests",
   customers: "Customers",
   reviews: "Reviews",
-  reports: "Reports",
-  "delivery-zones": "Delivery Zones",
   offers: "Offers & Banners",
-  vouchers: "Vouchers",
-  loyalty: "Loyalty",
-  notifications: "Notifications",
-  "payment-methods": "Payment Methods",
-  settings: "Settings",
-  templates: "Templates",
-  newsletter: "Newsletter",
   deals: "Today's Deals",
+  campaigns: "Campaigns",
+  "ai-marketing": "AI Marketing",
+  vouchers: "Vouchers",
+  newsletter: "Newsletter",
+  "app-notifications": "App Notifications",
+  templates: "Templates",
+  "delivery-zones": "Delivery Zones",
+  "payment-methods": "Payment Methods",
+  reports: "Reports",
+  backups: "Backups",
+  database: "Database",
+  "error-logs": "Error Logs",
+  settings: "Settings",
   admins: "Admins",
 };
+
+/// Logical module groupings used by the AdminsView permission editor to
+/// render the toggle grid as labelled sections rather than a flat list.
+/// Keys map 1-to-1 to ADMIN_PERMISSIONS entries (no orphans, no missing).
+export const PERMISSION_GROUPS: {
+  label: string;
+  icon: string;
+  permissions: AdminPermissionKey[];
+}[] = [
+  {
+    label: "Overview",
+    icon: "LayoutDashboard",
+    permissions: ["dashboard"],
+  },
+  {
+    label: "Catalog",
+    icon: "Package",
+    permissions: ["products", "categories", "brands"],
+  },
+  {
+    label: "Sales",
+    icon: "ShoppingCart",
+    permissions: ["orders", "prescriptions", "manual-requests", "customers", "reviews"],
+  },
+  {
+    label: "Marketing",
+    icon: "Megaphone",
+    permissions: [
+      "offers",
+      "deals",
+      "campaigns",
+      "ai-marketing",
+      "vouchers",
+      "newsletter",
+      "app-notifications",
+      "templates",
+    ],
+  },
+  {
+    label: "Operations",
+    icon: "Truck",
+    permissions: ["delivery-zones", "payment-methods", "reports"],
+  },
+  {
+    label: "System",
+    icon: "Settings",
+    permissions: ["backups", "database", "error-logs", "settings", "admins"],
+  },
+];
 
 export const NOTIFICATION_CHANNELS = {
   EMAIL: "email",

@@ -8046,3 +8046,197 @@ tabbed PMS1 layout was replaced with a single-scroll, sectioned layout.
 - ✅ VALID_TRANSITIONS map matches the server-side map exactly
 - ✅ Payment status colors match the spec (amber / emerald / cyan / red /
   rose / orange / slate)
+
+---
+
+## P38.5-6-7 — Orders + Prescriptions + Admins redesign
+
+**Task ID:** P38.5-6-7
+**Agent:** orders-prescriptions-admins
+**Date:** 2025
+
+### Phase 38.5 — Enterprise Order Management Redesign
+
+**OrdersView.tsx** (1858 → 1268 lines, complete rewrite):
+- Replaced 14-card gradient-heavy summary grid with 8 sober, flat summary
+  cards (Total Orders, Today, Pending, Confirmed, Delivered, Revenue,
+  Customers, Products Sold). Cards clickable to toggle status filter.
+- Removed the broken `PAYMENT_METHOD_LABEL]}` and `PAYMENT_METHOD_LABELethod]`
+  parse bugs from the original file (these were causing syntax errors that
+  eslint had tolerated because the file was at one point valid).
+- Removed unused imports (`Rows3`, `Rows4`, `Columns3`, `ArrowUpDown`,
+  `Tag`, `Banknote`, `Sparkles`, `Receipt`, `TrendingUp`, `TrendingDown`,
+  `Undo2`, `Printer`, `motion`, `AnimatePresence`, `useEffect` duplicate,
+  `DropdownMenuCheckboxItem`, `DropdownMenuLabel`, `DropdownMenuSeparator`).
+- Search bar with debounce (300ms) + clear button + 3 quick date presets
+  (Today / 7d / 30d).
+- Filters: order status chips, payment status chips, payment method,
+  date range, prescription toggle, amount range — with active filter chips
+  and Clear All.
+- 10-column table: select, order #, customer (name + phone), date & time,
+  payment method, payment status badge, order status badge, total amount,
+  prescription/manual badge, quick actions dropdown.
+- Quick actions per row: View Details + context-aware next action (Confirm
+  / Pack / Ship / Deliver / Return) + Cancel Order, via a dropdown menu.
+- Bulk actions: sticky bottom action bar with Confirm / Pack / Ship /
+  Deliver / Cancel + Export Selected + Export All CSV. Indeterminate header
+  checkbox + per-row selection.
+- Page-number pagination (1 … 4 5 [6] 7 8 … 20 style) with Showing X–Y of N.
+- Mobile: card layout with badges inline, tap-to-view, separate checkbox.
+- Loading skeleton, empty state with clear-filters action.
+- Dark/light mode throughout (dark: variants on every badge + card).
+
+**OrderDetailView.tsx** (2546 → 1564 lines, complete rewrite):
+- Fixed the broken `const obileActionsOpen, setMobileActionsOpen]` syntax
+  error from the original file.
+- Removed unused imports and Framer Motion dependency (cleaner + smaller
+  bundle). Removed `verifyPrescription` handler that referenced a missing
+  server endpoint and was unreachable in the old code.
+- Header: back button, order number, status badge, date, quick actions
+  (Print, Download, Contact, Copy ID). Source badge + Rx + voucher + grand
+  total chips below header.
+- Smart Status Workflow card: shows the current status + the allowed next
+  transitions per VALID_TRANSITIONS (matches server-side map exactly:
+  pending → confirmed/cancelled; confirmed → packed/out_for_delivery/
+  delivered/cancelled; packed → out_for_delivery/delivered/cancelled;
+  out_for_delivery → delivered/cancelled; delivered → returned; terminal =
+  cancelled/returned). Cancel opens a confirmation dialog with reason field.
+- Payment Management card: method, status badge, gateway, editable
+  transaction ID + new status dropdown + Update Payment button which opens
+  a confirmation dialog showing current → new + optional note. Payment
+  screenshot preview link + COD callout when method === "cod".
+- Info cards (2-col grid): Customer (avatar, name, contact links,
+  customerStats), Delivery Address (with Copy + Maps links), Payment Info,
+  Pricing Summary (subtotal, product discount, voucher, loyalty, delivery,
+  tax, round-off, grand total).
+- Products table: image, name (+ Rx badge if prescriptionRequired), qty,
+  price, total. Mobile: card layout.
+- Timeline: vertical, simple, status changes with date/time/actor/notes —
+  color-coded dot per status, icon, label, optional note.
+- Internal Notes: textarea + Add button, list (newest first), delete with
+  confirmation.
+- Prescription card (conditional): image gallery (click to open lightbox
+  with download), customer notes, admin notes.
+- Mobile sticky bottom action bar: primary next-status button + "More"
+  button opening a Sheet with all actions.
+- Payment status colors match the spec: pending=amber, paid=emerald,
+  partially_paid=cyan, failed=red, refunded=rose, refund_initiated=orange,
+  cancelled=slate.
+
+### Phase 38.6 — Prescription & Manual Medicine Request
+
+**PrescriptionsView.tsx** (485 → 783 lines, refined):
+- Better layout & typography: Card-wrapped search bar, page-header with
+  description, emerald accent palette throughout.
+- Status badges with colors: pending=amber, under_review=cyan, verified/
+  converted=emerald, rejected=rose.
+- Search: customer name, phone, request number (debounced 300ms).
+- Filters: status (select), date range (from/to date inputs), with active
+  filter chips + Clear All.
+- Mobile responsive: cards with avatar icon, status badge, request number,
+  image count, date.
+- Dark/light mode.
+- Loading skeleton, empty state with clear-filters action.
+- Pagination with showing X–Y of N.
+- Detail view: refined header (back + title + status + date), 3-col grid
+  (images / customer notes / customer card / admin actions card), better
+  image preview grid (hover-to-zoom + click-to-lightbox with download),
+  status actions (Mark Reviewing / Approve / Reject) with consistent
+  emerald/amber/rose hover tints, convert-to-order dialog with product
+  search and line items.
+- Fixed pre-existing TS error: removed the `api.get<any>` typing on the
+  detail fetch (now uses a typed PrescriptionDetail interface) — eliminates
+  the "Property 'id' does not exist on type '{}'" tsc error.
+
+**ManualRequestsView.tsx** (452 → 750 lines, refined):
+- Same design system as PrescriptionsView for consistency.
+- Status workflow labels relabelled per spec: pending=Pending,
+  under_review=Reviewed, verified=Medicine Available, converted=Completed,
+  rejected=Cancelled (the underlying status values are unchanged so the
+  API contract is preserved).
+- Search: customer name, phone, medicine name, request number (debounced).
+- Filters: status, date range.
+- Mobile responsive, dark/light mode, loading skeleton, empty state,
+  pagination.
+- Detail view: refined 3-col layout, medicines list with pill icons,
+  customer notes, customer card, admin actions card (Mark Reviewed /
+  Medicine Available / Cancel), convert-to-order dialog.
+- Fixed pre-existing TS error: replaced `api.get<any>` with typed
+  ManualRequestDetail interface (eliminates the "Property 'id' does not
+  exist on type '{}'" tsc error from line 245).
+
+### Phase 38.7 — Admin Management & Permissions
+
+**constants.ts** (1057 → 1123 lines):
+- Expanded ADMIN_PERMISSIONS from 19 → 25 keys. Added: prescriptions,
+  manual-requests, campaigns, ai-marketing, app-notifications, backups,
+  database, error-logs. Removed: loyalty (unused — not in AdminLayout).
+- Added ADMIN_PERMISSION_LABELS for every new key.
+- Added new exported `PERMISSION_GROUPS` constant — array of 6 module
+  groups (Overview, Catalog, Sales, Marketing, Operations, System), each
+  with a label, icon name, and permission list. Keys map 1-to-1 to
+  ADMIN_PERMISSIONS entries (no orphans, no missing — verified by
+  count: 1+3+5+8+3+5 = 25 = ADMIN_PERMISSIONS.length).
+
+**AdminLayout.tsx**:
+- Updated NAV_GROUPS to use the new granular permission keys:
+  prescriptions→prescriptions, manual-requests→manual-requests,
+  campaigns→campaigns, ai-marketing→ai-marketing, app-notification-center→
+  app-notifications, backups→backups, database→database, error-logs→
+  error-logs. Previously these were aliased to broader keys (orders/deals/
+  settings) which made independent toggling impossible.
+
+**AdminsView.tsx** (409 → 793 lines, refined):
+- Simple, clean layout — not flashy. Card-wrapped search + filter bar.
+- Admin listing with: avatar (initials, emerald for super_admin), name,
+  email + phone, role badge (color-coded: super_admin=emerald, manager=
+  cyan, admin=stone), permissions count badge (All N for super_admin,
+  X / N for others), last login (with clock icon), active toggle with
+  Active/Inactive label.
+- Search by name/email/phone (debounced), filter by role + status
+  (active/inactive), active filter chips with Clear All.
+- Mobile responsive: card layout with avatar, badges, last login,
+  compact action buttons. Mobile filters in a Sheet.
+- Permissions editor dialog: completely redesigned to use PERMISSION_GROUPS
+  for grouped rendering. Each module group has its own bordered card with
+  a header (group name + X/Y count) and an "Enable all / Clear group"
+  shortcut. Inside each group, permissions render in a 2-column grid with
+  Switch toggles. Select All / Deselect All shortcuts at the top, live
+  count of selected permissions.
+- Super admin rows: never editable (Permissions button disabled, Delete
+  button disabled). Self-row: Switch disabled (can't deactivate yourself),
+  Delete disabled.
+- Cannot delete self protection preserved.
+- Admin login notification: verified already implemented in
+  `src/app/api/admin-auth/login/route.ts` — sends an email to the global
+  admin email (`store.email` setting) with name, email, login time, IP,
+  browser, device, OS, login status. Best-effort, doesn't fail login.
+
+### Verification result
+
+- ✅ `bun run lint` — clean (0 errors, 0 warnings)
+- ✅ `bunx eslint <all-modified-files>` — clean
+- ✅ `bunx tsc --noEmit` — no new errors in any of the modified files
+  (OrdersView, OrderDetailView, PrescriptionsView, ManualRequestsView,
+  AdminsView, constants.ts, permissions.ts, AdminLayout.tsx). Pre-existing
+  errors in unrelated files (CustomersView, OffersView, ProductsView,
+  CampaignsView, storage-settings-panel, ai-service, app-notifs, s3.ts,
+  customer/* views, orders/[id]/payment route) are not affected by this
+  change. Two pre-existing tsc errors that WERE in files I touched
+  (ManualRequestsView line 245, PrescriptionsView line 249) were fixed by
+  replacing `api.get<any>` with typed interfaces.
+- ✅ ADMIN_PERMISSIONS count = 25 (>= 25 required)
+- ✅ PERMISSION_GROUPS covers all 25 keys with no orphans
+- ✅ AdminLayout NAV_GROUPS uses granular permission keys (no more aliased
+  to broader keys)
+- ✅ Component signatures preserved:
+  `export function OrdersView()`
+  `export function OrderDetailView({ id }: { id: string })`
+  `export function PrescriptionsView()` + `PrescriptionDetailView`
+  `export function ManualRequestsView()` + `ManualRequestDetailView`
+  `export function AdminsView({ currentAdmin }: { currentAdmin: { id: string; role: string } })`
+- ✅ All views are `"use client"` and use @tanstack/react-query, shadcn/ui,
+  lucide-react, sonner toast, api/run from ../api, useAdminStore from
+  ../admin-store
+- ✅ Emerald accent palette throughout (no indigo/blue)
+- ✅ Dark/light mode on every component

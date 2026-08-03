@@ -118,8 +118,8 @@ const NAV_GROUPS: Array<{
     label: "Sales",
     items: [
       { view: { name: "orders" }, icon: ShoppingCart, label: "Orders", permission: "orders" },
-      { view: { name: "prescriptions" }, icon: FileImage, label: "Prescriptions", permission: "orders" },
-      { view: { name: "manual-requests" }, icon: ClipboardList, label: "Manual Requests", permission: "orders" },
+      { view: { name: "prescriptions" }, icon: FileImage, label: "Prescriptions", permission: "prescriptions" },
+      { view: { name: "manual-requests" }, icon: ClipboardList, label: "Manual Requests", permission: "manual-requests" },
       { view: { name: "customers" }, icon: Users, label: "Customers", permission: "customers" },
     ],
   },
@@ -128,11 +128,11 @@ const NAV_GROUPS: Array<{
     items: [
       { view: { name: "offers" }, icon: Megaphone, label: "Offers & Banners", permission: "offers" },
       { view: { name: "deals" }, icon: Flame, label: "Today's Deals", permission: "deals" },
-      { view: { name: "campaigns" }, icon: Megaphone, label: "Campaigns", permission: "deals" },
-      { view: { name: "ai-marketing" }, icon: Sparkles, label: "AI Marketing", permission: "deals" },
+      { view: { name: "campaigns" }, icon: Megaphone, label: "Campaigns", permission: "campaigns" },
+      { view: { name: "ai-marketing" }, icon: Sparkles, label: "AI Marketing", permission: "ai-marketing" },
       { view: { name: "vouchers" }, icon: Ticket, label: "Vouchers", permission: "vouchers" },
       { view: { name: "newsletter" }, icon: Mailbox, label: "Newsletter", permission: "newsletter" },
-      { view: { name: "app-notification-center" }, icon: Bell, label: "Apps Notification's", permission: "newsletter" },
+      { view: { name: "app-notification-center" }, icon: Bell, label: "Apps Notification's", permission: "app-notifications" },
       { view: { name: "reviews" }, icon: Star, label: "Reviews", permission: "reviews" },
     ],
   },
@@ -147,12 +147,12 @@ const NAV_GROUPS: Array<{
   {
     label: "System",
     items: [
-      { view: { name: "backups" }, icon: HardDrive, label: "Backups", permission: "settings" },
-      { view: { name: "database" }, icon: Database, label: "Database", permission: "settings" },
+      { view: { name: "backups" }, icon: HardDrive, label: "Backups", permission: "backups" },
+      { view: { name: "database" }, icon: Database, label: "Database", permission: "database" },
       { view: { name: "notification-templates" }, icon: FileText, label: "Templates", permission: "templates" },
       { view: { name: "settings" }, icon: Settings, label: "Settings", permission: "settings" },
       { view: { name: "admins" }, icon: UserCog, label: "Admins", permission: "admins" },
-      { view: { name: "error-logs" }, icon: ScrollText, label: "Error Logs", permission: "settings" },
+      { view: { name: "error-logs" }, icon: ScrollText, label: "Error Logs", permission: "error-logs" },
     ],
   },
 ];

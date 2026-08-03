@@ -1,0 +1,836 @@
+     1→     1→// ============================================================================
+     2→     2→// File: src/components/admin/views/DashboardView.tsx
+     3→     3→// Purpose: Admin dashboard — clean, minimal, professional (Shopify/Stripe
+     4→     4→//          style). Organized into four labeled sections:
+     5→     5→//            1. Business Overview  — headline KPIs (orders, revenue, customers,
+     6→     6→//               products)
+     7→     7→//            2. Sales & Orders     — pending/delivered counts + 7-day revenue
+     8→     8→//               trend sparkline with up/down % + recent orders table
+     9→     9→//            3. Inventory          — low-stock alerts + top products
+    10→    10→//            4. Recent Activity    — pending prescriptions & medicine requests
+    11→    11→//          Every stat is sourced from GET /api/admin/dashboard. Loading state
+    12→    12→//          uses skeleton placeholders; empty states use the shared EmptyState.
+    13→    13→//          No heavy chart library — the 7-day revenue trend is rendered with a
+    14→    14→//          lightweight inline SVG sparkline.
+    15→    15→// ============================================================================
+    16→    16→
+    17→    17→"use client";
+    18→    18→
+    19→    19→import { useQuery } from "@tanstack/react-query";
+    20→    20→import { api } from "../api";
+    21→    21→import { AnimatedNumber } from "../animated-number";
+    22→    22→import { StatusBadge, EmptyState, ProductThumb } from "../ui";
+    23→    23→import { Card, CardContent } from "@/components/ui/card";
+    24→    24→import { Badge } from "@/components/ui/badge";
+    25→    25→import { Button } from "@/components/ui/button";
+    26→    26→import { Skeleton } from "@/components/ui/skeleton";
+    27→    27→import {
+    28→    28→  ShoppingCart,
+    29→    29→  IndianRupee,
+    30→    30→  Users,
+    31→    31→  Package,
+    32→    32→  TrendingUp,
+    33→    33→  TrendingDown,
+    34→    34→  Minus,
+    35→    35→  RefreshCw,
+    36→    36→  AlertTriangle,
+    37→    37→  FileImage,
+    38→    38→  Pill,
+    39→    39→  CheckCircle2,
+    40→    40→  Clock,
+    41→    41→  ChevronRight,
+    42→    42→  PackageX,
+    43→    43→  Activity,
+    44→    44→} from "lucide-react";
+    45→    45→import { useAdminStore } from "../admin-store";
+    46→    46→import { formatCurrency, timeAgo } from "@/lib/format";
+    47→    47→import { cn } from "@/lib/utils";
+    48→    48→
+    49→    49→// ---------------------------------------------------------------------------
+    50→    50→// Status label map — used for the recent-orders status badge fallback
+    51→    51→// ---------------------------------------------------------------------------
+    52→    52→const ORDER_STATUS_LABEL: Record<string, string> = {
+    53→    53→  pending: "Pending",
+    54→    54→  confirmed: "Confirmed",
+    55→    55→  packed: "Packed",
+    56→    56→  out_for_delivery: "Out for Delivery",
+    57→    57→  delivered: "Delivered",
+    58→    58→  cancelled: "Cancelled",
+    59→    59→  returned: "Returned",
+    60→    60→};
+    61→    61→
+    62→    62→// ---------------------------------------------------------------------------
+    63→    63→// Dashboard data type — matches the API response shape
+    64→    64→// ---------------------------------------------------------------------------
+    65→    65→interface DashboardData {
+    66→    66→  todayOrdersCount: number;
+    67→    67→  todayRevenue: number;
+    68→    68→  totalCustomers: number;
+    69→    69→  totalProducts: number;
+    70→    70→  lowStockCount: number;
+    71→    71→  lowStockItems?: Array<{
+    72→    72→    id: string; name: string; slug: string; sku: string | null;
+    73→    73→    stock: number; lowStockThreshold: number; sellingPrice: number;
+    74→    74→    brand: { name: string } | null;
+    75→    75→  }>;
+    76→    76→  pendingPrescriptions: number;
+    77→    77→  pendingManualRequests: number;
+    78→    78→  ordersByStatus: Array<{ status: string; count: number }>;
+    79→    79→  revenueSeries: Array<{ date: string; revenue: number; orders: number }>;
+    80→    80→  recentOrders: Array<any>;
+    81→    81→  topProducts: Array<any>;
+    82→    82→  totalOrders?: number;
+    83→    83→  totalRevenue?: number;
+    84→    84→}
+    85→    85→
+    86→    86→// ===========================================================================
+    87→    87→// MAIN COMPONENT
+    88→    88→// ===========================================================================
+    89→    89→export function DashboardView() {
+    90→    90→  const navigate = useAdminStore((s) => s.navigate);
+    91→    91→  const setProductsStockFilter = useAdminStore((s) => s.setProductsStockFilter);
+    92→    92→
+    93→    93→  const { data, isLoading, isError, refetch, isFetching } = useQuery({
+    94→    94→    queryKey: ["admin-dashboard"],
+    95→    95→    queryFn: () => api.get<DashboardData>("/api/admin/dashboard"),
+    96→    96→    staleTime: 30 * 1000,
+    97→    97→  });
+    98→    98→
+    99→    99→  if (isLoading) return <DashboardSkeleton />;
+   100→   100→  if (isError || !data) {
+   101→   101→    return (
+   102→   102→      <div className="space-y-6">
+   103→   103→        <DashboardHeader
+   104→   104→          refreshing={false}
+   105→   105→          onRefresh={() => refetch()}
+   106→   106→          lastUpdated={null}
+   107→   107→        />
+   108→   108→        <EmptyState
+   109→   109→          title="Failed to load dashboard"
+   110→   110→          description="Could not fetch dashboard data. Please try again."
+   111→   111→          action={<Button onClick={() => refetch()}>Retry</Button>}
+   112→   112→        />
+   113→   113→      </div>
+   114→   114→    );
+   115→   115→  }
+   116→   116→
+   117→   117→  // Helper: find count of a given status safely.
+   118→   118→  const statusCount = (status: string) =>
+   119→   119→    data.ordersByStatus?.find((r) => r.status === status)?.count ?? 0;
+   120→   120→
+   121→   121→  const pendingCount = statusCount("pending") + statusCount("confirmed") + statusCount("packed");
+   122→   122→  const deliveredCount = statusCount("delivered");
+   123→   123→
+   124→   124→  return (
+   125→   125→    <div className="space-y-8">
+   126→   126→      <DashboardHeader
+   127→   127→        refreshing={isFetching}
+   128→   128→        onRefresh={() => refetch()}
+   129→   129→        lastUpdated={new Date()}
+   130→   130→      />
+   131→   131→
+   132→   132→      {/* ─────────────────────────────────────────────────────────────────
+   133→   133→          SECTION 1 — Business Overview
+   134→   134→          Headline KPIs at a glance.
+   135→   135→      ───────────────────────────────────────────────────────────────── */}
+   136→   136→      <section className="space-y-3">
+   137→   137→        <SectionLabel>Business Overview</SectionLabel>
+   138→   138→        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3 sm:gap-4">
+   139→   139→          <StatCard
+   140→   140→            icon={<ShoppingCart className="size-4" />}
+   141→   141→            label="Total Orders"
+   142→   142→            value={data.totalOrders ?? 0}
+   143→   143→            tint="emerald"
+   144→   144→          />
+   145→   145→          <StatCard
+   146→   146→            icon={<Clock className="size-4" />}
+   147→   147→            label="Today's Orders"
+   148→   148→            value={data.todayOrdersCount}
+   149→   149→            tint="teal"
+   150→   150→          />
+   151→   151→          <StatCard
+   152→   152→            icon={<IndianRupee className="size-4" />}
+   153→   153→            label="Revenue"
+   154→   154→            value={data.totalRevenue ?? 0}
+   155→   155→            format="currency"
+   156→   156→            tint="emerald"
+   157→   157→          />
+   158→   158→          <StatCard
+   159→   159→            icon={<Users className="size-4" />}
+   160→   160→            label="Customers"
+   161→   161→            value={data.totalCustomers}
+   162→   162→            tint="amber"
+   163→   163→          />
+   164→   164→          <StatCard
+   165→   165→            icon={<Package className="size-4" />}
+   166→   166→            label="Products"
+   167→   167→            value={data.totalProducts}
+   168→   168→            tint="teal"
+   169→   169→          />
+   170→   170→        </div>
+   171→   171→      </section>
+   172→   172→
+   173→   173→      {/* ─────────────────────────────────────────────────────────────────
+   174→   174→          SECTION 2 — Sales & Orders
+   175→   175→          Pending + Delivered cards, revenue trend sparkline, recent orders.
+   176→   176→      ───────────────────────────────────────────────────────────────── */}
+   177→   177→      <section className="space-y-3">
+   178→   178→        <SectionLabel>Sales & Orders</SectionLabel>
+   179→   179→
+   180→   180→        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+   181→   181→          {/* Pending + Delivered — two small cards in one column */}
+   182→   182→          <div className="grid grid-cols-2 gap-3 sm:gap-4">
+   183→   183→            <StatCard
+   184→   184→              icon={<Clock className="size-4" />}
+   185→   185→              label="Pending"
+   186→   186→              value={pendingCount}
+   187→   187→              tint="amber"
+   188→   188→              onClick={() => navigate({ name: "orders" })}
+   189→   189→            />
+   190→   190→            <StatCard
+   191→   191→              icon={<CheckCircle2 className="size-4" />}
+   192→   192→              label="Delivered"
+   193→   193→              value={deliveredCount}
+   194→   194→              tint="emerald"
+   195→   195→              onClick={() => navigate({ name: "orders" })}
+   196→   196→            />
+   197→   197→          </div>
+   198→   198→
+   199→   199→          {/* Revenue trend sparkline + percentage change */}
+   200→   200→          <Card className="lg:col-span-2 admin-card shadow-premium-sm">
+   201→   201→            <CardContent className="p-5">
+   202→   202→              <div className="flex items-start justify-between gap-3 mb-3">
+   203→   203→                <div>
+   204→   204→                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+   205→   205→                    Revenue (Last 7 Days)
+   206→   206→                  </p>
+   207→   207→                  <p className="text-2xl font-semibold tabular-nums mt-1">
+   208→   208→                    {formatCurrency(
+   209→   209→                      (data.revenueSeries ?? []).reduce((s, d) => s + d.revenue, 0)
+   210→   210→                    )}
+   211→   211→                  </p>
+   212→   212→                </div>
+   213→   213→                <RevenueTrendBadge series={data.revenueSeries ?? []} />
+   214→   214→              </div>
+   215→   215→              <RevenueSparkline series={data.revenueSeries ?? []} />
+   216→   216→            </CardContent>
+   217→   217→          </Card>
+   218→   218→        </div>
+   219→   219→
+   220→   220→        {/* Recent orders table */}
+   221→   221→        <Card className="admin-card shadow-premium-sm">
+   222→   222→          <CardContent className="p-0">
+   223→   223→            <div className="flex items-center justify-between border-b border-border/70 px-5 py-3">
+   224→   224→              <div>
+   225→   225→                <p className="text-sm font-semibold">Recent Orders</p>
+   226→   226→                <p className="text-xs text-muted-foreground">Last 5 orders</p>
+   227→   227→              </div>
+   228→   228→              <Button
+   229→   229→                variant="ghost"
+   230→   230→                size="sm"
+   231→   231→                onClick={() => navigate({ name: "orders" })}
+   232→   232→                className="gap-1 text-xs h-8"
+   233→   233→              >
+   234→   234→                View all <ChevronRight className="size-3.5" />
+   235→   235→              </Button>
+   236→   236→            </div>
+   237→   237→            <RecentOrdersTable orders={data.recentOrders ?? []} navigate={navigate} />
+   238→   238→          </CardContent>
+   239→   239→        </Card>
+   240→   240→      </section>
+   241→   241→
+   242→   242→      {/* ─────────────────────────────────────────────────────────────────
+   243→   243→          SECTION 3 — Inventory
+   244→   244→          Low-stock count card + top products list + low-stock items.
+   245→   245→      ───────────────────────────────────────────────────────────────── */}
+   246→   246→      <section className="space-y-3">
+   247→   247→        <SectionLabel>Inventory</SectionLabel>
+   248→   248→
+   249→   249→        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+   250→   250→          {/* Low Stock stat card + low-stock items list */}
+   251→   251→          <Card className="lg:col-span-2 admin-card shadow-premium-sm">
+   252→   252→            <CardContent className="p-5">
+   253→   253→              <div className="flex items-start justify-between gap-3 mb-4">
+   254→   254→                <div className="flex items-center gap-3">
+   255→   255→                  <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300">
+   256→   256→                    <AlertTriangle className="size-5" />
+   257→   257→                  </div>
+   258→   258→                  <div>
+   259→   259→                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+   260→   260→                      Low Stock Items
+   261→   261→                    </p>
+   262→   262→                    <p className="text-2xl font-semibold tabular-nums mt-0.5">
+   263→   263→                      <AnimatedNumber value={data.lowStockCount} />
+   264→   264→                    </p>
+   265→   265→                  </div>
+   266→   266→                </div>
+   267→   267→                <Button
+   268→   268→                  variant="outline"
+   269→   269→                  size="sm"
+   270→   270→                  onClick={() => {
+   271→   271→                    setProductsStockFilter("low");
+   272→   272→                    navigate({ name: "products" });
+   273→   273→                  }}
+   274→   274→                  className="gap-1 text-xs h-8"
+   275→   275→                >
+   276→   276→                  View all <ChevronRight className="size-3.5" />
+   277→   277→                </Button>
+   278→   278→              </div>
+   279→   279→              <LowStockList items={data.lowStockItems ?? []} navigate={navigate} />
+   280→   280→            </CardContent>
+   281→   281→          </Card>
+   282→   282→
+   283→   283→          {/* Top Products */}
+   284→   284→          <Card className="admin-card shadow-premium-sm">
+   285→   285→            <CardContent className="p-0">
+   286→   286→              <div className="flex items-center justify-between border-b border-border/70 px-5 py-3">
+   287→   287→                <div>
+   288→   288→                  <p className="text-sm font-semibold">Top Products</p>
+   289→   289→                  <p className="text-xs text-muted-foreground">By units sold</p>
+   290→   290→                </div>
+   291→   291→                <Button
+   292→   292→                  variant="ghost"
+   293→   293→                  size="sm"
+   294→   294→                  onClick={() => navigate({ name: "products" })}
+   295→   295→                  className="gap-1 text-xs h-8"
+   296→   296→                >
+   297→   297→                  View all <ChevronRight className="size-3.5" />
+   298→   298→                </Button>
+   299→   299→              </div>
+   300→   300→              <TopProductsList products={data.topProducts ?? []} navigate={navigate} />
+   301→   301→            </CardContent>
+   302→   302→          </Card>
+   303→   303→        </div>
+   304→   304→      </section>
+   305→   305→
+   306→   306→      {/* ─────────────────────────────────────────────────────────────────
+   307→   307→          SECTION 4 — Recent Activity
+   308→   308→          Pending prescriptions + medicine requests needing attention.
+   309→   309→      ───────────────────────────────────────────────────────────────── */}
+   310→   310→      <section className="space-y-3">
+   311→   311→        <SectionLabel>Recent Activity</SectionLabel>
+   312→   312→        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+   313→   313→          <ActivityCard
+   314→   314→            icon={<FileImage className="size-5" />}
+   315→   315→            label="Pending Prescriptions"
+   316→   316→            count={data.pendingPrescriptions}
+   317→   317→            tint="teal"
+   318→   318→            emptyHint="No prescriptions pending"
+   319→   319→            onClick={() => navigate({ name: "prescriptions" })}
+   320→   320→          />
+   321→   321→          <ActivityCard
+   322→   322→            icon={<Pill className="size-5" />}
+   323→   323→            label="Medicine Requests"
+   324→   324→            count={data.pendingManualRequests}
+   325→   325→            tint="amber"
+   326→   326→            emptyHint="No medicine requests pending"
+   327→   327→            onClick={() => navigate({ name: "manual-requests" })}
+   328→   328→          />
+   329→   329→        </div>
+   330→   330→      </section>
+   331→   331→    </div>
+   332→   332→  );
+   333→   333→}
+   334→   334→
+   335→   335→// ===========================================================================
+   336→   336→// SUB-COMPONENTS
+   337→   337→// ===========================================================================
+   338→   338→
+   339→   339→// — Header — title + date + refresh button —
+   340→   340→function DashboardHeader({
+   341→   341→  refreshing,
+   342→   342→  onRefresh,
+   343→   343→  lastUpdated,
+   344→   344→}: {
+   345→   345→  refreshing: boolean;
+   346→   346→  onRefresh: () => void;
+   347→   347→  lastUpdated: Date | null;
+   348→   348→}) {
+   349→   349→  return (
+   350→   350→    <div className="flex flex-wrap items-end justify-between gap-3">
+   351→   351→      <div>
+   352→   352→        <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
+   353→   353→        <p className="text-sm text-muted-foreground mt-0.5">
+   354→   354→          {new Date().toLocaleDateString("en-IN", {
+   355→   355→            weekday: "long",
+   356→   356→            day: "numeric",
+   357→   357→            month: "long",
+   358→   358→            year: "numeric",
+   359→   359→          })}
+   360→   360→          {lastUpdated && (
+   361→   361→            <span className="ml-2 text-xs text-muted-foreground/70">
+   362→   362→              · Updated {timeAgo(lastUpdated)}
+   363→   363→            </span>
+   364→   364→          )}
+   365→   365→        </p>
+   366→   366→      </div>
+   367→   367→      <Button
+   368→   368→        variant="outline"
+   369→   369→        size="sm"
+   370→   370→        onClick={onRefresh}
+   371→   371→        disabled={refreshing}
+   372→   372→        className="gap-1.5 h-8"
+   373→   373→      >
+   374→   374→        <RefreshCw className={cn("size-3.5", refreshing && "animate-spin")} />
+   375→   375→        Refresh
+   376→   376→      </Button>
+   377→   377→    </div>
+   378→   378→  );
+   379→   379→}
+   380→   380→
+   381→   381→// — Section label — small uppercase header for each dashboard section —
+   382→   382→function SectionLabel({ children }: { children: React.ReactNode }) {
+   383→   383→  return (
+   384→   384→    <div className="flex items-center gap-2">
+   385→   385→      <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+   386→   386→        {children}
+   387→   387→      </h2>
+   388→   388→      <div className="h-px flex-1 bg-border/60" />
+   389→   389→    </div>
+   390→   390→  );
+   391→   391→}
+   392→   392→
+   393→   393→// — Stat card — bordered, soft shadow, icon + count + label —
+   394→   394→const TINT_CLASSES: Record<string, string> = {
+   395→   395→  emerald:
+   396→   396→    "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300",
+   397→   397→  teal: "bg-teal-100 text-teal-700 dark:bg-teal-950/40 dark:text-teal-300",
+   398→   398→  amber: "bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300",
+   399→   399→  rose: "bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300",
+   400→   400→  cyan: "bg-cyan-100 text-cyan-700 dark:bg-cyan-950/40 dark:text-cyan-300",
+   401→   401→};
+   402→   402→
+   403→   403→function StatCard({
+   404→   404→  icon,
+   405→   405→  label,
+   406→   406→  value,
+   407→   407→  format = "number",
+   408→   408→  tint = "emerald",
+   409→   409→  onClick,
+   410→   410→}: {
+   411→   411→  icon: React.ReactNode;
+   412→   412→  label: string;
+   413→   413→  value: number;
+   414→   414→  format?: "currency" | "number";
+   415→   415→  tint?: keyof typeof TINT_CLASSES | string;
+   416→   416→  onClick?: () => void;
+   417→   417→}) {
+   418→   418→  const formatFn =
+   419→   419→    format === "currency"
+   420→   420→      ? (n: number) => formatCurrency(n)
+   421→   421→      : (n: number) => Math.round(n).toLocaleString("en-IN");
+   422→   422→  const tintCls = TINT_CLASSES[tint] || TINT_CLASSES.emerald;
+   423→   423→  const Wrapper: any = onClick ? "button" : "div";
+   424→   424→  return (
+   425→   425→    <Wrapper
+   426→   426→      onClick={onClick}
+   427→   427→      className={cn(
+   428→   428→        "group block w-full text-left rounded-xl border border-border/70 bg-card p-4 sm:p-5 shadow-premium-sm transition-premium",
+   429→   429→        onClick && "hover:-translate-y-0.5 hover:shadow-premium hover:border-primary/30 cursor-pointer"
+   430→   430→      )}
+   431→   431→    >
+   432→   432→      <div className="flex items-center gap-3">
+   433→   433→        <div
+   434→   434→          className={cn(
+   435→   435→            "flex size-9 shrink-0 items-center justify-center rounded-lg",
+   436→   436→            tintCls
+   437→   437→          )}
+   438→   438→        >
+   439→   439→          {icon}
+   440→   440→        </div>
+   441→   441→        <div className="min-w-0 flex-1">
+   442→   442→          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground truncate">
+   443→   443→            {label}
+   444→   444→          </p>
+   445→   445→          <p className="text-xl font-semibold tabular-nums mt-0.5">
+   446→   446→            <AnimatedNumber value={value} format={formatFn} />
+   447→   447→          </p>
+   448→   448→        </div>
+   449→   449→      </div>
+   450→   450→    </Wrapper>
+   451→   451→  );
+   452→   452→}
+   453→   453→
+   454→   454→// — Revenue trend badge — up/down/neutral % vs previous period —
+   455→   455→function RevenueTrendBadge({
+   456→   456→  series,
+   457→   457→}: {
+   458→   458→  series: Array<{ date: string; revenue: number; orders: number }>;
+   459→   459→}) {
+   460→   460→  if (!series || series.length < 2) {
+   461→   461→    return (
+   462→   462→      <Badge variant="outline" className="gap-1 text-xs">
+   463→   463→        <Minus className="size-3 text-muted-foreground" />
+   464→   464→        No trend
+   465→   465→      </Badge>
+   466→   466→    );
+   467→   467→  }
+   468→   468→
+   469→   469→  // Compare last 3 days vs previous 3 days (more stable than 1 vs 1)
+   470→   470→  const recent = series.slice(-3).reduce((s, d) => s + d.revenue, 0);
+   471→   471→  const previous = series.slice(-6, -3).reduce((s, d) => s + d.revenue, 0);
+   472→   472→
+   473→   473→  if (previous === 0) {
+   474→   474→    return (
+   475→   475→      <Badge variant="outline" className="gap-1 text-xs bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-900/50">
+   476→   476→        <Activity className="size-3" />
+   477→   477→        Active
+   478→   478→      </Badge>
+   479→   479→    );
+   480→   480→  }
+   481→   481→
+   482→   482→  const pct = ((recent - previous) / previous) * 100;
+   483→   483→  const isUp = pct >= 0;
+   484→   484→  const isFlat = Math.abs(pct) < 1;
+   485→   485→
+   486→   486→  return (
+   487→   487→    <Badge
+   488→   488→      variant="outline"
+   489→   489→      className={cn(
+   490→   490→        "gap-1 text-xs font-medium",
+   491→   491→        isFlat
+   492→   492→          ? "bg-muted text-muted-foreground border-border"
+   493→   493→          : isUp
+   494→   494→            ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-900/50"
+   495→   495→            : "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-900/50"
+   496→   496→      )}
+   497→   497→    >
+   498→   498→      {isFlat ? (
+   499→   499→        <Minus className="size-3" />
+   500→   500→      ) : isUp ? (
+   501→   501→        <TrendingUp className="size-3" />
+   502→   502→      ) : (
+   503→   503→        <TrendingDown className="size-3" />
+   504→   504→      )}
+   505→   505→      {isFlat ? "Flat" : `${isUp ? "+" : ""}${pct.toFixed(1)}%`}
+   506→   506→    </Badge>
+   507→   507→  );
+   508→   508→}
+   509→   509→
+   510→   510→// — Revenue sparkline — pure SVG, no chart library —
+   511→   511→function RevenueSparkline({
+   512→   512→  series,
+   513→   513→}: {
+   514→   514→  series: Array<{ date: string; revenue: number; orders: number }>;
+   515→   515→}) {
+   516→   516→  if (!series || series.length === 0) {
+   517→   517→    return (
+   518→   518→      <div className="flex h-[80px] items-center justify-center text-xs text-muted-foreground">
+   519→   519→        No revenue data yet
+   520→   520→      </div>
+   521→   521→    );
+   522→   522→  }
+   523→   523→
+   524→   524→  const W = 600;
+   525→   525→  const H = 80;
+   526→   526→  const PAD = 4;
+   527→   527→  const max = Math.max(...series.map((d) => d.revenue), 1);
+   528→   528→  const min = Math.min(...series.map((d) => d.revenue), 0);
+   529→   529→  const range = max - min || 1;
+   530→   530→
+   531→   531→  const points = series.map((d, i) => {
+   532→   532→    const x = PAD + (i / (series.length - 1)) * (W - PAD * 2);
+   533→   533→    const y = H - PAD - ((d.revenue - min) / range) * (H - PAD * 2);
+   534→   534→    return [x, y] as const;
+   535→   535→  });
+   536→   536→
+   537→   537→  // Smooth path using simple line segments (clean + minimal)
+   538→   538→  const linePath = points
+   539→   539→    .map(([x, y], i) => (i === 0 ? `M ${x} ${y}` : `L ${x} ${y}`))
+   540→   540→    .join(" ");
+   541→   541→  const areaPath = `${linePath} L ${points[points.length - 1][0]} ${H - PAD} L ${points[0][0]} ${H - PAD} Z`;
+   542→   542→
+   543→   543→  return (
+   544→   544→    <div className="w-full">
+   545→   545→      <svg
+   546→   546→        viewBox={`0 0 ${W} ${H}`}
+   547→   547→        preserveAspectRatio="none"
+   548→   548→        className="w-full h-[80px]"
+   549→   549→      >
+   550→   550→        <defs>
+   551→   551→          <linearGradient id="revSparkGrad" x1="0" y1="0" x2="0" y2="1">
+   552→   552→            <stop offset="0%" stopColor="#10b981" stopOpacity={0.25} />
+   553→   553→            <stop offset="100%" stopColor="#10b981" stopOpacity={0} />
+   554→   554→          </linearGradient>
+   555→   555→        </defs>
+   556→   556→        <path d={areaPath} fill="url(#revSparkGrad)" />
+   557→   557→        <path
+   558→   558→          d={linePath}
+   559→   559→          fill="none"
+   560→   560→          stroke="#10b981"
+   561→   561→          strokeWidth={2}
+   562→   562→          strokeLinejoin="round"
+   563→   563→          strokeLinecap="round"
+   564→   564→          vectorEffect="non-scaling-stroke"
+   565→   565→        />
+   566→   566→        {points.map(([x, y], i) => (
+   567→   567→          <circle
+   568→   568→            key={i}
+   569→   569→            cx={x}
+   570→   570→            cy={y}
+   571→   571→            r={2.5}
+   572→   572→            fill="#10b981"
+   573→   573→            vectorEffect="non-scaling-stroke"
+   574→   574→          />
+   575→   575→        ))}
+   576→   576→      </svg>
+   577→   577→      <div className="flex justify-between mt-1.5 text-[10px] text-muted-foreground">
+   578→   578→        {series.map((d, i) => (
+   579→   579→          <span key={i} className="tabular-nums">
+   580→   580→            {d.date}
+   581→   581→          </span>
+   582→   582→        ))}
+   583→   583→      </div>
+   584→   584→    </div>
+   585→   585→  );
+   586→   586→}
+   587→   587→
+   588→   588→// — Recent orders table — last 5 —
+   589→   589→function RecentOrdersTable({
+   590→   590→  orders,
+   591→   591→  navigate,
+   592→   592→}: {
+   593→   593→  orders: any[];
+   594→   594→  navigate: (v: any) => void;
+   595→   595→}) {
+   596→   596→  if (!orders || orders.length === 0) {
+   597→   597→    return (
+   598→   598→      <div className="flex h-32 items-center justify-center text-sm text-muted-foreground">
+   599→   599→        No recent orders
+   600→   600→      </div>
+   601→   601→    );
+   602→   602→  }
+   603→   603→  return (
+   604→   604→    <div className="divide-y divide-border/60">
+   605→   605→      {orders.slice(0, 5).map((order) => (
+   606→   606→        <button
+   607→   607→          key={order.id}
+   608→   608→          onClick={() => navigate({ name: "order-detail", id: order.id })}
+   609→   609→          className="flex w-full items-center gap-3 px-5 py-3 text-left transition-colors hover:bg-accent/40"
+   610→   610→        >
+   611→   611→          <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+   612→   612→            <ShoppingCart className="size-4" />
+   613→   613→          </div>
+   614→   614→          <div className="min-w-0 flex-1">
+   615→   615→            <p className="truncate text-sm font-medium">{order.orderNumber}</p>
+   616→   616→            <p className="truncate text-xs text-muted-foreground">
+   617→   617→              {order.customer?.name || order.shipName || "Guest"} · {timeAgo(order.createdAt)}
+   618→   618→            </p>
+   619→   619→          </div>
+   620→   620→          <div className="shrink-0 text-right">
+   621→   621→            <p className="text-sm font-semibold tabular-nums">
+   622→   622→              {formatCurrency(order.grandTotal)}
+   623→   623→            </p>
+   624→   624→            <StatusBadge status={order.status} className="mt-0.5" />
+   625→   625→          </div>
+   626→   626→          <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+   627→   627→        </button>
+   628→   628→      ))}
+   629→   629→    </div>
+   630→   630→  );
+   631→   631→}
+   632→   632→
+   633→   633→// — Top products list — by units sold —
+   634→   634→function TopProductsList({
+   635→   635→  products,
+   636→   636→  navigate,
+   637→   637→}: {
+   638→   638→  products: any[];
+   639→   639→  navigate: (v: any) => void;
+   640→   640→}) {
+   641→   641→  if (!products || products.length === 0) {
+   642→   642→    return (
+   643→   643→      <div className="flex h-32 items-center justify-center text-sm text-muted-foreground">
+   644→   644→        No product sales yet
+   645→   645→      </div>
+   646→   646→    );
+   647→   647→  }
+   648→   648→  const maxQty = Math.max(...products.map((p) => p.qtySold || 0), 1);
+   649→   649→  return (
+   650→   650→    <div className="divide-y divide-border/60">
+   651→   651→      {products.slice(0, 5).map((product, idx) => (
+   652→   652→        <button
+   653→   653→          key={product.id}
+   654→   654→          onClick={() => navigate({ name: "product-edit", id: product.id })}
+   655→   655→          className="flex w-full items-center gap-3 px-5 py-3 text-left transition-colors hover:bg-accent/40"
+   656→   656→        >
+   657→   657→          <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-bold text-muted-foreground">
+   658→   658→            {idx + 1}
+   659→   659→          </span>
+   660→   660→          <ProductThumb
+   661→   661→            image={product.primaryImage}
+   662→   662→            name={product.name}
+   663→   663→            brand={product.brand?.name}
+   664→   664→            size={32}
+   665→   665→          />
+   666→   666→          <div className="min-w-0 flex-1">
+   667→   667→            <p className="truncate text-sm font-medium">{product.name}</p>
+   668→   668→            <p className="truncate text-xs text-muted-foreground">
+   669→   669→              {product.brand?.name || "—"}
+   670→   670→            </p>
+   671→   671→          </div>
+   672→   672→          <div className="shrink-0 text-right">
+   673→   673→            <p className="text-sm font-semibold tabular-nums">
+   674→   674→              {product.qtySold} sold
+   675→   675→            </p>
+   676→   676→            <div className="mt-0.5 h-1 w-16 overflow-hidden rounded-full bg-muted ml-auto">
+   677→   677→              <div
+   678→   678→                className="h-full rounded-full bg-emerald-500"
+   679→   679→                style={{ width: `${((product.qtySold || 0) / maxQty) * 100}%` }}
+   680→   680→              />
+   681→   681→            </div>
+   682→   682→          </div>
+   683→   683→        </button>
+   684→   684→      ))}
+   685→   685→    </div>
+   686→   686→  );
+   687→   687→}
+   688→   688→
+   689→   689→// — Low stock items list — compact —
+   690→   690→function LowStockList({
+   691→   691→  items,
+   692→   692→  navigate,
+   693→   693→}: {
+   694→   694→  items: Array<{
+   695→   695→    id: string; name: string; slug: string; sku: string | null;
+   696→   696→    stock: number; lowStockThreshold: number; sellingPrice: number;
+   697→   697→    brand: { name: string } | null;
+   698→   698→  }>;
+   699→   699→  navigate: (v: any) => void;
+   700→   700→}) {
+   701→   701→  if (!items || items.length === 0) {
+   702→   702→    return (
+   703→   703→      <div className="flex h-24 items-center justify-center text-sm text-muted-foreground">
+   704→   704→        <CheckCircle2 className="size-4 mr-1.5 text-emerald-500" />
+   705→   705→        All stock levels healthy
+   706→   706→      </div>
+   707→   707→    );
+   708→   708→  }
+   709→   709→  return (
+   710→   710→    <div className="space-y-2">
+   711→   711→      {items.slice(0, 5).map((item) => (
+   712→   712→        <button
+   713→   713→          key={item.id}
+   714→   714→          onClick={() => navigate({ name: "product-edit", id: item.id })}
+   715→   715→          className="flex w-full items-center gap-3 rounded-lg border border-border/60 bg-muted/20 px-3 py-2 text-left transition-colors hover:bg-accent/40 hover:border-primary/30"
+   716→   716→        >
+   717→   717→          <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300">
+   718→   718→            <PackageX className="size-4" />
+   719→   719→          </div>
+   720→   720→          <div className="min-w-0 flex-1">
+   721→   721→            <p className="truncate text-sm font-medium">{item.name}</p>
+   722→   722→            <p className="truncate text-xs text-muted-foreground">
+   723→   723→              {item.brand?.name || "—"}
+   724→   724→              {item.sku && <span className="ml-1 font-mono">· {item.sku}</span>}
+   725→   725→            </p>
+   726→   726→          </div>
+   727→   727→          <div className="shrink-0 text-right">
+   728→   728→            <p className="text-sm font-semibold tabular-nums text-rose-600 dark:text-rose-400">
+   729→   729→              {item.stock} left
+   730→   730→            </p>
+   731→   731→            <p className="text-[10px] text-muted-foreground">
+   732→   732→              threshold {item.lowStockThreshold}
+   733→   733→            </p>
+   734→   734→          </div>
+   735→   735→        </button>
+   736→   736→      ))}
+   737→   737→    </div>
+   738→   738→  );
+   739→   739→}
+   740→   740→
+   741→   741→// — Activity card — for prescriptions / medicine requests —
+   742→   742→function ActivityCard({
+   743→   743→  icon,
+   744→   744→  label,
+   745→   745→  count,
+   746→   746→  tint,
+   747→   747→  emptyHint,
+   748→   748→  onClick,
+   749→   749→}: {
+   750→   750→  icon: React.ReactNode;
+   751→   751→  label: string;
+   752→   752→  count: number;
+   753→   753→  tint: keyof typeof TINT_CLASSES;
+   754→   754→  emptyHint: string;
+   755→   755→  onClick: () => void;
+   756→   756→}) {
+   757→   757→  const tintCls = TINT_CLASSES[tint] || TINT_CLASSES.emerald;
+   758→   758→  return (
+   759→   759→    <button
+   760→   760→      onClick={onClick}
+   761→   761→      className="group flex w-full items-center gap-4 rounded-xl border border-border/70 bg-card p-5 text-left shadow-premium-sm transition-premium hover:-translate-y-0.5 hover:shadow-premium hover:border-primary/30"
+   762→   762→    >
+   763→   763→      <div
+   764→   764→        className={cn(
+   765→   765→          "flex size-12 shrink-0 items-center justify-center rounded-xl",
+   766→   766→          tintCls
+   767→   767→        )}
+   768→   768→      >
+   769→   769→        {icon}
+   770→   770→      </div>
+   771→   771→      <div className="min-w-0 flex-1">
+   772→   772→        <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+   773→   773→          {label}
+   774→   774→        </p>
+   775→   775→        {count > 0 ? (
+   776→   776→          <p className="text-2xl font-semibold tabular-nums mt-0.5">
+   777→   777→            <AnimatedNumber value={count} />
+   778→   778→          </p>
+   779→   779→        ) : (
+   780→   780→          <p className="text-sm text-muted-foreground mt-1 italic">{emptyHint}</p>
+   781→   781→        )}
+   782→   782→      </div>
+   783→   783→      <ChevronRight className="size-5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+   784→   784→    </button>
+   785→   785→  );
+   786→   786→}
+   787→   787→
+   788→   788→// — Dashboard skeleton (loading state) —
+   789→   789→function DashboardSkeleton() {
+   790→   790→  return (
+   791→   791→    <div className="space-y-8">
+   792→   792→      <div className="flex items-end justify-between">
+   793→   793→        <div className="space-y-2">
+   794→   794→          <Skeleton className="h-7 w-32" />
+   795→   795→          <Skeleton className="h-4 w-56" />
+   796→   796→        </div>
+   797→   797→        <Skeleton className="h-8 w-20" />
+   798→   798→      </div>
+   799→   799→
+   800→   800→      <section className="space-y-3">
+   801→   801→        <Skeleton className="h-3 w-32" />
+   802→   802→        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3 sm:gap-4">
+   803→   803→          {Array.from({ length: 5 }).map((_, i) => (
+   804→   804→            <Skeleton key={i} className="h-20 rounded-xl" />
+   805→   805→          ))}
+   806→   806→        </div>
+   807→   807→      </section>
+   808→   808→
+   809→   809→      <section className="space-y-3">
+   810→   810→        <Skeleton className="h-3 w-32" />
+   811→   811→        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+   812→   812→          <Skeleton className="h-20 rounded-xl" />
+   813→   813→          <Skeleton className="h-40 rounded-xl lg:col-span-2" />
+   814→   814→        </div>
+   815→   815→        <Skeleton className="h-64 rounded-xl" />
+   816→   816→      </section>
+   817→   817→
+   818→   818→      <section className="space-y-3">
+   819→   819→        <Skeleton className="h-3 w-24" />
+   820→   820→        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+   821→   821→          <Skeleton className="h-48 rounded-xl lg:col-span-2" />
+   822→   822→          <Skeleton className="h-48 rounded-xl" />
+   823→   823→        </div>
+   824→   824→      </section>
+   825→   825→
+   826→   826→      <section className="space-y-3">
+   827→   827→        <Skeleton className="h-3 w-32" />
+   828→   828→        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+   829→   829→          <Skeleton className="h-24 rounded-xl" />
+   830→   830→          <Skeleton className="h-24 rounded-xl" />
+   831→   831→        </div>
+   832→   832→      </section>
+   833→   833→    </div>
+   834→   834→  );
+   835→   835→}
+   836→   836→

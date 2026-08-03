@@ -8240,3 +8240,104 @@ tabbed PMS1 layout was replaced with a single-scroll, sectioned layout.
   ../admin-store
 - ✅ Emerald accent palette throughout (no indigo/blue)
 - ✅ Dark/light mode on every component
+
+---
+
+## P38.8 — Redesign DashboardView as BI + AI Dashboard
+
+**Agent**: bi-dashboard
+
+**What was done**
+
+Completely rewrote `src/components/admin/views/DashboardView.tsx` as a
+Shopify/Stripe-style BI dashboard. The old 4-section view has been replaced
+with a 15-section BI + AI dashboard:
+
+1. Smart Alerts Bar — horizontal pills from AI `alerts[]` (🔴/🟠/📈).
+2. Revenue Overview — 5 cards (Today with trend %, Week, Month, Year,
+   Yesterday).
+3. Profit Analytics — 4 cards (Net Profit, Gross Profit, Profit Margin %,
+   Avg Profit / Order).
+4. AI Business Insights — card with AI `insights[]`, each rendered with a
+   colored left border (emerald=success, amber=warning, rose=danger,
+   sky=info), priority pill, type icon, title, message.
+5. Order Analytics — 8 status cards (Total, Pending, Confirmed, Packed,
+   Out for Delivery, Delivered, Cancelled, Returned), all clickable →
+   orders view.
+6. Inventory Analytics — 6 stat cards + low-stock products list (clickable
+   → product-edit), with stock colour-coded (rose for out-of-stock, amber
+   for low).
+7. Customer Analytics — 5 cards (Total, New Today, Returning, Active,
+   Inactive).
+8. Product Performance — top 5 by qty with qty / revenue / profit columns
+   and an emerald progress bar.
+9. Brand & Category Analytics — two side-by-side cards with top 5 each
+   (ranked by revenue, with progress bars).
+10. Prescription & Medicine Requests — 2 summary cards with status
+    breakdown (Pending / Approved / Rejected / Completed etc.).
+11. Delivery Analytics — 3 cards (Delivered Today, Failed, Success Rate %).
+12. Payment Analytics — payment-method distribution with percentage and
+    count + emerald progress bars.
+13. AI Sales Forecast — Tomorrow / Next Week / Next Month forecast cards
+    with confidence badge.
+14. AI Inventory Suggestions — restock list with priority pill.
+15. AI Profit Suggestions — low-margin product list with current margin.
+
+**Tech / design choices**
+
+- `"use client"` directive, `export function DashboardView()` signature
+  preserved.
+- Two independent `@tanstack/react-query` hooks:
+  - `["admin-dashboard-analytics"]` → `GET /api/admin/dashboard/analytics`,
+    staleTime 60s (matches server cache).
+  - `["admin-dashboard-ai-insights"]` → `GET /api/admin/dashboard/ai-insights`,
+    staleTime 5min (matches server cache), `retry: 1` (best-effort).
+- Analytics failure shows `EmptyState` + Retry button; AI failure renders
+  an empty-state card with the server-provided `error` message (does not
+  break the whole dashboard).
+- Loading: full `DashboardSkeleton` while analytics loads; per-card
+  `Skeleton` blocks for the AI-driven sections (insights, forecast,
+  suggestions) so the rest of the page renders immediately.
+- Framer Motion: lightweight section-level staggered fade-up only (one
+  parent `motion.div` with `staggerChildren: 0.04` + child `motion.section`
+  variants). No layout animations or AnimatePresence.
+- shadcn/ui: `Card`, `CardContent`, `Badge`, `Button`, `Skeleton`.
+- lucide-react icons throughout; emerald accent palette (NO indigo/blue),
+  with amber for warnings, rose for danger, teal as a secondary accent.
+  The only blue used is `sky-500` for the AI-info insight left-border
+  (explicitly required by spec).
+- Currency formatted via local `inr()` helper as `₹X,XXX` (en-IN grouping,
+  no decimals) per spec. Numbers via `num()` helper.
+- `AnimatedNumber` reused for count-up animations on stat values.
+- Cards: `rounded-xl`, `border-border/50`, `shadow-premium-sm`,
+  `transition-premium`, hover lift on clickable cards.
+- Responsive grid: 2-col on mobile, 3-col on tablet (md), 4–6-col on
+  desktop (xl).
+- Dark-mode support on every tint (e.g.
+  `dark:bg-emerald-950/40 dark:text-emerald-300`).
+- `useAdminStore` for `navigate` + `setProductsStockFilter` (low-stock /
+  out-of-stock cards deep-link into the products view with the correct
+  filter).
+- Typed interfaces (`AnalyticsData`, `AiInsightsData`) match the API
+  response shapes exactly.
+
+**Verification result**
+
+- ✅ `bun run lint` — clean (0 errors, 0 warnings).
+- ✅ `bunx tsc --noEmit` — no errors in `DashboardView.tsx`. The 3
+  pre-existing tsc errors under `src/app/api/admin/dashboard/`
+  (analytics/route.ts lines 92 & 96, ai-insights/route.ts line 32) are in
+  the API route handlers, not the view component, and were not touched by
+  this change. All other tsc errors are in unrelated files
+  (CustomersView, OffersView, ProductsView, customer views, ai-service,
+  app-notifs, s3.ts) that pre-date this task.
+- ✅ Component signature preserved: `export function DashboardView()`.
+- ✅ `"use client"` directive present.
+- ✅ Both APIs wired via @tanstack/react-query with the documented cache
+  TTLs (60s analytics, 5min AI).
+- ✅ All 15 sections rendered, in the specified order.
+- ✅ Emerald accent palette throughout; no indigo/blue except the
+  required sky-500 info-border on AI insights.
+- ✅ Loading skeletons + empty states on every section.
+- ✅ Dark-mode classes on every tint.
+- ✅ Mobile (2-col) → tablet (3-col) → desktop (4–6-col) responsive grid.

@@ -1,7 +1,7 @@
 # PMS — Pradeep Medical Store
 
 > Online Pharmacy Platform for Mathura, Uttar Pradesh.
-> Next.js 16 · React 19 · TypeScript · Prisma + PostgreSQL (Supabase) · Tailwind CSS 4 · shadcn/ui (New York).
+> Next.js 16 · React 19 · TypeScript · Prisma + PostgreSQL (Neon) · Tailwind CSS 4 · shadcn/ui (New York).
 
 ---
 
@@ -12,8 +12,8 @@ browse a catalog of medicines, upload prescriptions, place orders with
 delivery-zone-aware shipping, pay via Razorpay / COD, and track their orders.
 Admins get a complete management console for products, brands, categories,
 orders, customers, deals, vouchers, delivery zones, payment methods,
-prescription verification, and an AI-powered health assistant widget.
-
+prescription verification, AI-powered health assistant, App Notifications,
+AI Email Marketing, and a BI Dashboard with AI insights.
 
 ## Tech Stack
 
@@ -21,232 +21,181 @@ prescription verification, and an AI-powered health assistant widget.
 | ---------------- | ----------------------------------------------------------- |
 | Framework        | Next.js 16 (App Router) — Turbopack dev bundler             |
 | Language         | TypeScript 5 (strict)                                       |
-| Database         | PostgreSQL on Supabase (Supavisor pooler)                  |
+| Database         | PostgreSQL on Neon (pooler)                                |
 | ORM              | Prisma 6.x                                                  |
 | Styling          | Tailwind CSS 4 + shadcn/ui (New York) + Lucide icons        |
 | State            | Zustand (client) + TanStack Query (server)                 |
 | Animation        | Framer Motion                                               |
 | Auth             | Custom OTP-based flow, scrypt + HMAC-SHA256 session tokens  |
 | Payments         | Razorpay + Cash on Delivery                                |
-| Storage          | Provider-agnostic (9 cloud providers + local dev fallback) |
-| PDF              | jsPDF + jsPDF-AutoTable (invoices)                          |
-| Email            | Nodemailer (OTP / notifications)                            |
-| AI               | z-ai-web-dev-sdk (LLM health assistant)                     |
+| AI               | Z.AI SDK (GLM) — hardcoded fallback for production          |
+| Push             | Web Push API + VAPID + Service Worker (PWA)                 |
+| Storage          | Cloudflare R2 (S3-compatible)                               |
+| Emails           | Nodemailer + premium dark-themed HTML templates             |
 
 ## Project Structure
 
 ```
-.
-├── prisma/
-│   ├── schema.prisma          # 29-model PostgreSQL schema
-│   └── seed.ts                # Demo data (admin, products, vouchers...)
-├── public/                    # Static assets + user uploads
-├── scripts/
-│   └── with-env.mjs           # Env launcher (forces .env to override system env)
-├── src/
-│   ├── app/
-│   │   ├── api/               # 124 API routes
-│   │   ├── admin/             # Admin panel route
-│   │   ├── globals.css        # Tailwind + premium polish
-│   │   ├── layout.tsx         # Root layout
-│   │   └── page.tsx           # Customer storefront (SPA)
-│   ├── components/
-│   │   ├── admin/             # Admin panel views + storage settings
-│   │   ├── customer/          # Storefront components
-│   │   ├── shared/            # Shared components
-│   │   └── ui/                # shadcn/ui primitives
-│   ├── hooks/                 # React Query hooks
-│   └── lib/
-│       ├── storage/           # Provider-agnostic storage abstraction
-│       │   ├── types.ts       # StorageProvider interface + 9 provider presets
-│       │   ├── index.ts       # Facade — resolves active provider from DB
-│       │   └── providers/     # local, s3, supabase, azure-blob
-│       ├── db.ts              # Prisma client singleton
-│       ├── auth.ts            # scrypt + HMAC session tokens
-│       ├── api.ts             # ok()/err() response serializers
-│       └── ...                # format, pricing, pdf, razorpay, etc.
-├── .env                       # Environment variables (NOT committed)
-├── .env.example               # Template — copy to .env and fill in
-├── Caddyfile                  # Gateway config (port :81 → :3000)
-├── bun.lock                   # Bun lockfile (canonical)
-├── next.config.ts             # Next.js config (standalone, security headers)
-├── package.json               # Scripts + dependencies
-├── postcss.config.mjs         # Tailwind PostCSS plugin
-├── tsconfig.json              # TypeScript config
-└── eslint.config.mjs          # ESLint flat config
+prisma/
+├── schema.prisma          # 39 models, PostgreSQL
+└── seed.ts                # Demo data (admin, products, vouchers...)
+public/                    # Static assets (icons, manifest, sw.js, robots.txt)
+scripts/                   # with-env.mjs, gen-vapid.mjs, auto-commit.sh
+src/
+├── app/
+│   ├── api/               # 171 API routes
+│   ├── admin/             # Admin panel (dynamic imports all 28 views)
+│   ├── p/[slug]/          # SEO product page (SSG)
+│   ├── products/[slug]/   # Product redirect page
+│   ├── layout.tsx        # Root layout (SWRegister, SonnerToaster)
+│   ├── page.tsx          # Customer SPA router (hash-based routing)
+│   └── globals.css       # Tailwind 4 + premium polish
+├── components/
+│   ├── admin/            # 28 views + AdminLayout + admin-store
+│   ├── customer/         # 41 components (home, shop, product, cart, etc.)
+│   ├── shared/           # 8 shared (product-card, reviews, sw-register)
+│   └── ui/               # 28 shadcn/ui components
+└── lib/                  # 30 modules (auth, db, AI, push, notifications, etc.)
 ```
 
-## Setup
+## Key Features
 
-### 1. Install dependencies
+### Customer Portal
+- Homepage with hero, categories, brands, featured products, deals, bundles
+- Shop page with infinite scroll, advanced filters, sort
+- Product detail with gallery, reviews, recommendations
+- Cart with voucher application, loyalty redemption
+- Checkout with Razorpay / COD, delivery zone matching
+- OTP-based authentication (email + phone)
+- Prescription upload + manual medicine request
+- Wishlist, order tracking, address management
+- PMS AI Health Assistant widget
+- PWA with push notifications (App Notifications)
+
+### Admin Panel
+- **BI Dashboard** — 15-section analytics with AI insights, profit tracking, sales forecast
+- **Products** — Full CRUD, bulk import/export, AI content generation, gallery manager
+- **Orders** — Enterprise order management with timeline, smart status workflow, payment management, bulk actions
+- **Customers** — Full CRM with loyalty, order history, addresses
+- **Templates** — 3 channels: Customer Email (23), Admin Email (6), App Notifications (21)
+- **Apps Notification's Center** — AI campaign generator, product selection, broadcast to all customers
+- **AI Email Marketing** — Multi-product campaigns, HTML email generation, broadcast + test send
+- **Reviews** — AI moderation, AI reply generation, image uploads, analytics
+- **Settings** — Store info with master logo, SMTP, storage (R2), AI config, SEO, theme, hero
+- **Brands & Categories** — Brand visibility (logo required for public), image management
+- **Delivery Zones** — Zone-based charges, minimum order rules
+- **Payment Methods** — Razorpay, COD, UPI/QR with test connectivity
+- **Vouchers, Deals, Offers, Campaigns** — Full promotional toolkit
+- **Reports** — Sales + product analytics with CSV export
+- **Admin Management** — 25 granular permissions, role-based access
+- **Security** — Admin login alert email, error logging, backup management
+
+### Core System
+- **39 Prisma models** with 96 indexes
+- **171 API routes** with auth protection on all admin routes
+- **Real mobile push notifications** via Web Push API + VAPID + service worker
+- **AI integration** with 4-priority config loader (env → file → DB → hardcoded fallback)
+- **Premium dark-themed email templates** (27 templates)
+- **Cloudflare R2** storage for product images, prescriptions, branding
+- **Admin login security** — email notification with IP, browser, device, OS
+- **Smart status workflow** — prevents invalid order transitions
+- **Payment management** — 7 payment statuses with auto email + push triggers
+
+## Getting Started
+
+### Prerequisites
+- Node.js 18+ / Bun
+- PostgreSQL database (Neon, Supabase, or local)
+- Cloudflare R2 account (for image storage) — optional, local storage works for dev
+
+### Installation
 
 ```bash
+# Clone the repository
+git clone https://github.com/Divyam-Varshney/PMS1.git
+cd PMS1
+
+# Install dependencies
 bun install
-```
 
-### 2. Configure environment
-
-Copy `.env.example` to `.env` and fill in real values:
-
-```bash
+# Copy environment file and configure
 cp .env.example .env
-```
+# Edit .env with your database URL, auth secret, and VAPID keys
 
-Required variables:
-- `DATABASE_URL` — PostgreSQL pooler URL (port 6543, `?pgbouncer=true`)
-- `DIRECT_URL` — PostgreSQL direct URL (port 5432, for migrations)
-- `AUTH_SECRET` — long random hex string for signing session tokens
-- `COOKIE_SECURE` — `"false"` for dev, `"true"` for HTTPS production
+# Generate VAPID keys for push notifications
+bun run scripts/gen-vapid.mjs
 
-### 3. Initialize database
+# Push database schema
+bun run db:push
 
-```bash
-bun run db:push     # Sync Prisma schema to PostgreSQL
-bun run db:seed     # Seed demo data (admin, products, vouchers...)
-```
-
-### 4. Run the dev server
-
-```bash
+# Start development server
 bun run dev
 ```
 
-This starts Next.js in dev mode with **Turbopack** on port 3000.
-The first page load compiles on-demand (~10s); subsequent loads are fast.
+### Environment Variables
 
-### 5. Open the app
+See `.env.example` for all required variables:
 
-- **Customer storefront**: http://localhost:3000/
-- **Admin panel**: http://localhost:3000/admin
-  - Default admin: `admin@pradeepmedical.com` / `admin123`
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `DATABASE_URL` | Yes | PostgreSQL pooler URL (with `?pgbouncer=true`) |
+| `DIRECT_URL` | Yes | PostgreSQL direct URL (for migrations) |
+| `AUTH_SECRET` | Yes | HMAC token signing secret (`openssl rand -hex 32`) |
+| `VAPID_PUBLIC_KEY` | Yes | Web Push public key (generate with `gen-vapid.mjs`) |
+| `VAPID_PRIVATE_KEY` | Yes | Web Push private key |
+| `VAPID_SUBJECT` | No | Default: `mailto:admin@pradeepmedicalstore.in` |
+| `Z_AI_*` | No | AI config (optional — hardcoded fallback works) |
+| `COOKIE_SECURE` | No | Default: `false` (set `true` for HTTPS production) |
 
-## Cloud Storage Configuration
+### Admin Access
 
-File uploads (product images, brand logos, prescriptions, payment screenshots)
-use a **provider-agnostic storage system** configurable from the Admin Panel
-→ Settings → Storage. No environment variables needed — everything is stored
-in the database.
+Default admin credentials (from seed):
+- Email: `admin@pradeepmedical.com`
+- Password: `admin123`
 
-**Supported providers (9 + 1 dev fallback):**
-- Cloudflare R2 (recommended — zero egress fees)
-- Amazon S3
-- Backblaze B2
-- DigitalOcean Spaces
-- MinIO (self-hosted)
-- Google Cloud Storage
-- Supabase Storage
-- Azure Blob Storage
-- Custom S3-compatible
-- Local filesystem (dev only)
+## Production Deployment (Vercel)
 
-**To configure:** Admin → Settings → Storage → select provider → enter
-credentials → Test Connection → Save. Switching providers later requires
-only updating the config — no code changes.
+1. Push to GitHub
+2. Import project in Vercel
+3. Add environment variables (DATABASE_URL, DIRECT_URL, AUTH_SECRET, VAPID_*)
+4. Deploy — AI works automatically (hardcoded Z.AI fallback)
+5. Configure SMTP in Admin → Settings → SMTP
+6. Configure R2 storage in Admin → Settings → Storage
+7. Upload logo in Admin → Settings → Store Information
 
-Private files (prescriptions, payment screenshots) are served through an
-authenticated proxy (`/api/file/...`) with time-limited signed URLs.
+## Security
 
-## Environment Variable Loading
+- All 101 admin API routes have `getAdminFromRequest()` auth check
+- OTP rate limiting (5 attempts max)
+- httpOnly + secure + sameSite=lax cookies
+- sanitizeHtml() on all `dangerouslySetInnerHTML`
+- Prisma parameterized queries (no SQL injection)
+- Security headers: X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy
+- Admin login alert email (IP, browser, device, OS)
+- File upload validation (MIME + size)
 
-The sandbox injects a default `DATABASE_URL=file:.../custom.db` (SQLite) into
-the process environment. Next.js and Prisma both treat system env vars as
-authoritative, so the SQLite URL was overriding the real PostgreSQL URL in
-`.env`.
+## Performance
 
-To fix this permanently, all npm scripts that need DB access run through
-`scripts/with-env.mjs`, a tiny launcher that parses `.env` and **forces** those
-values to override any same-named system env vars before exec'ing the command.
+- Dashboard cached (60s analytics, 5min AI insights)
+- 31 admin + 24 customer dynamic imports (code splitting)
+- 47/80 homepage images lazy loaded
+- 96 Prisma indexes
+- WebP image optimization
+- API response times: 0.2-0.7s (customer), 0.2-2.5s (admin)
 
-```json
-"dev": "node scripts/with-env.mjs next dev --turbo -p 3000"
-"db:push": "node scripts/with-env.mjs prisma db push"
-```
+## Scripts
 
-## Available Scripts
+| Script | Description |
+|--------|-------------|
+| `bun run dev` | Start dev server (port 3000) |
+| `bun run build` | Production build |
+| `bun run start` | Start production server |
+| `bun run lint` | ESLint check |
+| `bun run db:push` | Push Prisma schema to database |
+| `bun run db:seed` | Seed demo data |
+| `bun run db:studio` | Prisma Studio |
+| `bun run scripts/gen-vapid.mjs` | Generate VAPID keys |
 
-| Script             | Description                                          |
-| ------------------ | ---------------------------------------------------- |
-| `bun run dev`      | Start Next.js dev server (Turbopack, port 3000)     |
-| `bun run build`    | Production build (Turbopack, standalone output)      |
-| `bun run start`    | Start production server (port 3000)                  |
-| `bun run lint`     | Run ESLint                                           |
-| `bun run db:push`  | Sync Prisma schema to PostgreSQL                     |
-| `bun run db:generate` | Regenerate Prisma Client                          |
-| `bun run db:seed`  | Seed demo data                                       |
-| `bun run db:studio`| Open Prisma Studio GUI                               |
+## License
 
-## Architecture Notes
-
-### Database Connection Pooling
-
-- `DATABASE_URL` uses Supabase Supavisor's transaction-mode pooler (port 6543)
-  with `?pgbouncer=true&connection_limit=3` for serverless-friendly reuse.
-- `DIRECT_URL` uses the session-mode pooler (port 5432) for migrations.
-- `src/lib/db.ts` uses a `globalForPrisma` singleton to avoid exhausting
-  connections during Next.js hot reloads.
-
-### Authentication
-
-- Customers register with email + OTP verification (Nodemailer).
-- Admins log in with email + password (scrypt hashing).
-- Session tokens are HMAC-SHA256 signed, stored in httpOnly cookies.
-- 20 granular permission keys for admin roles (`super_admin`, `admin`, `manager`).
-
-### API Design
-
-- 124 API routes under `src/app/api/`.
-- All responses go through `src/lib/api.ts`'s `ok()` / `err()` serializers,
-  which convert Prisma `Decimal` values to numbers and `Date` values to ISO
-  strings for JSON safety.
-- Cart and checkout hot paths use `Promise.all` for parallel queries.
-
-### Storage Architecture
-
-- All uploads go through a single `storage` facade (`src/lib/storage/`).
-- The active provider is resolved at runtime from the DB config (Setting key
-  `storage.config`) — changing providers requires no code changes.
-- Each provider implements the `StorageProvider` interface (`upload`, `delete`,
-  `getPublicUrl`, `getSignedUrl`, `testConnection`).
-- Automatic retry with exponential backoff on transient failures.
-- Orphan cleanup: old files deleted when replaced or when their DB record is deleted.
-- Private files use signed URLs (5-min expiry) via the authenticated proxy.
-
-### Customer Storefront
-
-The customer site is a single-page app at `/` driven by Zustand view-state
-and Framer Motion transitions. Views include: home, shop, product detail,
-cart, checkout, orders, order detail, wishlist, addresses, profile,
-prescriptions, login, register, OTP verification, forgot password, about,
-contact, and a floating AI health assistant widget.
-
-### Admin Panel
-
-The admin panel at `/admin` is a full management console with: dashboard
-(revenue/profit charts, inventory alerts, storage health indicator, top
-products/categories), products, brands, categories, orders, customers, deals,
-vouchers, delivery zones, payment methods, prescriptions, manual requests,
-newsletter subscribers, settings (incl. storage configuration), and admin
-user management.
-
-## Production Deployment
-
-### Vercel (recommended)
-
-1. Push the repo to GitHub and import it into Vercel.
-2. Set environment variables in Vercel:
-   - `DATABASE_URL` — Supabase pooler URL (port 6543)
-   - `DIRECT_URL` — Supabase direct URL (port 5432)
-   - `AUTH_SECRET` — strong random hex string
-   - `COOKIE_SECURE` — `"true"`
-3. Deploy — Vercel auto-detects Next.js and uses the `standalone` output.
-4. After deploy, log into the Admin Panel → Settings → Storage and configure
-   a cloud storage provider (recommended: **Cloudflare R2** for zero egress
-   fees). This is required because Vercel has a read-only filesystem.
-
-### Self-hosting (Docker / VPS)
-
-1. Set `COOKIE_SECURE="true"` and a strong `AUTH_SECRET` in `.env`.
-2. Run `bun run build` then `bun run start`.
-3. Use a process manager (systemd, Docker, PM2) to keep it alive.
-4. Configure a reverse proxy (Caddy/Nginx) with HTTPS.
-#
+Proprietary — Pradeep Medical Store, Mathura

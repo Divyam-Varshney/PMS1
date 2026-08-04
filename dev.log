@@ -11,3 +11,23 @@ https://nextjs.org/telemetry
 
 
 ○ Compiling / ...
+⚠ metadataBase property in metadata export is not set for resolving social open graph or twitter images, using "http://localhost:3000". See https://nextjs.org/docs/app/api-reference/functions/generate-metadata#metadatabase
+ GET / 200 in 2.8s (next.js: 2.6s, application-code: 246ms)
+ GET / 200 in 8.3s (next.js: 8.0s, application-code: 255ms)
+ GET / 200 in 11.8s (next.js: 11.6s, application-code: 239ms)
+ GET / 200 in 75ms (next.js: 3ms, application-code: 72ms)
+ GET /api/health 200 in 1655ms (next.js: 569ms, application-code: 1086ms)
+ GET / 200 in 95ms (next.js: 2ms, application-code: 92ms)
+ GET /api/push/vapid-public 200 in 363ms (next.js: 356ms, application-code: 7ms)
+ GET /api/settings/public 200 in 612ms (next.js: 138ms, application-code: 474ms)
+ GET /api/auth/me 200 in 616ms (next.js: 342ms, application-code: 274ms)
+ GET /api/settings/public 200 in 908ms (next.js: 5ms, application-code: 903ms)
+ GET /api/deals 200 in 376ms (next.js: 119ms, application-code: 257ms)
+ GET /api/cart 200 in 1284ms (next.js: 372ms, application-code: 911ms)
+ GET /api/catalog/categories 200 in 721ms (next.js: 193ms, application-code: 529ms)
+ GET /api/catalog/featured 200 in 802ms (next.js: 126ms, application-code: 676ms)
+ GET /api/catalog/bundles 200 in 1424ms (next.js: 440ms, application-code: 984ms)
+ GET /api/catalog/brands?featured=true 200 in 334ms (next.js: 106ms, application-code: 228ms)
+ GET /api/catalog/home-feed 200 in 669ms (next.js: 133ms, application-code: 536ms)
+ POST /api/device-registrations/validate 200 in 918ms (next.js: 161ms, application-code: 757ms)
+ GET /api/wishlist 200 in 669ms (next.js: 129ms, application-code: 541ms)

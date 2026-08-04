@@ -17,3 +17,5 @@ $ node scripts/with-env.mjs next dev --turbo -p 3000
  GET / 200 in 79ms (next.js: 3ms, application-code: 76ms)
  GET / 200 in 70ms (next.js: 2ms, application-code: 67ms)
  GET /api/push/vapid-public 200 in 21ms (next.js: 5ms, application-code: 16ms)
+ GET / 200 in 75ms (next.js: 3ms, application-code: 73ms)
+ GET / 200 in 72ms (next.js: 2ms, application-code: 69ms)

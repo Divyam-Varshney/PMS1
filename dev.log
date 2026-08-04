@@ -150,3 +150,13 @@ Read more: https://nextjs.org/docs/app/api-reference/config/next-config-js/allow
  GET /api/catalog/bundles 200 in 664ms (next.js: 1739µs, application-code: 662ms)
  GET /api/catalog/home-feed 200 in 516ms (next.js: 8ms, application-code: 507ms)
  GET /api/settings/public 200 in 548ms (next.js: 2ms, application-code: 546ms)
+prisma:error Error in PostgreSQL connection: Error { kind: Closed, cause: None }
+prisma:error Error in PostgreSQL connection: Error { kind: Closed, cause: None }
+prisma:error Error in PostgreSQL connection: Error { kind: Closed, cause: None }
+prisma:error Error in PostgreSQL connection: Error { kind: Closed, cause: None }
+prisma:error Error in PostgreSQL connection: Error { kind: Closed, cause: None }
+prisma:error Error in PostgreSQL connection: Error { kind: Closed, cause: None }
+prisma:error Error in PostgreSQL connection: Error { kind: Closed, cause: None }
+prisma:error Error in PostgreSQL connection: Error { kind: Closed, cause: None }
+prisma:error Error in PostgreSQL connection: Error { kind: Closed, cause: None }
+prisma:error Error in PostgreSQL connection: Error { kind: Closed, cause: None }

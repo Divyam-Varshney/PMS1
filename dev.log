@@ -160,3 +160,16 @@ prisma:error Error in PostgreSQL connection: Error { kind: Closed, cause: None }
 prisma:error Error in PostgreSQL connection: Error { kind: Closed, cause: None }
 prisma:error Error in PostgreSQL connection: Error { kind: Closed, cause: None }
 prisma:error Error in PostgreSQL connection: Error { kind: Closed, cause: None }
+ GET / 200 in 92ms (next.js: 4ms, application-code: 88ms)
+ GET / 200 in 76ms (next.js: 3ms, application-code: 73ms)
+ GET /api/auth/me 200 in 429ms (next.js: 5ms, application-code: 423ms)
+ GET /api/settings/public 200 in 651ms (next.js: 2ms, application-code: 648ms)
+ GET /api/catalog/categories 200 in 564ms (next.js: 1233µs, application-code: 563ms)
+ GET /api/catalog/brands?featured=true 200 in 186ms (next.js: 3ms, application-code: 183ms)
+ GET /api/catalog/bundles 200 in 856ms (next.js: 1842µs, application-code: 854ms)
+ GET /api/cart 200 in 818ms (next.js: 1444µs, application-code: 817ms)
+ GET /api/catalog/featured 200 in 974ms (next.js: 4ms, application-code: 970ms)
+ GET /api/deals 200 in 226ms (next.js: 1954µs, application-code: 224ms)
+ GET /api/catalog/home-feed 200 in 566ms (next.js: 2ms, application-code: 564ms)
+ POST /api/device-registrations/validate 200 in 745ms (next.js: 2ms, application-code: 743ms)
+ GET /api/wishlist 200 in 423ms (next.js: 1955µs, application-code: 421ms)

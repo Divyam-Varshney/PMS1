@@ -29,7 +29,7 @@ export async function GET() {
     const startOfLastWeek = new Date(now); startOfLastWeek.setDate(startOfLastWeek.getDate() - 14);
 
     const [thisWeekOrders, lastWeekOrders, lowStockProducts, topProducts, allProducts] = await Promise.all([
-      db.order.findMany({ where: { createdAt: { gte: startOfWeek }, paymentStatus: "paid" }, select: { grandTotal: true, createdAt: true, status: true, items: { select: { name: true, qty: true, price: true } } } }),
+      db.order.findMany({ where: { createdAt: { gte: startOfWeek }, paymentStatus: "paid" }, select: { grandTotal: true, createdAt: true, status: true, items: { select: { name: true, qty: true, sellingPrice: true } } } }),
       db.order.findMany({ where: { createdAt: { gte: startOfLastWeek, lt: startOfWeek }, paymentStatus: "paid" }, select: { grandTotal: true } }),
       db.product.findMany({ where: { stock: { lte: 10 }, status: "active" }, select: { name: true, stock: true, sellingPrice: true, costPrice: true }, take: 10 }),
       db.orderItem.groupBy({ by: ["name"], _sum: { qty: true }, orderBy: { _sum: { qty: "desc" } }, take: 10 }),

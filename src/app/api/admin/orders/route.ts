@@ -109,7 +109,7 @@ export async function GET(req: Request) {
         ];
   }
 
-  const [total, items, itemCounts] = await Promise.all([
+  const [total, items] = await Promise.all([
     db.order.count({ where }),
     db.order.findMany({
       where,
@@ -126,31 +126,22 @@ export async function GET(req: Request) {
           // up to 3 thumbnails + a "+N more" pill, so don't pull all.
           take: 5,
         },
+        // True item count — _count is NOT affected by the `take: 5` above,
+        // so we get the accurate total without a separate query.
+        _count: { select: { items: true } },
       },
-      orderBy: { createdAt: "desc" },
-      skip: (page - 1) * pageSize,
-      take: pageSize,
-    }),
-    // Total item count per order — runs in parallel so the list view
-    // can show an accurate "+N more" pill even when the take=5 cap
-    // truncated the items array.
-    db.order.findMany({
-      where,
-      select: { id: true, _count: { select: { items: true } } },
       orderBy: { createdAt: "desc" },
       skip: (page - 1) * pageSize,
       take: pageSize,
     }),
   ]);
 
-  const countById = new Map(itemCounts.map((o) => [o.id, o._count.items]));
-
   // Compute item-count + first-thumbnail summary for each order so the
   // frontend can render thumbnails + a "+N" pill without fetching the
   // full item list.
   const enriched = items.map((o) => ({
     ...o,
-    itemCount: countById.get(o.id) ?? o.items.length,
+    itemCount: o._count?.items ?? o.items.length,
     previewItems: o.items.slice(0, 3),
   }));
 

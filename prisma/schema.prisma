@@ -472,6 +472,7 @@ model OrderItem {
   product Product? @relation(fields: [productId], references: [id])
 
   @@index([orderId])
+  @@index([productId])
 }
 
 /// Audit trail of order status changes.

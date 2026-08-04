@@ -65,23 +65,46 @@ export async function POST(req: Request) {
     }
   }
 
-  // Validate payment method is active in the DB (modular payment system)
-  const pm = await db.paymentMethod.findUnique({ where: { key: body.paymentMethod } });
+  // Parallel-fetch all the data we need for checkout validation.
+  // Previously these were 3-4 sequential awaits, each adding ~30-50ms.
+  const needsLoyaltyCheck = loyaltyPointsToRedeem !== null && loyaltyPointsToRedeem > 0;
+
+  const [loyaltyCustomer, pm, address, cart] = await Promise.all([
+    needsLoyaltyCheck
+      ? db.customer.findUnique({
+          where: { id: customer.id },
+          select: { loyaltyPoints: true },
+        })
+      : Promise.resolve(null),
+    db.paymentMethod.findUnique({ where: { key: body.paymentMethod } }),
+    db.address.findFirst({
+      where: { id: body.addressId, customerId: customer.id },
+    }),
+    db.cart.findUnique({
+      where: { customerId: customer.id },
+      include: { items: { include: { product: true } } },
+    }),
+  ]);
+
+  // Validate loyalty points (if requested)
+  if (needsLoyaltyCheck) {
+    if (!loyaltyCustomer) return unauthorized("Please login");
+    if (loyaltyCustomer.loyaltyPoints < loyaltyPointsToRedeem!) {
+      return err(
+        `Insufficient loyalty points. You have ${loyaltyCustomer.loyaltyPoints} point(s).`
+      );
+    }
+  }
+
+  // Validate payment method
   if (!pm || !pm.isActive) {
     return err("This payment method is not available. Please choose another.");
   }
 
-  // Load address (must belong to customer)
-  const address = await db.address.findFirst({
-    where: { id: body.addressId, customerId: customer.id },
-  });
+  // Validate address
   if (!address) return err("Delivery address not found");
 
-  // Load cart with items
-  const cart = await db.cart.findUnique({
-    where: { customerId: customer.id },
-    include: { items: { include: { product: true } } },
-  });
+  // Validate cart
   if (!cart || cart.items.length === 0) {
     return err("Your cart is empty");
   }

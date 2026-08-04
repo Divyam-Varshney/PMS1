@@ -145,11 +145,28 @@ export async function clearAdminCookie() {
 // needs the customer's identity fields — running the heavy version on every
 // request added ~150ms of extra DB roundtrips to Supabase (Tokyo region) which
 // was the primary cause of cart slowness after the PostgreSQL migration.
+//
+// PHASE 40.1: Added in-process identity cache (30s TTL). Token signature is
+// verified WITHOUT a DB hit (HMAC only). The DB lookup is just to check
+// `isActive` + fetch identity fields. Since these rarely change mid-session,
+// caching for 30s cuts ~150ms off every authenticated request. The cache is
+// keyed by token (not customer ID) so different tokens for the same customer
+// don't collide. On logout, the cookie is cleared so the cache entry naturally
+// expires.
 // ---------------------------------------------------------------------------
+
+// In-process identity cache. Keyed by token string. TTL 30s.
+const IDENTITY_CACHE_TTL = 30_000;
+interface IdentityCacheEntry {
+  ts: number;
+  customer: any | null;
+}
+const _customerIdentityCache = new Map<string, IdentityCacheEntry>();
 
 /** Lightweight customer lookup — identity fields only.
  *  Use this in all cart/checkout/order/wishlist/review/prescription routes.
- *  Does NOT fetch addresses or _count (those are only needed by /api/customer/me). */
+ *  Does NOT fetch addresses or _count (those are only needed by /api/customer/me).
+ *  Cached in-process for 30s to avoid hitting the DB on every request. */
 export async function getCustomerFromRequest() {
   try {
     const c = await cookies();
@@ -157,6 +174,13 @@ export async function getCustomerFromRequest() {
     if (!token) return null;
     const payload = verifyToken(token);
     if (!payload || payload.type !== "customer") return null;
+
+    // Check in-process cache first.
+    const cached = _customerIdentityCache.get(token);
+    if (cached && Date.now() - cached.ts < IDENTITY_CACHE_TTL) {
+      return cached.customer;
+    }
+
     const customer = await db.customer.findUnique({
       where: { id: payload.sub },
       select: {
@@ -170,10 +194,25 @@ export async function getCustomerFromRequest() {
         createdAt: true,
       },
     });
-    if (!customer || !customer.isActive) return null;
-    return customer;
+    const result = (!customer || !customer.isActive) ? null : customer;
+    _customerIdentityCache.set(token, { ts: Date.now(), customer: result });
+    // Prevent unbounded cache growth — cap at 1000 entries.
+    if (_customerIdentityCache.size > 1000) {
+      const oldest = _customerIdentityCache.keys().next().value;
+      if (oldest) _customerIdentityCache.delete(oldest);
+    }
+    return result;
   } catch {
     return null;
+  }
+}
+
+/** Invalidate the cached identity for a specific token (e.g. on profile update). */
+export function invalidateCustomerIdentityCache(token?: string) {
+  if (token) {
+    _customerIdentityCache.delete(token);
+  } else {
+    _customerIdentityCache.clear();
   }
 }
 
@@ -210,6 +249,9 @@ export async function getCustomerProfileFromRequest() {
   }
 }
 
+// In-process admin identity cache (same pattern as customer).
+const _adminIdentityCache = new Map<string, IdentityCacheEntry>();
+
 export async function getAdminFromRequest() {
   try {
     const c = await cookies();
@@ -217,6 +259,13 @@ export async function getAdminFromRequest() {
     if (!token) return null;
     const payload = verifyToken(token);
     if (!payload || payload.type !== "admin") return null;
+
+    // Check in-process cache first.
+    const cached = _adminIdentityCache.get(token);
+    if (cached && Date.now() - cached.ts < IDENTITY_CACHE_TTL) {
+      return cached.customer;
+    }
+
     const admin = await db.admin.findUnique({
       where: { id: payload.sub },
       select: {
@@ -228,9 +277,23 @@ export async function getAdminFromRequest() {
         permissions: true,
       },
     });
-    if (!admin || !admin.isActive) return null;
-    return admin;
+    const result = (!admin || !admin.isActive) ? null : admin;
+    _adminIdentityCache.set(token, { ts: Date.now(), customer: result });
+    if (_adminIdentityCache.size > 500) {
+      const oldest = _adminIdentityCache.keys().next().value;
+      if (oldest) _adminIdentityCache.delete(oldest);
+    }
+    return result;
   } catch {
     return null;
+  }
+}
+
+/** Invalidate the cached admin identity (e.g. on permission change). */
+export function invalidateAdminIdentityCache(token?: string) {
+  if (token) {
+    _adminIdentityCache.delete(token);
+  } else {
+    _adminIdentityCache.clear();
   }
 }

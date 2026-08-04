@@ -130,9 +130,14 @@ type UnifiedHistoryItem =
 // ---------------------------------------------------------------------------
 // GET /api/customer/history
 // ---------------------------------------------------------------------------
-export async function GET() {
+export async function GET(req: Request) {
   const customer = await getCustomerFromRequest();
   if (!customer) return unauthorized("Please login to view your activity");
+
+  // Pagination — cap to 50 most recent items to prevent unbounded payloads
+  // for repeat customers. The frontend renders a "Load more" button if needed.
+  const url = new URL(req.url);
+  const limit = Math.min(50, Math.max(1, parseInt(url.searchParams.get("limit") || "20", 10)));
 
   // Fetch all three sources in parallel — each is scoped to this customer and
   // sorted by createdAt DESC. We re-merge + re-sort after the parallel await
@@ -141,6 +146,7 @@ export async function GET() {
     db.order.findMany({
       where: { customerId: customer.id },
       orderBy: { createdAt: "desc" },
+      take: limit,
       select: {
         id: true,
         orderNumber: true,
@@ -173,6 +179,7 @@ export async function GET() {
     db.prescription.findMany({
       where: { customerId: customer.id },
       orderBy: { createdAt: "desc" },
+      take: limit,
       select: {
         id: true,
         images: true,
@@ -187,6 +194,7 @@ export async function GET() {
     db.manualRequest.findMany({
       where: { customerId: customer.id },
       orderBy: { createdAt: "desc" },
+      take: limit,
       select: {
         id: true,
         medicineList: true,

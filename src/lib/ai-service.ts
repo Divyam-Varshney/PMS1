@@ -261,6 +261,10 @@ async function openaiCompatibleChat(
       temperature: options.temperature ?? 0.7,
       max_tokens: options.max_tokens ?? 1000,
     }),
+    // 30s timeout — prevents the request from hanging indefinitely if the
+    // upstream AI provider is slow or unresponsive. Without this, a stalled
+    // connection can exhaust the server's connection pool.
+    signal: AbortSignal.timeout(30_000),
   });
 
   if (!res.ok) {

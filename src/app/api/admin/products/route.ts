@@ -82,12 +82,20 @@ export async function GET(req: Request) {
     db.product.count({ where }),
     db.product.findMany({
       where,
-      include: {
+      select: {
+        id: true, name: true, slug: true, sku: true,
+        manufacturer: true, genericName: true, composition: true,
+        prescriptionRequired: true, isGeneric: true,
+        mrp: true, sellingPrice: true, baseDiscountPct: true,
+        stock: true, lowStockThreshold: true,
+        status: true, visibility: true,
+        isFeatured: true, isBestSeller: true, isTrending: true,
+        primaryImage: true, displayOrder: true,
+        brandId: true, categoryId: true,
+        createdAt: true, updatedAt: true,
         brand: { select: { id: true, name: true } },
         category: { select: { id: true, name: true } },
-        _count: {
-          select: { orderItems: true },
-        },
+        _count: { select: { orderItems: true } },
       },
       orderBy,
       skip: (page - 1) * pageSize,

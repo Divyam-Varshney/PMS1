@@ -4,9 +4,14 @@
 //          NEVER include SMTP/payment secrets.
 // Role: Powers the customer header (store name, open status), footer, SEO meta,
 //       delivery thresholds, payment-method toggles, theme, and offers.
+//
+//  Optimized (Phase 40.1): Single getAllSettings() call + single paymentMethods
+//  query instead of 12 sequential getSetting() calls. The in-process cache
+//  means getAllSettings() only hits the DB once per 30s anyway, but this is
+//  cleaner and avoids 12 microtask hops.
 // ============================================================================
 
-import { getSetting } from "@/lib/settings";
+import { getAllSettings } from "@/lib/settings";
 import { okNoCache } from "@/lib/api";
 import { db } from "@/lib/db";
 import { PublicSettings } from "@/components/customer/api";
@@ -17,59 +22,57 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export async function GET() {
-  // Parse marketing offers (stored as JSON string in settings)
-  let offers: any[] = [];
-  try {
-    const raw = await getSetting<string | null>("marketing.offers");
-    offers = raw ? JSON.parse(raw as string) : [];
-    offers = offers.filter((o: any) => o.isActive).sort((a: any, b: any) => a.displayOrder - b.displayOrder);
-  } catch {
-    offers = [];
-  }
+  // Single getAllSettings() call — cached in-process for 30s (production)
+  // or 5s (dev). This replaces 12 sequential getSetting() calls.
+  const s = await getAllSettings();
 
-  // Fetch active payment methods from DB (modular payment system)
+  // Fetch active payment methods from DB (modular payment system) — single query.
   const paymentMethods = await db.paymentMethod.findMany({
     where: { isActive: true },
     orderBy: [{ displayOrder: "asc" }, { createdAt: "asc" }],
     select: { id: true, key: true, label: true, description: true, icon: true, displayOrder: true },
   });
 
-  // Hero section config (admin-editable via Settings → Hero). Stored as a
-  // single JSON blob under `hero.config` so the whole object — including the
-  // cards and trustFeatures arrays — updates atomically.
-  const hero = await getSetting<any>("hero.config");
+  // Parse marketing offers (stored as JSON string in settings)
+  let offers: any[] = [];
+  try {
+    const raw = s["marketing.offers"];
+    offers = raw ? (typeof raw === "string" ? JSON.parse(raw) : raw) : [];
+    offers = offers.filter((o: any) => o.isActive).sort((a: any, b: any) => a.displayOrder - b.displayOrder);
+  } catch {
+    offers = [];
+  }
 
   const settings: PublicSettings = {
     store: {
-      name: await getSetting<string>("store.name"),
-      tagline: await getSetting<string>("store.tagline"),
-      email: await getSetting<string>("store.email"),
-      phone: await getSetting<string>("store.phone"),
-      address: await getSetting<string>("store.address"),
-      openStatus: await getSetting<boolean>("store.openStatus"),
-      openTime: await getSetting<string>("store.openTime"),
-      closeTime: await getSetting<string>("store.closeTime"),
-      closedMessage: await getSetting<string>("store.closedMessage"),
-      logo: await getSetting<string>("store.logo"),
-      licenseNumber: await getSetting<string>("store.licenseNumber"),
+      name: s["store.name"],
+      tagline: s["store.tagline"],
+      email: s["store.email"],
+      phone: s["store.phone"],
+      address: s["store.address"],
+      openStatus: s["store.openStatus"],
+      openTime: s["store.openTime"],
+      closeTime: s["store.closeTime"],
+      closedMessage: s["store.closedMessage"],
+      logo: s["store.logo"],
+      licenseNumber: s["store.licenseNumber"],
     },
-    weeklySchedule: await getSetting<any>("store.weeklySchedule"),
-    holidays: await getSetting<any>("store.holidays"),
-    // Payment methods are now DB-managed (admin can add/enable/disable from Admin Panel)
+    weeklySchedule: s["store.weeklySchedule"],
+    holidays: s["store.holidays"],
     payment: {
       codEnabled: paymentMethods.some((p) => p.key === "cod"),
       onlineEnabled: paymentMethods.some((p) => p.key === "online" || p.key === "razorpay" || p.key === "cashfree"),
     },
     paymentMethods,
-    hero,
+    hero: s["hero.config"],
     seo: {
-      title: await getSetting<string>("seo.title"),
-      description: await getSetting<string>("seo.description"),
-      keywords: await getSetting<string>("seo.keywords"),
+      title: s["seo.title"],
+      description: s["seo.description"],
+      keywords: s["seo.keywords"],
     },
     theme: {
-      primaryColor: await getSetting<string>("theme.primaryColor"),
-      accentColor: await getSetting<string>("theme.accentColor"),
+      primaryColor: s["theme.primaryColor"],
+      accentColor: s["theme.accentColor"],
     },
     offers,
   };

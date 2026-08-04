@@ -206,3 +206,25 @@ prisma:error Error in PostgreSQL connection: Error { kind: Closed, cause: None }
  GET / 200 in 114ms (next.js: 4ms, application-code: 110ms)
  GET / 200 in 80ms (next.js: 2ms, application-code: 78ms)
  GET / 200 in 68ms (next.js: 3ms, application-code: 65ms)
+prisma:error Error in PostgreSQL connection: Error { kind: Closed, cause: None }
+prisma:error Error in PostgreSQL connection: Error { kind: Closed, cause: None }
+prisma:error Error in PostgreSQL connection: Error { kind: Closed, cause: None }
+prisma:error Error in PostgreSQL connection: Error { kind: Closed, cause: None }
+prisma:error Error in PostgreSQL connection: Error { kind: Closed, cause: None }
+prisma:error Error in PostgreSQL connection: Error { kind: Closed, cause: None }
+prisma:error Error in PostgreSQL connection: Error { kind: Closed, cause: None }
+prisma:error Error in PostgreSQL connection: Error { kind: Closed, cause: None }
+prisma:error Error in PostgreSQL connection: Error { kind: Closed, cause: None }
+ GET / 200 in 66ms (next.js: 3ms, application-code: 64ms)
+ GET /api/catalog/brands?featured=true 200 in 1077ms (next.js: 23ms, application-code: 1054ms)
+ GET /api/catalog/categories 200 in 1093ms (next.js: 17ms, application-code: 1076ms)
+ GET /api/settings/public 200 in 1254ms (next.js: 28ms, application-code: 1226ms)
+ GET /api/catalog/featured 200 in 1411ms (next.js: 37ms, application-code: 1374ms)
+ GET /api/auth/me 200 in 1468ms (next.js: 44ms, application-code: 1424ms)
+ GET /api/deals 200 in 203ms (next.js: 1837µs, application-code: 201ms)
+ GET /api/cart 200 in 1759ms (next.js: 50ms, application-code: 1708ms)
+ GET /api/wishlist 200 in 432ms (next.js: 1856µs, application-code: 430ms)
+ POST /api/device-registrations/validate 200 in 641ms (next.js: 1571µs, application-code: 639ms)
+ GET / 200 in 67ms (next.js: 2ms, application-code: 65ms)
+ GET / 200 in 66ms (next.js: 3ms, application-code: 64ms)
+ GET / 200 in 71ms (next.js: 3ms, application-code: 69ms)

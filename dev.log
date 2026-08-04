@@ -202,3 +202,7 @@ prisma:error Error in PostgreSQL connection: Error { kind: Closed, cause: None }
  GET /api/cart 200 in 727ms (next.js: 1331µs, application-code: 726ms)
  GET /api/wishlist 200 in 443ms (next.js: 1462µs, application-code: 441ms)
  POST /api/device-registrations/validate 200 in 586ms (next.js: 1956µs, application-code: 584ms)
+ GET /api/catalog/home-feed 200 in 816ms (next.js: 1916µs, application-code: 814ms)
+ GET / 200 in 114ms (next.js: 4ms, application-code: 110ms)
+ GET / 200 in 80ms (next.js: 2ms, application-code: 78ms)
+ GET / 200 in 68ms (next.js: 3ms, application-code: 65ms)

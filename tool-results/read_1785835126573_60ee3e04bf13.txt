@@ -1,0 +1,702 @@
+   400→            <div className="pointer-events-none absolute left-0 top-0 z-10 h-full w-12 bg-gradient-to-r from-background to-transparent" />
+   401→            <div className="pointer-events-none absolute right-0 top-0 z-10 h-full w-12 bg-gradient-to-l from-background to-transparent" />
+   402→            {/* Marquee track */}
+   403→            <div className="marquee-mask overflow-hidden">
+   404→              <div className="animate-marquee flex w-max gap-6 px-4 sm:gap-8">
+   405→                {[...brands, ...brands].map((b, i) => {
+   406→                  const showLogo = b.displayMode !== "name_only" && b.logo;
+   407→                  const showName = b.displayMode !== "logo_only";
+   408→                  return (
+   409→                    <button
+   410→                      key={`${b.id}-${i}`}
+   411→                      onClick={() => navigate({ name: "shop", brandId: b.id })}
+   412→                      className="flex h-20 w-28 shrink-0 flex-col items-center justify-center gap-1.5 rounded-xl border border-border/30 bg-card px-3 py-3 transition-all hover:border-emerald-300/50 hover:shadow-sm sm:h-24 sm:w-36 sm:gap-2 sm:px-4"
+   413→                    >
+   414→                      {showLogo ? (
+   415→                        <img
+   416→                          src={b.logo}
+   417→                          alt={b.name}
+   418→                          className="max-h-8 w-auto object-contain sm:max-h-10"
+   419→                        />
+   420→                      ) : (
+   421→                        <span className="flex size-8 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-400 to-teal-500 text-sm font-bold text-white shadow-sm sm:size-10 sm:text-base">
+   422→                          {b.name[0]}
+   423→                        </span>
+   424→                      )}
+   425→                      {showName && (
+   426→                        <span className="line-clamp-1 text-[10px] font-medium text-muted-foreground sm:text-xs">{b.name}</span>
+   427→                      )}
+   428→                    </button>
+   429→                  );
+   430→                })}
+   431→              </div>
+   432→            </div>
+   433→          </div>
+   434→        </section>
+   435→      )}
+   436→
+   437→      {/* ====================================================================
+   438→          5. FEATURED PRODUCTS — 12 handpicked products, 5-6 per row on
+   439→          desktop, 2 per row on mobile. The ProductGrid component memoizes
+   440→          the slice so it doesn't re-render unnecessarily.
+   441→      ==================================================================== */}
+   442→      <section>
+   443→        <SectionHeader
+   444→          eyebrow="Handpicked"
+   445→          title="Featured Products"
+   446→          onAction={goShopFeatured}
+   447→        />
+   448→        <ProductGrid products={featured?.featured} loading={!featured} />
+   449→      </section>
+   450→
+   451→      {/* ====================================================================
+   452→          6. DEALS & BESTSELLERS — MERGED section with toggle.
+   453→          Consolidates: Today's Deals + Best Sellers + Doctor's Choice +
+   454→          Pharmacist Recommended + Top Rated into one tabbed section.
+   455→          "Deals" tab shows the live countdown timer + horizontal card strip;
+   456→          "Best Sellers" tab shows a responsive ProductGrid.
+   457→          Reduces 5 separate scrolling sections into 1 with a toggle.
+   458→      ==================================================================== */}
+   459→      <DealsAndBestsellersSection
+   460→        dealsSection={dealsSection}
+   461→        bestSellers={featured?.bestSellers}
+   462→        loading={!featured}
+   463→        tab={dealsTab}
+   464→        setTab={setDealsTab}
+   465→        onDealProductClick={onDealProductClick}
+   466→        onDealItemClick={onDealItemClick}
+   467→        onShopAllDeals={goShopBestDiscount}
+   468→        onShopAllBestsellers={goShopBestSeller}
+   469→      />
+   470→
+   471→      {/* ====================================================================
+   472→          7. TRENDING & NEW — MERGED section with toggle.
+   473→          Consolidates: Trending Now + New Arrivals (+ implicitly Doctor's
+   474→          Choice, which used to be a separate showcase). Tab toggle lets the
+   475→          customer flip between "what's hot" and "what just landed" without
+   476→          scrolling past two near-identical product grids.
+   477→      ==================================================================== */}
+   478→      <TrendingAndNewSection
+   479→        trending={featured?.trending}
+   480→        newArrivals={homeFeed?.newArrivals}
+   481→        loading={!featured || !homeFeed}
+   482→        tab={trendingTab}
+   483→        setTab={setTrendingTab}
+   484→        onViewAllTrending={goShopTrending}
+   485→        onViewAllNew={goShopNewest}
+   486→      />
+   487→
+   488→      {/* ====================================================================
+   489→          8. MID-BANNER OFFERS (admin offers, position: mid-banner)
+   490→      ==================================================================== */}
+   491→      {settings?.offers
+   492→        ?.filter((o) => o.position === "mid-banner")
+   493→        .map((offer) => (
+   494→          <section
+   495→            key={offer.id}
+   496→            className="relative overflow-hidden rounded-3xl px-6 py-7 shadow-xl sm:px-10 sm:py-9"
+   497→            style={{ backgroundColor: offer.bgColor, color: offer.textColor }}
+   498→          >
+   499→            <div
+   500→              className="absolute inset-0 opacity-[0.08]"
+   501→              style={{
+   502→                backgroundImage: "radial-gradient(circle, currentColor 1px, transparent 1px)",
+   503→                backgroundSize: "20px 20px",
+   504→              }}
+   505→            />
+   506→            <div className="relative flex flex-wrap items-center justify-between gap-4">
+   507→              <div>
+   508→                <h2 className="text-xl font-bold sm:text-2xl">{offer.title}</h2>
+   509→                {offer.subtitle && <p className="mt-1 text-sm opacity-90 sm:text-base">{offer.subtitle}</p>}
+   510→              </div>
+   511→              {offer.ctaText && (
+   512→                <Button
+   513→                  onClick={() => navigate({ name: (offer.ctaView as any) || "shop" } as any)}
+   514→                  className="gap-1.5 bg-white text-foreground shadow-lg transition-all hover:-translate-y-0.5 hover:bg-white/90"
+   515→                >
+   516→                  {offer.ctaText}
+   517→                  <ArrowRight className="size-4" />
+   518→                </Button>
+   519→              )}
+   520→            </div>
+   521→          </section>
+   522→        ))}
+   523→
+   524→      {/* ====================================================================
+   525→          9. MEDICAL BUNDLES — curated health kits (carousel).
+   526→          Unique pharmacy feature — kept as its own section.
+   527→      ==================================================================== */}
+   528→      <MedicalBundlesSection />
+   529→
+   530→      {/* ====================================================================
+   531→          10. WELLNESS HUB — MERGED section.
+   532→          Consolidates: Health Tips & Articles + Testimonials into a single
+   533→          "Wellness hub" with a shared header. Health tips on top (3 daily-
+   534→          rotating cards), testimonials below (3 verified-buyer reviews).
+   535→      ==================================================================== */}
+   536→      <WellnessHubSection />
+   537→
+   538→      {/* ====================================================================
+   539→          11. RECENTLY VIEWED (localStorage) — only renders if the customer
+   540→          has actually viewed any products. Hidden on first visit.
+   541→      ==================================================================== */}
+   542→      <RecentlyViewedSection />
+   543→    </div>
+   544→  );
+   545→}
+   546→
+   547→// =========================================================================
+   548→// Sub-components
+   549→// =========================================================================
+   550→
+   551→// ---------------------------------------------------------------------------
+   552→// HERO SYSTEM — fully admin-configurable hero section.
+   553→// Every major piece (announcement bar, banner, search, cards, trust features,
+   554→// promo banner) has an enable/disable toggle driven by the HeroConfig object.
+   555→// Mobile-first responsive design with framer-motion animations.
+   556→// ---------------------------------------------------------------------------
+   557→
+   558→/** Comprehensive icon registry — admin picks icon names from this set for
+   559→ *  hero cards, trust features, and CTA buttons. */
+   560→const HERO_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
+   561→  ShieldCheck, Truck, Award, Lock, HeartPulse, Pill, Clock, Star,
+   562→  FileText, ClipboardList, RefreshCw, BadgeCheck, Search, ArrowRight,
+   563→  PhoneCall, Mail, MapPin, Sparkles, Flame, Tag, Zap, Headphones,
+   564→  CreditCard, PackageCheck, Gift, Percent, Megaphone, Users, ArrowLeft,
+   565→  ArrowUpRight, ChevronRight, Droplets, Sun, Moon, Activity, Brain, Bone,
+   566→  Eye, Apple, Stethoscope, Thermometer, Wind, Shield, Baby, Leaf,
+   567→};
+   568→
+   569→function resolveHeroIcon(name?: string) {
+   570→  if (!name) return null;
+   571→  return HERO_ICONS[name] || null;
+   572→}
+   573→
+   574→/** Static component that renders a hero icon by name. Uses createElement
+   575→ *  rather than JSX <Icon /> to satisfy the react-hooks/static-components
+   576→ *  lint rule (the icon reference is a runtime lookup, not a static def). */
+   577→function HeroIcon({ name, className }: { name?: string; className?: string }) {
+   578→  const Icon = resolveHeroIcon(name);
+   579→  if (!Icon) return null;
+   580→  return createElement(Icon, { className });
+   581→}
+   582→
+   583→/** Resolve a CTA "url" which may be a customer view name (e.g. "shop") or a
+   584→ *  full URL (e.g. "https://..."). Internal view names navigate via the SPA
+   585→ *  router; full URLs open in a new tab. */
+   586→function go(navigate: (v: any) => void, url?: string) {
+   587→  if (!url) return;
+   588→  if (/^https?:\/\//i.test(url) || url.startsWith("mailto:") || url.startsWith("tel:")) {
+   589→    window.open(url, "_blank", "noopener,noreferrer");
+   590→    return;
+   591→  }
+   592→  navigate({ name: url as any } as any);
+   593→}
+   594→
+   595→/** Check if a scheduled item (promo banner / announcement) is currently
+   596→ *  visible based on its optional start/end ISO date window. */
+   597→function isWithinSchedule(start?: string, end?: string): boolean {
+   598→  const now = Date.now();
+   599→  if (start && now < new Date(start).getTime()) return false;
+   600→  if (end && now > new Date(end).getTime()) return false;
+   601→  return true;
+   602→}
+   603→
+   604→/** Hook that returns true after the component has mounted on the client.
+   605→ *  Used to defer time-sensitive rendering (schedule checks, countdowns) until
+   606→ *  after hydration so the SSR HTML and the first client render always match.
+   607→ *  Uses useSyncExternalStore (the React-recommended mounted pattern) to avoid
+   608→ *  the set-state-in-effect lint rule. */
+   609→function useMounted(): boolean {
+   610→  return useSyncExternalStore(
+   611→    () => () => {},
+   612→    () => true,   // client snapshot — always true once hydrated
+   613→    () => false,  // server snapshot — always false during SSR
+   614→  );
+   615→}
+   616→
+   617→/** Height preset → padding classes (mobile-first). Reduced for a more
+   618→ *  concise, modern hero that doesn't occupy excessive screen space. */
+   619→const HERO_HEIGHTS: Record<string, string> = {
+   620→  sm: "py-5 sm:py-6",
+   621→  md: "py-6 sm:py-8",
+   622→  lg: "py-8 sm:py-10",
+   623→  xl: "py-10 sm:py-14",
+   624→};
+   625→
+   626→const HERO_SPACING: Record<string, string> = {
+   627→  compact: "space-y-4",
+   628→  normal: "space-y-6",
+   629→  relaxed: "space-y-10",
+   630→};
+   631→
+   632→/** Style preset → gradient colors (used when gradientEnabled and stylePreset
+   633→ *  !== "custom"). Custom uses the admin's gradientFrom/Via/To. */
+   634→const STYLE_PRESETS: Record<string, { from: string; via: string; to: string }> = {
+   635→  emerald: { from: "#047857", via: "#059669", to: "#0f766e" },
+   636→  teal: { from: "#0f766e", via: "#0d9488", to: "#0891b2" },
+   637→  midnight: { from: "#0c4a6e", via: "#075985", to: "#0e7490" },
+   638→  sunrise: { from: "#9a3412", via: "#c2410c", to: "#d97706" },
+   639→};
+   640→
+   641→function HeroSystem({
+   642→  hero,
+   643→  isStoreOpen,
+   644→  store,
+   645→  heroOffer,
+   646→  heroQuery,
+   647→  setHeroQuery,
+   648→  onHeroSearch,
+   649→}: {
+   650→  hero?: HeroConfig;
+   651→  isStoreOpen: boolean;
+   652→  store?: PublicSettings["store"];
+   653→  heroOffer?: PublicSettings["offers"] extends Array<infer T> ? T : never;
+   654→  heroQuery: string;
+   655→  setHeroQuery: (v: string) => void;
+   656→  onHeroSearch: (e: React.FormEvent) => void;
+   657→}) {
+   658→  const navigate = useUI((s) => s.navigate);
+   659→  const anim = hero?.animationsEnabled !== false;
+   660→
+   661→  // If hero is disabled entirely, render nothing.
+   662→  if (hero && hero.enabled === false) return null;
+   663→
+   664→  return (
+   665→    <div className={HERO_SPACING[hero?.sectionSpacing || "normal"]}>
+   666→      {/* Announcement Bar */}
+   667→      <AnnouncementBar hero={hero} navigate={navigate} />
+   668→
+   669→      {/* Hero Banner (admin offer override takes precedence) */}
+   670→      <HeroBanner
+   671→        hero={hero}
+   672→        heroOffer={heroOffer}
+   673→        isStoreOpen={isStoreOpen}
+   674→        store={store}
+   675→        heroQuery={heroQuery}
+   676→        setHeroQuery={setHeroQuery}
+   677→        onHeroSearch={onHeroSearch}
+   678→        navigate={navigate}
+   679→        anim={anim}
+   680→      />
+   681→
+   682→      {/* Promotional Banner */}
+   683→      <PromoBanner hero={hero} navigate={navigate} anim={anim} />
+   684→    </div>
+   685→  );
+   686→}
+   687→
+   688→// — Announcement Bar — thin emerald bar above the hero. --------------------
+   689→function AnnouncementBar({
+   690→  hero,
+   691→  navigate,
+   692→}: {
+   693→  hero?: HeroConfig;
+   694→  navigate: (v: any) => void;
+   695→}) {
+   696→  const mounted = useMounted();
+   697→  if (!hero?.announcementEnabled || !hero.announcementText?.trim()) return null;
+   698→  // Defer the schedule check until after mount so SSR and the first client
+   699→  // render always agree (Date.now() differs between server and client).
+   700→  if (mounted && !isWithinSchedule(hero.announcementStart, hero.announcementEnd)) return null;
+   701→  return (
+   702→    <div className="rounded-2xl bg-linear-to-r from-emerald-700 via-emerald-600 to-teal-700 px-4 py-2.5 text-center text-xs font-medium text-white shadow-sm sm:text-sm">
+   703→      <button
+   704→        type="button"
+   705→        onClick={() => hero.announcementLink && go(navigate, hero.announcementLink)}
+   706→        className={`inline-flex items-center gap-1.5 ${hero.announcementLink ? "cursor-pointer hover:underline" : "cursor-default"}`}
+   707→      >
+   708→        <Megaphone className="size-3.5 shrink-0" />
+   709→        <span className="line-clamp-1 sm:line-clamp-none">{hero.announcementText}</span>
+   710→      </button>
+   711→    </div>
+   712→  );
+   713→}
+   714→
+   715→// — Hero Banner — the main hero section. ----------------------------------
+   716→function HeroBanner({
+   717→  hero,
+   718→  heroOffer,
+   719→  isStoreOpen,
+   720→  store,
+   721→  heroQuery,
+   722→  setHeroQuery,
+   723→  onHeroSearch,
+   724→  navigate,
+   725→  anim,
+   726→}: {
+   727→  hero?: HeroConfig;
+   728→  heroOffer?: any;
+   729→  isStoreOpen: boolean;
+   730→  store?: PublicSettings["store"];
+   731→  heroQuery: string;
+   732→  setHeroQuery: (v: string) => void;
+   733→  onHeroSearch: (e: React.FormEvent) => void;
+   734→  navigate: (v: any) => void;
+   735→  anim: boolean;
+   736→}) {
+   737→  // Admin "hero offer" override — simple banner with the offer's content.
+   738→  if (heroOffer) {
+   739→    return (
+   740→      <section
+   741→        className="relative overflow-hidden rounded-3xl px-6 py-12 shadow-2xl sm:px-12 sm:py-16"
+   742→        style={{ backgroundColor: heroOffer.bgColor, color: heroOffer.textColor }}
+   743→      >
+   744→        <div className="relative z-10 max-w-2xl">
+   745→          <h1 className="text-3xl font-bold leading-tight sm:text-5xl">{heroOffer.title}</h1>
+   746→          {heroOffer.subtitle && <p className="mt-3 text-sm opacity-90 sm:text-lg">{heroOffer.subtitle}</p>}
+   747→          {heroOffer.ctaText && (
+   748→            <Button
+   749→              onClick={() => go(navigate, heroOffer.ctaView)}
+   750→              className="mt-6 gap-1.5 bg-white text-foreground hover:bg-white/90"
+   751→              size="lg"
+   752→            >
+   753→              {heroOffer.ctaText}
+   754→              <ArrowRight className="size-4" />
+   755→            </Button>
+   756→          )}
+   757→        </div>
+   758→      </section>
+   759→    );
+   760→  }
+   761→
+   762→  if (!hero) return null;
+   763→
+   764→  // Resolve background gradient.
+   765→  const preset = STYLE_PRESETS[hero.stylePreset] || STYLE_PRESETS.emerald;
+   766→  const gFrom = hero.stylePreset === "custom" ? hero.gradientFrom : preset.from;
+   767→  const gVia = hero.stylePreset === "custom" ? hero.gradientVia : preset.via;
+   768→  const gTo = hero.stylePreset === "custom" ? hero.gradientTo : preset.to;
+   769→
+   770→  const layout = hero.layout || "split-left";
+   771→  // An image is "available" when the image feature is enabled AND a URL is set.
+   772→  const hasImage = hero.bgImageEnabled && !!(hero.bgImageDesktop || hero.bgImageMobile);
+   773→  // Desktop/tablet side image (split layouts) and full-bg image.
+   774→  const sideImage = hero.bgImageDesktop || hero.bgImageMobile || "";
+   775→  // Mobile always falls back to the mobile image (or desktop if no mobile set).
+   776→  const mobileImage = hero.bgImageMobile || hero.bgImageDesktop || "";
+   777→
+   778→  // Layout semantics:
+   779→  //  - split-left / split-right: 2-col grid (text + side image) when an image
+   780→  //    is available; otherwise a single text column. Image shows on md+.
+   781→  //  - centered: single text column, centered, no side image.
+   782→  //  - full-bg: image fills the whole hero as a background with a dark
+   783→  //    overlay; text sits on top (alignment per contentAlign).
+   784→  const isSplit = layout === "split-left" || layout === "split-right";
+   785→  const isFullBg = layout === "full-bg";
+   786→  const isCenteredLayout = layout === "centered";
+   787→  // Show the side-by-side image only for split layouts that have an image.
+   788→  const hasSplitImage = isSplit && hasImage;
+   789→  // Full-bg background image shows for full-bg layout (or any layout with an
+   790→  // image when not split — treated as a background).
+   791→  const hasFullBgImage = isFullBg && hasImage;
+   792→
+   793→  const popularSearches = hero.popularSearches
+   794→    ? hero.popularSearches.split(",").map((s) => s.trim()).filter(Boolean)
+   795→    : [];
+   796→
+   797→  // Background base style for the <section>.
+   798→  const bgStyle: React.CSSProperties = {};
+   799→  if (hasFullBgImage) {
+   800→    // Full-bg: solid base color (image layer drawn separately on top).
+   801→    bgStyle.backgroundColor = gFrom;
+   802→  } else if (hero.gradientEnabled) {
+   803→    bgStyle.background = `linear-gradient(135deg, ${gFrom}, ${gVia}, ${gTo})`;
+   804→  } else {
+   805→    bgStyle.background = hero.bgColor || gFrom;
+   806→  }
+   807→
+   808→  // Pattern overlay style.
+   809→  const patternBg =
+   810→    hero.bgPattern === "dots"
+   811→      ? "radial-gradient(circle, rgba(255,255,255,0.6) 1px, transparent 1px)"
+   812→      : hero.bgPattern === "grid"
+   813→      ? "linear-gradient(rgba(255,255,255,0.4) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.4) 1px, transparent 1px)"
+   814→      : hero.bgPattern === "waves"
+   815→      ? "repeating-linear-gradient(45deg, rgba(255,255,255,0.15) 0, rgba(255,255,255,0.15) 1px, transparent 1px, transparent 12px)"
+   816→      : "none";
+   817→  const patternSize =
+   818→    hero.bgPattern === "grid" ? "24px 24px" : hero.bgPattern === "dots" ? "22px 22px" : undefined;
+   819→
+   820→  const radius = hero.borderRadius ?? 24;
+   821→  const heightClass = HERO_HEIGHTS[hero.height || "lg"];
+   822→
+   823→  // Grid template per layout (only activates at md+ for split layouts).
+   824→  const gridCols = hasSplitImage
+   825→    ? layout === "split-right"
+   826→      ? "md:grid-cols-[1fr_1.1fr]"
+   827→      : "md:grid-cols-[1.1fr_1fr]"
+   828→    : "grid-cols-1";
+   829→
+   830→  // contentAlign controls text alignment WITHIN the text column. It does NOT
+   831→  // override the layout choice. Centered layout always centers; full-bg and
+   832→  // split layouts honor the contentAlign setting.
+   833→  const isTextCentered = isCenteredLayout || hero.contentAlign === "center";
+   834→
+   835→  return (
+   836→    <section
+   837→      className={`relative overflow-hidden text-white shadow-2xl ${heightClass}`}
+   838→      style={{ ...bgStyle, borderRadius: `${radius}px` }}
+   839→    >
+   840→      {/* Full-bg background image layer (desktop/tablet/mobile) */}
+   841→      {hasFullBgImage && (
+   842→        <div className="absolute inset-0 z-0">
+   843→          {/* Desktop / tablet */}
+   844→          <img
+   845→            src={sideImage}
+   846→            alt={hero.imageAltText || ""}
+   847→            className="hidden h-full w-full object-cover sm:block"
+   848→          />
+   849→          {/* Mobile */}
+   850→          <img
+   851→            src={mobileImage}
+   852→            alt={hero.imageAltText || ""}
+   853→            className="block h-full w-full object-cover sm:hidden"
+   854→          />
+   855→          {/* Dark overlay for text legibility */}
+   856→          <div
+   857→            className="absolute inset-0"
+   858→            style={{ background: `linear-gradient(135deg, rgba(4,78,55,${hero.bgOverlay / 100}), rgba(15,118,110,${hero.bgOverlay / 100}))` }}
+   859→          />
+   860→        </div>
+   861→      )}
+   862→
+   863→      {/* Gradient depth overlay (when no full-bg image) */}
+   864→      {!hasFullBgImage && hero.gradientEnabled && (
+   865→        <div
+   866→          className="absolute inset-0 z-0"
+   867→          style={{ opacity: hero.bgOpacity / 100, background: `linear-gradient(135deg, ${gFrom}, ${gVia}, ${gTo})` }}
+   868→        />
+   869→      )}
+   870→
+   871→      {/* Pattern overlay */}
+   872→      {hero.bgPattern !== "none" && (
+   873→        <div
+   874→          className="absolute inset-0 z-0 opacity-[0.12]"
+   875→          style={{ backgroundImage: patternBg, backgroundSize: patternSize }}
+   876→        />
+   877→      )}
+   878→
+   879→      {/* Animated orbs */}
+   880→      {anim && (
+   881→        <>
+   882→          <motion.div
+   883→            className="absolute right-0 top-0 -mr-20 -mt-20 size-80 rounded-full bg-white/10 blur-3xl"
+   884→            animate={{ y: [0, -16, 0], x: [0, 8, 0] }}
+   885→            transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }}
+   886→          />
+   887→          <motion.div
+   888→            className="absolute bottom-0 left-0 -mb-24 -ml-16 size-96 rounded-full bg-teal-300/20 blur-3xl"
+   889→            animate={{ y: [0, 14, 0], x: [0, -8, 0] }}
+   890→            transition={{ duration: 10, repeat: Infinity, ease: "easeInOut" }}
+   891→          />
+   892→        </>
+   893→      )}
+   894→      {/* Top sheen */}
+   895→      <div className="absolute inset-x-0 top-0 z-0 h-px bg-gradient-to-r from-transparent via-white/40 to-transparent" />
+   896→
+   897→      {/* Content — relative z-10 so it sits above all background layers.
+   898→          The grid is single-column on mobile and 2-column on md+ for split
+   899→          layouts. For centered/full-bg, it stays single-column with the text
+   900→          constrained to max-w-3xl and centered. Horizontal padding keeps
+   901→          content from touching the rounded edges. */}
+   902→      <div className={`relative z-10 grid gap-8 px-5 sm:px-10 md:items-center ${gridCols} ${layout === "split-right" ? "md:[&>*:first-child]:order-2" : ""}`}>
+   903→        <div className={isTextCentered ? "mx-auto max-w-3xl text-center" : "max-w-2xl"}>
+   904→          {/* Open/closed pill */}
+   905→          <motion.div
+   906→            initial={anim ? { opacity: 0, y: 20 } : false}
+   907→            animate={{ opacity: 1, y: 0 }}
+   908→            transition={{ duration: 0.5, delay: 0.05 }}
+   909→            className={isTextCentered ? "flex justify-center" : ""}
+   910→          >
+   911→            <Badge className="mb-4 gap-1.5 border border-white/20 bg-white/15 px-3 py-1 text-xs font-medium text-white backdrop-blur-md hover:bg-white/15">
+   912→              <span className={`relative flex size-2 ${isStoreOpen ? "text-emerald-300" : "text-amber-300"}`}>
+   913→                <span className={`absolute inline-flex size-full animate-ping rounded-full opacity-75 ${isStoreOpen ? "bg-emerald-300" : "bg-amber-300"}`} />
+   914→                <span className={`relative inline-flex size-2 rounded-full ${isStoreOpen ? "bg-emerald-300" : "bg-amber-300"}`} />
+   915→              </span>
+   916→              {isStoreOpen ? "Open now" : "Closed"}
+   917→              {store?.openTime && store?.closeTime && (
+   918→                <span className="ml-1 opacity-90">· {store.openTime}–{store.closeTime} IST</span>
+   919→              )}
+   920→            </Badge>
+   921→          </motion.div>
+   922→
+   923→          {/* Promo badge */}
+   924→          {hero.promoBadgeEnabled && hero.promoBadgeText?.trim() && (
+   925→            <motion.div
+   926→              initial={anim ? { opacity: 0, y: 16 } : false}
+   927→              animate={{ opacity: 1, y: 0 }}
+   928→              transition={{ duration: 0.5, delay: 0.1 }}
+   929→              className={isTextCentered ? "mb-3 flex justify-center" : "mb-3"}
+   930→            >
+   931→              <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-400/90 px-3 py-1 text-xs font-bold text-amber-950 shadow-md backdrop-blur-sm">
+   932→                <Sparkles className="size-3.5" />
+   933→                {hero.promoBadgeText}
+   934→              </span>
+   935→            </motion.div>
+   936→          )}
+   937→
+   938→          {/* Heading + highlight — reduced sizes for concise hero */}
+   939→          <h1 className="text-2xl font-bold leading-[1.15] tracking-tight sm:text-3xl lg:text-4xl">
+   940→            <motion.span
+   941→              className="block"
+   942→              initial={anim ? { opacity: 0, y: 24 } : false}
+   943→              animate={{ opacity: 1, y: 0 }}
+   944→              transition={{ duration: 0.55, delay: 0.15 }}
+   945→            >
+   946→              {hero.heading || "Your trusted pharmacy,"}
+   947→            </motion.span>
+   948→            {hero.headingHighlight?.trim() && (
+   949→              <motion.span
+   950→                className="mt-1 block bg-gradient-to-r from-white via-emerald-50 to-emerald-100 bg-clip-text text-transparent"
+   951→                initial={anim ? { opacity: 0, y: 24 } : false}
+   952→                animate={{ opacity: 1, y: 0 }}
+   953→                transition={{ duration: 0.55, delay: 0.28 }}
+   954→              >
+   955→                {hero.headingHighlight}
+   956→              </motion.span>
+   957→            )}
+   958→          </h1>
+   959→
+   960→          {/* Subheading */}
+   961→          {hero.subheading?.trim() && (
+   962→            <motion.p
+   963→              className={`mt-2 text-sm font-semibold text-emerald-50 sm:text-base ${isTextCentered ? "mx-auto" : ""}`}
+   964→              initial={anim ? { opacity: 0, y: 20 } : false}
+   965→              animate={{ opacity: 1, y: 0 }}
+   966→              transition={{ duration: 0.5, delay: 0.35 }}
+   967→            >
+   968→              {hero.subheading}
+   969→            </motion.p>
+   970→          )}
+   971→
+   972→          {/* Description */}
+   973→          {hero.description?.trim() && (
+   974→            <motion.p
+   975→              className={`mt-4 max-w-lg text-sm leading-relaxed text-emerald-50/90 sm:text-base ${isTextCentered ? "mx-auto" : ""}`}
+   976→              initial={anim ? { opacity: 0, y: 20 } : false}
+   977→              animate={{ opacity: 1, y: 0 }}
+   978→              transition={{ duration: 0.5, delay: 0.4 }}
+   979→            >
+   980→              {hero.description}
+   981→            </motion.p>
+   982→          )}
+   983→
+   984→          {/* Search bar */}
+   985→          {hero.searchEnabled && (
+   986→            <motion.form
+   987→              onSubmit={onHeroSearch}
+   988→              className={`mt-6 flex max-w-lg gap-2 ${isTextCentered ? "mx-auto" : ""}`}
+   989→              initial={anim ? { opacity: 0, y: 20 } : false}
+   990→              animate={{ opacity: 1, y: 0 }}
+   991→              transition={{ duration: 0.5, delay: 0.5 }}
+   992→            >
+   993→              <div className="relative flex-1">
+   994→                <Search className="absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+   995→                <Input
+   996→                  placeholder={hero.searchPlaceholder || "Search medicines, brands..."}
+   997→                  value={heroQuery}
+   998→                  onChange={(e) => setHeroQuery(e.target.value)}
+   999→                  className="focus-premium h-12 border-0 bg-white pl-10 text-foreground shadow-premium-lg ring-1 ring-black/5 placeholder:text-muted-foreground/70"
+  1000→                />
+  1001→              </div>
+  1002→              <Button
+  1003→                type="submit"
+  1004→                size="lg"
+  1005→                className="btn-premium h-12 gap-1.5 bg-white px-5 text-emerald-700 shadow-premium-lg ring-1 ring-black/5 transition-all hover:-translate-y-0.5 hover:bg-emerald-50 sm:px-6"
+  1006→              >
+  1007→                <Search className="size-4" /> <span className="hidden sm:inline">Search</span>
+  1008→              </Button>
+  1009→            </motion.form>
+  1010→          )}
+  1011→
+  1012→          {/* Popular searches */}
+  1013→          {hero.searchEnabled && popularSearches.length > 0 && (
+  1014→            <motion.div
+  1015→              className={`mt-3 flex flex-wrap items-center gap-2 ${isTextCentered ? "justify-center" : ""}`}
+  1016→              initial={anim ? { opacity: 0 } : false}
+  1017→              animate={{ opacity: 1 }}
+  1018→              transition={{ duration: 0.5, delay: 0.6 }}
+  1019→            >
+  1020→              <span className="text-[11px] font-medium uppercase tracking-wide text-emerald-50/70">Popular:</span>
+  1021→              {popularSearches.map((term) => (
+  1022→                <button
+  1023→                  key={term}
+  1024→                  type="button"
+  1025→                  onClick={() => navigate({ name: "shop", query: term })}
+  1026→                  className="rounded-full border border-white/20 bg-white/10 px-2.5 py-0.5 text-[11px] font-medium text-white backdrop-blur-sm transition-all hover:-translate-y-0.5 hover:bg-white/20"
+  1027→                >
+  1028→                  {term}
+  1029→                </button>
+  1030→              ))}
+  1031→            </motion.div>
+  1032→          )}
+  1033→
+  1034→          {/* CTAs */}
+  1035→          {hero.ctaEnabled && (hero.primaryCtaText || hero.secondaryCtaText) && (
+  1036→            <motion.div
+  1037→              className={`mt-7 flex flex-wrap items-center gap-3 ${isTextCentered ? "justify-center" : ""}`}
+  1038→              initial={anim ? { opacity: 0, y: 20 } : false}
+  1039→              animate={{ opacity: 1, y: 0 }}
+  1040→              transition={{ duration: 0.5, delay: 0.68 }}
+  1041→            >
+  1042→              {hero.primaryCtaText?.trim() && (
+  1043→                <Button
+  1044→                  onClick={() => go(navigate, hero.primaryCtaUrl)}
+  1045→                  size="lg"
+  1046→                  className={
+  1047→                    hero.buttonStyle === "gradient"
+  1048→                      ? "gap-1.5 bg-gradient-to-r from-amber-400 to-orange-500 text-white shadow-xl transition-all hover:-translate-y-0.5"
+  1049→                      : hero.buttonStyle === "outline"
+  1050→                      ? "gap-1.5 border-white/50 bg-white/5 text-white backdrop-blur-sm transition-all hover:-translate-y-0.5 hover:bg-white/15"
+  1051→                      : "gap-1.5 bg-white text-emerald-700 shadow-xl shadow-emerald-900/20 transition-all hover:-translate-y-0.5 hover:bg-emerald-50"
+  1052→                  }
+  1053→                >
+  1054→                  <HeroIcon name={hero.primaryCtaIcon} className="size-4" />
+  1055→                  {hero.primaryCtaText}
+  1056→                </Button>
+  1057→              )}
+  1058→              {hero.secondaryCtaText?.trim() && (
+  1059→                <Button
+  1060→                  variant="outline"
+  1061→                  onClick={() => go(navigate, hero.secondaryCtaUrl)}
+  1062→                  size="lg"
+  1063→                  className="gap-1.5 border-white/40 bg-white/5 text-white backdrop-blur-sm transition-all hover:-translate-y-0.5 hover:border-white/60 hover:bg-white/15"
+  1064→                >
+  1065→                  <HeroIcon name={hero.secondaryCtaIcon} className="size-4" />
+  1066→                  {hero.secondaryCtaText}
+  1067→                </Button>
+  1068→              )}
+  1069→            </motion.div>
+  1070→          )}
+  1071→
+  1072→          {/* Offer badge + discount label */}
+  1073→          {hero.offerBadgeEnabled && hero.offerText?.trim() && (
+  1074→            <motion.div
+  1075→              className={`mt-5 ${isTextCentered ? "flex justify-center" : ""}`}
+  1076→              initial={anim ? { opacity: 0, y: 16 } : false}
+  1077→              animate={{ opacity: 1, y: 0 }}
+  1078→              transition={{ duration: 0.5, delay: 0.76 }}
+  1079→            >
+  1080→              <div className="inline-flex flex-wrap items-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 py-2 backdrop-blur-sm">
+  1081→                <Gift className="size-4 text-amber-300" />
+  1082→                <span className="text-sm font-semibold text-white">{hero.offerText}</span>
+  1083→                {hero.discountLabel?.trim() && (
+  1084→                  <span className="rounded-full bg-amber-400 px-2 py-0.5 text-[11px] font-bold text-amber-950">
+  1085→                    {hero.discountLabel}
+  1086→                  </span>
+  1087→                )}
+  1088→              </div>
+  1089→            </motion.div>
+  1090→          )}
+  1091→
+  1092→          {/* Delivery info */}
+  1093→          {hero.deliveryInfoEnabled && hero.deliveryInfoText?.trim() && (
+  1094→            <motion.div
+  1095→              className={`mt-4 flex items-center gap-2 text-xs text-emerald-50/90 sm:text-sm ${isTextCentered ? "justify-center" : ""}`}
+  1096→              initial={anim ? { opacity: 0 } : false}
+  1097→              animate={{ opacity: 1 }}
+  1098→              transition={{ duration: 0.5, delay: 0.82 }}
+  1099→            >
+
+[showing lines 400-1099 of 2126; use offset=1100 with limit to continue reading]

@@ -19,3 +19,4 @@ $ node scripts/with-env.mjs next dev --turbo -p 3000
  GET /api/push/vapid-public 200 in 21ms (next.js: 5ms, application-code: 16ms)
  GET / 200 in 75ms (next.js: 3ms, application-code: 73ms)
  GET / 200 in 72ms (next.js: 2ms, application-code: 69ms)
+prisma:error Error in PostgreSQL connection: Error { kind: Closed, cause: None }

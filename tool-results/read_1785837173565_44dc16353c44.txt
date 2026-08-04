@@ -1,0 +1,719 @@
+     1→// ============================================================================
+     2→// File: src/lib/ai-knowledge-layer.ts
+     3→// Purpose: Pharmacy-specific knowledge layer for the PMS Assistant. This module
+     4→//          is the "brain" of the assistant — it provides:
+     5→//
+     6→//            1. buildAssistantSystemPrompt()
+     7→//               A rich system prompt that teaches the LLM about pharmacy
+     8→//               practice: therapeutic categories, dosage forms, safety rules,
+     9→//               composition vs brand vs generic, when to escalate to a doctor,
+    10→//               and how to recommend PMS features (upload prescription, request
+    11→//               a medicine, health bundles).
+    12→//
+    13→//            2. SYMPTOM_TO_PRODUCT_MAP
+    14→//               Maps common symptoms (fever, cough, acidity, …) to the product
+    15→//               keywords / generic names that should be searched in the catalog
+    16→//               when the customer describes their symptoms instead of naming a
+    17→//               specific medicine. This is what makes "I have a fever" return
+    18→//               Paracetamol — instead of nothing.
+    19→//
+    20→//            3. expandQueryWithSymptoms()
+    21→//               If the user's message contains a symptom phrase, the search
+    22→//               query is enriched with the matching medicine keywords so the
+    23→//               catalog search is more likely to surface the right products.
+    24→//
+    25→//            4. CATEGORY_KEYWORDS
+    26→//               Maps category names (e.g. "Pain Relief") to a list of
+    27→//               keywords that customers might use to search for them. Used by
+    28→//               the assistant route to search the catalog by category name in
+    29→//               addition to product name / composition.
+    30→//
+    31→//            5. buildAlternativeContext()
+    32→//               A helper that turns a list of "alternative" products into a
+    33→//               plain-text explanation of WHY each one is a suitable
+    34→//               substitute, so the LLM can present them sensibly to the customer.
+    35→//
+    36→//            6. PHARMACY_FEATURE_CUES
+    37→//               Rules for guiding the customer toward PMS features based on
+    38→//               the assistant action (product found → suggest Related Products
+    39→//               and Frequently Bought Together; prescription required → suggest
+    40→//               Upload Prescription; product not found → suggest Medicine
+    41→//               Request; health query → suggest Medical Bundles).
+    42→//
+    43→// Role: Pure functions + constants — no DB access. Imported by the
+    44→//       /api/health-assistant route. Keeping the knowledge here (rather than
+    45→//       inline in the route) means the pharmacy owner can review and extend
+    46→//       the assistant's medical knowledge in one file.
+    47→// ============================================================================
+    48→
+    49→// ---------------------------------------------------------------------------
+    50→// 1. THERAPEUTIC CATEGORIES — common pharmacy categories and their uses.
+    51→//    Used inside the system prompt so the LLM can explain what a category is
+    52→//    for when the customer asks "what is an antacid?" or "what is metformin
+    53→//    used for?". This is general pharmacy knowledge, NOT medical advice.
+    54→// ---------------------------------------------------------------------------
+    55→
+    56→export interface TherapeuticCategory {
+    57→  /** The category name as used on the storefront (e.g. "Pain Relief"). */
+    58→  name: string;
+    59→  /** Generic / molecule names commonly found in this category. */
+    60→  genericExamples: string[];
+    61→  /** Plain-language description of what this category treats. */
+    62→  description: string;
+    63→  /** Whether most products in this category require a prescription. */
+    64→  usuallyRx: boolean;
+    65→}
+    66→
+    67→export const THERAPEUTIC_CATEGORIES: TherapeuticCategory[] = [
+    68→  {
+    69→    name: "Pain Relief (Analgesics)",
+    70→    genericExamples: ["paracetamol", "ibuprofen", "diclofenac", "aspirin", "naproxen", "mefenamic acid"],
+    71→    description:
+    72→      "Used to relieve mild to moderate pain (headache, body ache, joint pain, period pain) and reduce fever. Paracetamol is safest for most people; ibuprofen and diclofenac are stronger but can irritate the stomach.",
+    73→    usuallyRx: false,
+    74→  },
+    75→  {
+    76→    name: "Antibiotics",
+    77→    genericExamples: ["amoxicillin", "azithromycin", "cephalexin", "doxycycline", "ciprofloxacin", "metronidazole"],
+    78→    description:
+    79→      "Treat BACTERIAL infections (e.g. strep throat, UTI, bacterial pneumonia). They do NOT work against viral infections like the common cold or flu. ALWAYS require a prescription and the full course must be completed.",
+    80→    usuallyRx: true,
+    81→  },
+    82→  {
+    83→    name: "Antacids & Acid Reducers",
+    84→    genericExamples: ["ranitidine", "pantoprazole", "omeprazole", "esomeprazole", "aluminium hydroxide", "digene", "eno"],
+    85→    description:
+    86→      "Relieve acidity, heartburn, indigestion, and stomach ulcers. Antacids (Digene, Eno) work instantly; proton-pump inhibitors (pantoprazole, omeprazole) are taken before breakfast for longer-term relief.",
+    87→    usuallyRx: false,
+    88→  },
+    89→  {
+    90→    name: "Antihistamines / Allergy",
+    91→    genericExamples: ["cetirizine", "levocetirizine", "loratadine", "fexofenadine", "chlorpheniramine"],
+    92→    description:
+    93→      "Treat allergic symptoms — sneezing, runny nose, itchy eyes, rashes, mild hives. Some cause drowsiness (chlorpheniramine); newer ones (cetirizine, levocetirizine) are usually non-drowsy.",
+    94→    usuallyRx: false,
+    95→  },
+    96→  {
+    97→    name: "Cold & Cough",
+    98→    genericExamples: ["dextromethorphan", "ambroxol", "bromhexine", "guaifenesin", "pseudoephedrine", "chlorpheniramine"],
+    99→    description:
+   100→      "Relieve cough (dry or chesty), nasal congestion, and sore throat. Available as syrups, tablets, and lozenges. Most are OTC; combination syrups with codeine require a prescription.",
+   101→    usuallyRx: false,
+   102→  },
+   103→  {
+   104→    name: "Antipyretics",
+   105→    genericExamples: ["paracetamol", "nimesulide", "mefenamic acid"],
+   106→    description:
+   107→      "Reduce fever. Paracetamol is the first-line antipyretic and is safe for most adults and children when dosed by weight. Nimesulide is banned for children in many countries.",
+   108→    usuallyRx: false,
+   109→  },
+   110→  {
+   111→    name: "Diabetes (Antidiabetics)",
+   112→    genericExamples: ["metformin", "glimepiride", "gliclazide", "voglibose", "teneligliptin", "insulin"],
+   113→    description:
+   114→      "Manage blood sugar levels in type 2 and type 1 diabetes. Metformin is the first-line oral medicine; insulin is used for type 1 and advanced type 2. ALL require a prescription and ongoing doctor monitoring.",
+   115→    usuallyRx: true,
+   116→  },
+   117→  {
+   118→    name: "Cardiac & Blood Pressure",
+   119→    genericExamples: ["amlodipine", "atenolol", "metoprolol", "losartan", "telmisartan", "ramipril", "aspirin (low dose)"],
+   120→    description:
+   121→      "Treat high blood pressure, angina, heart failure, and prevent heart attacks/strokes. ALL require a prescription and should NEVER be stopped abruptly without consulting a doctor.",
+   122→    usuallyRx: true,
+   123→  },
+   124→  {
+   125→    name: "Vitamins & Supplements",
+   126→    genericExamples: ["vitamin c", "vitamin d3", "vitamin b12", "iron", "folic acid", "calcium", "multivitamin", "zinc"],
+   127→    description:
+   128→      "Prevent or correct nutritional deficiencies. Most are OTC. Beneficial in pregnancy (folic acid, iron), recovery from illness (vitamin C, zinc), and bone health (calcium + vitamin D3).",
+   129→    usuallyRx: false,
+   130→  },
+   131→  {
+   132→    name: "Antiseptics & Wound Care",
+   133→    genericExamples: ["dettol", "savlon", "povidone iodine", "hydrogen peroxide", "chlorhexidine", "bandage", "cotton", "gauze"],
+   134→    description:
+   135→      "Clean and protect cuts, scrapes, and minor wounds to prevent infection. Used together: antiseptic liquid + cotton + bandage. All OTC.",
+   136→    usuallyRx: false,
+   137→  },
+   138→  {
+   139→    name: "Gynecology & Women's Health",
+   140→    genericExamples: ["iron + folic acid", "calcium", "prenatal vitamins", "sanitary pad", "fluconazole"],
+   141→    description:
+   142→      "Prenatal supplements, hygiene products, and treatments for common women's health issues. Prenatal vitamins are OTC; antifungals for vaginal infections (fluconazole) need a prescription.",
+   143→    usuallyRx: false,
+   144→  },
+   145→  {
+   146→    name: "Eye & Ear Care",
+   147→    genericExamples: ["lubricant eye drops", "ciprofloxacin eye drops", "ofloxacin ear drops", "cotton bud", "wax solvent"],
+   148→    description:
+   149→      "Relieve dry eyes, eye infections, ear wax, and minor ear discomfort. Lubricant drops are OTC; antibiotic eye/ear drops require a prescription.",
+   150→    usuallyRx: false,
+   151→  },
+   152→  {
+   153→    name: "Dermatology / Skin",
+   154→    genericExamples: ["calamine", "antiseptic cream", "moisturizer", "sunscreen", "clotrimazole", "mometasone"],
+   155→    description:
+   156→      "Treat rashes, dry skin, fungal infections, acne, and minor burns. Calamine, moisturizers, and antiseptic creams are OTC; steroid creams (mometasone) and oral acne medicines require a prescription.",
+   157→    usuallyRx: false,
+   158→  },
+   159→  {
+   160→    name: "Pediatric (Children)",
+   161→    genericExamples: ["paracetamol syrup", "ibuprofen suspension", "ORS", "zinc sulfate", "vitamin drops"],
+   162→    description:
+   163→      "Specifically formulated for children — usually syrups or drops with kid-friendly dosing. Doses are calculated by body weight. NEVER give adult medicines to children. Consult a pediatrician for children under 2.",
+   164→    usuallyRx: false,
+   165→  },
+   166→  {
+   167→    name: "Gastrointestinal",
+   168→    genericExamples: ["ors", "loperamide", "ondansetron", "domperidone", "lactobacillus", "pudin hara"],
+   169→    description:
+   170→      "Treat diarrhea, vomiting, gas, and indigestion. ORS is critical in diarrhea to prevent dehydration. Anti-vomiting medicines (ondansetron, domperidone) require a prescription.",
+   171→    usuallyRx: false,
+   172→  },
+   173→];
+   174→
+   175→// ---------------------------------------------------------------------------
+   176→// 2. SYMPTOM → PRODUCT KEYWORDS MAP
+   177→//    When a customer describes symptoms ("I have a fever and body ache"),
+   178→//    the assistant looks up the symptom phrase and adds the matching medicine
+   179→//    keywords to the catalog search. This makes symptom-based queries actually
+   180→//    return useful products instead of empty results.
+   181→// ---------------------------------------------------------------------------
+   182→
+   183→export interface SymptomMapping {
+   184→  /** Symptom phrases that customers are likely to use (lowercase). */
+   185→  symptoms: string[];
+   186→  /** Product / generic keywords to search for when the symptom matches. */
+   187→  productKeywords: string[];
+   188→  /** Suggested pharmacy feature to nudge the customer toward. */
+   189→  suggestFeature?: "upload_prescription" | "medicine_request" | "health_bundle" | "consult_doctor";
+   190→  /** Whether a doctor consult is strongly recommended for this symptom. */
+   191→  recommendDoctor?: boolean;
+   192→}
+   193→
+   194→export const SYMPTOM_TO_PRODUCT_MAP: SymptomMapping[] = [
+   195→  {
+   196→    symptoms: ["fever", "high temperature", "temperature", "body is hot", "running fever"],
+   197→    productKeywords: ["paracetamol", "crocin", "dolo", "calpol", "thermometer", "cold compress"],
+   198→    suggestFeature: "health_bundle",
+   199→    recommendDoctor: true, // if fever lasts >3 days
+   200→  },
+   201→  {
+   202→    symptoms: ["cold", "runny nose", "blocked nose", "stuffy nose", "sneezing"],
+   203→    productKeywords: ["cetirizine", "levocetirizine", "cold", "nasal spray", "vapor rub", "steam inhaler", "tissue"],
+   204→    suggestFeature: "health_bundle",
+   205→  },
+   206→  {
+   207→    symptoms: ["cough", "dry cough", "wet cough", "chesty cough", "throat irritation"],
+   208→    productKeywords: ["cough syrup", "dextromethorphan", "ambroxol", "benadryl", "honitus", "lozenge"],
+   209→    suggestFeature: "health_bundle",
+   210→    recommendDoctor: true,
+   211→  },
+   212→  {
+   213→    symptoms: ["sore throat", "throat pain", "strep throat", "throat infection"],
+   214→    productKeywords: ["lozenge", "strepsils", "throat spray", "antiseptic gargle", "paracetamol"],
+   215→    suggestFeature: "consult_doctor",
+   216→  },
+   217→  {
+   218→    symptoms: ["headache", "head pain", "migraine"],
+   219→    productKeywords: ["paracetamol", "ibuprofen", "naproxen", "saridon", "disprin"],
+   220→    recommendDoctor: true, // if persistent
+   221→  },
+   222→  {
+   223→    symptoms: ["body pain", "muscle pain", "back pain", "joint pain", "knee pain", "shoulder pain"],
+   224→    productKeywords: ["ibuprofen", "diclofenac", "volini", "moov", "iodex", "pain relief", "crepe bandage"],
+   225→    suggestFeature: "health_bundle",
+   226→  },
+   227→  {
+   228→    symptoms: ["acidity", "heartburn", "gas", "indigestion", "bloating", "stomach burn"],
+   229→    productKeywords: ["antacid", "digene", "eno", "pantoprazole", "omeprazole", "pudin hara"],
+   230→  },
+   231→  {
+   232→    symptoms: ["diarrhea", "loose motion", "loose motions", "watery stool"],
+   233→    productKeywords: ["ors", "electral", "loperamide", "zinc", "probiotic"],
+   234→    recommendDoctor: true,
+   235→  },
+   236→  {
+   237→    symptoms: ["constipation", "hard stool", "no bowel movement"],
+   238→    productKeywords: ["laxative", "cremaffin", "lactulose", "ispaghula", "duphalac"],
+   239→    recommendDoctor: true,
+   240→  },
+   241→  {
+   242→    symptoms: ["vomiting", "nausea", "throwing up", "feeling sick"],
+   243→    productKeywords: ["ondansetron", "domperidone", "vomikind", "ors"],
+   244→    suggestFeature: "consult_doctor",
+   245→  },
+   246→  {
+   247→    symptoms: ["allergy", "allergic", "itching", "rash", "hives", "skin rash"],
+   248→    productKeywords: ["cetirizine", "levocetirizine", "calamine", "avil", "antihistamine"],
+   249→    recommendDoctor: true,
+   250→  },
+   251→  {
+   252→    symptoms: ["diabetes", "high sugar", "blood sugar", "sugar level"],
+   253→    productKeywords: ["metformin", "glimepiride", "glucometer", "test strip", "insulin"],
+   254→    suggestFeature: "upload_prescription",
+   255→    recommendDoctor: true,
+   256→  },
+   257→  {
+   258→    symptoms: ["blood pressure", "bp", "high bp", "low bp", "hypertension"],
+   259→    productKeywords: ["amlodipine", "losartan", "telmisartan", "atenolol", "bp monitor"],
+   260→    suggestFeature: "upload_prescription",
+   261→    recommendDoctor: true,
+   262→  },
+   263→  {
+   264→    symptoms: ["wound", "cut", "scrape", "burn", "injury", "bleeding"],
+   265→    productKeywords: ["dettol", "savlon", "antiseptic", "bandage", "cotton", "gauze", "burnol", "soframycin"],
+   266→    suggestFeature: "health_bundle",
+   267→  },
+   268→  {
+   269→    symptoms: ["eye", "dry eye", "eye infection", "red eye", "eye itching"],
+   270→    productKeywords: ["eye drops", "lubricant", "refresh tears", "itone", "cotton bud"],
+   271→    recommendDoctor: true,
+   272→  },
+   273→  {
+   274→    symptoms: ["ear", "ear pain", "ear wax", "ear discharge"],
+   275→    productKeywords: ["ear drop", "wax solvent", "cotton bud"],
+   276→    suggestFeature: "consult_doctor",
+   277→  },
+   278→  {
+   279→    symptoms: ["pregnancy", "pregnant", "expecting"],
+   280→    productKeywords: ["folic acid", "iron", "calcium", "prenatal vitamin"],
+   281→    suggestFeature: "consult_doctor",
+   282→    recommendDoctor: true,
+   283→  },
+   284→  {
+   285→    symptoms: ["baby", "infant", "newborn", "child"],
+   286→    productKeywords: ["baby", "diaper", "baby wipe", "baby lotion", "paracetamol syrup", "ors"],
+   287→    suggestFeature: "consult_doctor",
+   288→    recommendDoctor: true,
+   289→  },
+   290→  {
+   291→    symptoms: ["vomit", "stomach pain", "abdominal pain", "belly pain"],
+   292→    productKeywords: ["antacid", "paracetamol", "ORS", "buscopan"],
+   293→    recommendDoctor: true,
+   294→  },
+   295→  {
+   296→    symptoms: ["weakness", "tired", "fatigue", "low energy"],
+   297→    productKeywords: ["multivitamin", "vitamin b12", "iron", "vitamin c", "energy drink"],
+   298→  },
+   299→];
+   300→
+   301→// ---------------------------------------------------------------------------
+   302→// 3. CATEGORY KEYWORD MAP — maps a category NAME to the search keywords that
+   303→//    customers are likely to use when looking for products in that category.
+   304→//    Used by the assistant route to ALSO search by category name (e.g. a query
+   305→//    of "pain relief" should match products in the Pain Relief category).
+   306→// ---------------------------------------------------------------------------
+   307→
+   308→export const CATEGORY_KEYWORDS: Record<string, string[]> = {
+   309→  "pain relief": ["paracetamol", "ibuprofen", "diclofenac", "aspirin", "naproxen", "volini", "moov"],
+   310→  "antibiotics": ["amoxicillin", "azithromycin", "cephalexin", "doxycycline", "ciprofloxacin"],
+   311→  "antacids": ["digene", "eno", "pantoprazole", "omeprazole", "pudin hara", "ranitidine"],
+   312→  "cold and cough": ["cough syrup", "cetirizine", "levocetirizine", "benadryl", "vapor rub"],
+   313→  "vitamins": ["vitamin c", "vitamin d3", "vitamin b12", "multivitamin", "iron", "calcium", "folic acid"],
+   314→  "diabetes": ["metformin", "glimepiride", "glucometer", "test strip", "insulin"],
+   315→  "cardiac": ["amlodipine", "atenolol", "losartan", "telmisartan", "ramipril"],
+   316→  "first aid": ["dettol", "savlon", "bandage", "cotton", "gauze", "antiseptic"],
+   317→  "baby care": ["diaper", "baby wipe", "baby lotion", "baby shampoo", "baby powder"],
+   318→  "eye care": ["eye drops", "lubricant", "cotton bud"],
+   319→  "ear care": ["ear drop", "wax solvent", "cotton bud"],
+   320→  "skin care": ["moisturizer", "sunscreen", "calamine", "antiseptic cream"],
+   321→  "women": ["folic acid", "iron", "calcium", "sanitary pad"],
+   322→  "women's wellness": ["folic acid", "iron", "calcium", "sanitary pad"],
+   323→};
+   324→
+   325→// ---------------------------------------------------------------------------
+   326→// 4. PHARMACY FEATURE CUES — guide the customer toward the right PMS feature
+   327→//    based on what the assistant determined from their query.
+   328→// ---------------------------------------------------------------------------
+   329→
+   330→export type PharmacyFeature =
+   331→  | "upload_prescription"
+   332→  | "medicine_request"
+   333→  | "health_bundle"
+   334→  | "related_products"
+   335→  | "frequently_bought"
+   336→  | "consult_doctor"
+   337→  | "track_order"
+   338→  | "reorder";
+   339→
+   340→export interface PharmacyFeatureCue {
+   341→  feature: PharmacyFeature;
+   342→  /** Short label used in the response payload, for the frontend chips/CTAs. */
+   343→  label: string;
+   344→  /** One-line explanation the LLM can include in its reply. */
+   345→  hint: string;
+   346→}
+   347→
+   348→export const PHARMACY_FEATURE_CUES: Record<PharmacyFeature, PharmacyFeatureCue> = {
+   349→  upload_prescription: {
+   350→    feature: "upload_prescription",
+   351→    label: "Upload Prescription",
+   352→    hint: "You can upload your doctor's prescription from the 'Upload Prescription' page — our pharmacist verifies it within 30 minutes during store hours.",
+   353→  },
+   354→  medicine_request: {
+   355→    feature: "medicine_request",
+   356→    label: "Request a Medicine",
+   357→    hint: "If you can't find a medicine in our catalog, use the 'Request Medicines' page and our pharmacist will check availability and get back to you.",
+   358→  },
+   359→  health_bundle: {
+   360→    feature: "health_bundle",
+   361→    label: "View Health Bundles",
+   362→    hint: "We have curated health bundles (First Aid Kit, Diabetes Care, Cold & Flu Care, etc.) that may be relevant to your needs — check the 'Health Bundles' page.",
+   363→  },
+   364→  related_products: {
+   365→    feature: "related_products",
+   366→    label: "Related Products",
+   367→    hint: "On the product page you'll find a 'Related Products' section showing similar items from the same category.",
+   368→  },
+   369→  frequently_bought: {
+   370→    feature: "frequently_bought",
+   371→    label: "Frequently Bought Together",
+   372→    hint: "On the product page you'll find a 'Frequently Bought Together' section — medically relevant complementary items customers often buy with this product.",
+   373→  },
+   374→  consult_doctor: {
+   375→    feature: "consult_doctor",
+   376→    label: "Consult a Doctor",
+   377→    hint: "Please consult a qualified doctor before taking any prescription medicine, or if your symptoms persist beyond 3 days, worsen, or affect a child, elderly person, or pregnant woman.",
+   378→  },
+   379→  track_order: {
+   380→    feature: "track_order",
+   381→    label: "Track My Order",
+   382→    hint: "You can track your order in real time from 'My Orders' → 'Track Order'.",
+   383→  },
+   384→  reorder: {
+   385→    feature: "reorder",
+   386→    label: "Reorder Previous Medicines",
+   387→    hint: "Go to 'My Orders', find your previous order, and tap 'Reorder' to add all items to your cart again.",
+   388→  },
+   389→};
+   390→
+   391→// ---------------------------------------------------------------------------
+   392→// Helpers
+   393→// ---------------------------------------------------------------------------
+   394→
+   395→/**
+   396→ * Look at the user's message and return the symptom mapping(s) that match.
+   397→ * Returns [] if no symptom phrases are detected.
+   398→ *
+   399→ * Used by the assistant route to enrich the catalog search query.
+   400→ */
+   401→export function matchSymptoms(message: string): SymptomMapping[] {
+   402→  if (!message) return [];
+   403→  const lower = message.toLowerCase();
+   404→  const matched: SymptomMapping[] = [];
+   405→  for (const mapping of SYMPTOM_TO_PRODUCT_MAP) {
+   406→    if (mapping.symptoms.some((s) => lower.includes(s))) {
+   407→      matched.push(mapping);
+   408→    }
+   409→  }
+   410→  return matched;
+   411→}
+   412→
+   413→/**
+   414→ * Expand a user query with product keywords derived from any symptom phrases
+   415→ * it contains. Returns the original query if no symptoms match.
+   416→ *
+   417→ * Example:
+   418→ *   expandQueryWithSymptoms("I have fever and body pain")
+   419→ *   → "I have fever and body pain paracetamol crocin dolo calpol thermometer cold compress ibuprofen diclofenac volini moov iodex"
+   420→ */
+   421→export function expandQueryWithSymptoms(query: string): string {
+   422→  if (!query) return query;
+   423→  const matches = matchSymptoms(query);
+   424→  if (matches.length === 0) return query;
+   425→  const extraKeywords = new Set<string>();
+   426→  for (const m of matches) {
+   427→    for (const kw of m.productKeywords) extraKeywords.add(kw);
+   428→  }
+   429→  if (extraKeywords.size === 0) return query;
+   430→  return `${query} ${Array.from(extraKeywords).join(" ")}`;
+   431→}
+   432→
+   433→/**
+   434→ * Given a user query, return the matching category names (if any). Used to
+   435→ * ALSO search the catalog by category name (e.g. "pain relief" matches the
+   436→ * Pain Relief category even if no product name contains that phrase).
+   437→ */
+   438→export function matchCategoryKeywords(query: string): string[] {
+   439→  if (!query) return [];
+   440→  const lower = query.toLowerCase();
+   441→  const matched: string[] = [];
+   442→  for (const [categoryName, keywords] of Object.entries(CATEGORY_KEYWORDS)) {
+   443→    if (lower.includes(categoryName) || keywords.some((kw) => lower.includes(kw))) {
+   444→      matched.push(categoryName);
+   445→    }
+   446→  }
+   447→  return matched;
+   448→}
+   449→
+   450→// ---------------------------------------------------------------------------
+   451→// 5. buildAssistantSystemPrompt
+   452→// ---------------------------------------------------------------------------
+   453→
+   454→/**
+   455→ * Build the system prompt for the PMS Assistant LLM call.
+   456→ *
+   457→ * This prompt encodes:
+   458→ *   - The assistant's role and identity
+   459→ *   - Store details (location, hours, delivery, payment)
+   460→ *   - Response priority (catalog first, alternatives second, request third)
+   461→ *   - Medical disclaimer + escalation rules
+   462→ *   - Therapeutic category knowledge
+   463→ *   - Dosage form explanations
+   464→ *   - Safety rules (don't share prescriptions, complete antibiotic courses,
+   465→ *     never self-medicate antibiotics, never recommend doses for Rx medicines)
+   466→ *   - Composition / generic / brand awareness
+   467→ *   - PMS feature guidance (when to nudge which feature)
+   468→ *
+   469→ * The product context (catalog matches) and any feature cues are appended at
+   470→ * call-time by the route handler, NOT here.
+   471→ */
+   472→export function buildAssistantSystemPrompt(): string {
+   473→  const therapeuticList = THERAPEUTIC_CATEGORIES.map(
+   474→    (c) =>
+   475→      `  • ${c.name}${c.usuallyRx ? " [Rx required]" : " [OTC]"} — ${c.description} Common generics: ${c.genericExamples.join(", ")}.`
+   476→  ).join("\n");
+   477→
+   478→  return `You are the PMS Assistant for Pradeep Medical Store, an online pharmacy in Mathura, India.
+   479→
+   480→# Your Role
+   481→You are a genuine pharmacy ASSISTANT — not a generic chatbot. You help customers:
+   482→- Find the right product from our catalog (provided in the context below)
+   483→- Understand basic pharmacy concepts (OTC vs Rx, generics, dosage forms, storage, side effects)
+   484→- Navigate the store's features (upload prescription, track order, request a medicine, health bundles)
+   485→- Know when to STOP and recommend consulting a qualified doctor
+   486→
+   487→# Store Details
+   488→- Name: Pradeep Medical Store
+   489→- Location: Main Market, Mathura, Uttar Pradesh 281001
+   490→- Hours: 8:00 AM – 10:00 PM IST (online orders 24/7, Rx verification during store hours only)
+   491→- Delivery: Same-day in Mathura (free above ₹499; ₹40 otherwise); 2–3 business days nationwide
+   492→- Phone/WhatsApp: +91 99999 99999
+   493→- Features: Online ordering, prescription upload + verification, order tracking, cash on delivery, generic substitutes, curated medical bundles, loyalty points (1 pt = ₹1)
+   494→
+   495→# Response Priority (when a customer asks about a product or medicine)
+   496→1. ALWAYS prioritize recommending products from our catalog (provided in the context below). Reference them by name and price.
+   497→2. If the exact product is OUT OF STOCK in the context, suggest the alternatives provided (same generic name OR same category). Explain WHY the alternative is suitable (same active ingredient, similar therapeutic effect).
+   498→3. If the exact product is NOT FOUND in our catalog, advise the customer to use the "Request a Medicine" form. Do NOT invent products.
+   499→4. For health/symptom queries, suggest relevant products AND mention if a curated Health Bundle exists.
+   500→5. For prescription medicines, ALWAYS remind the customer to upload a valid prescription.
+   501→
+   502→# Pharmacy Knowledge — Therapeutic Categories
+   503→${therapeuticList}
+   504→
+   505→# Pharmacy Knowledge — Dosage Forms
+   506→- Tablets/capsules: swallowed whole; for systemic effects when the patient can swallow.
+   507→- Syrups/suspensions: measured with a dosing cup or oral syringe; ideal for children and the elderly. Always shake suspensions before use.
+   508→- Injections: administered by a qualified nurse or doctor; used when the medicine would be destroyed by the stomach (e.g. insulin) or when rapid action is needed.
+   509→- Creams/ointments/gels: applied on the skin for local effect (rashes, joint pain, wounds).
+   510→- Drops: eye drops, ear drops, nasal drops — applied directly at the affected site.
+   511→- Inhalers: deliver medicine directly to the lungs for asthma and other respiratory conditions.
+   512→- Lozenges: dissolved slowly in the mouth for sore throat or cough.
+   513→
+   514→# Pharmacy Knowledge — Composition / Generic / Brand
+   515→- "Composition" is the active ingredient (molecule) in a medicine, e.g. "Paracetamol 500 mg".
+   516→- "Generic name" is the same as the composition name (e.g. "Paracetamol").
+   517→- "Brand name" is the manufacturer's trade name (e.g. "Crocin", "Dolo", "Calpol" — all are Paracetamol).
+   518→- Generic equivalents have the SAME composition, strength, and quality as branded medicines but cost 40–80% less. They are equally safe and effective.
+   519→
+   520→# Critical Safety Rules (NEVER break these)
+   521→1. You are NOT a licensed pharmacist or doctor. You cannot diagnose, prescribe, or recommend specific dosages for prescription medicines.
+   522→2. NEVER recommend a specific dosage for a prescription medicine. Always defer to the customer's doctor.
+   523→3. NEVER recommend self-medicating with antibiotics. Antibiotics require a prescription and a full course must be completed.
+   524→4. NEVER recommend sharing prescription medicines or using someone else's prescription.
+   525→5. ALWAYS recommend consulting a qualified doctor for: persistent symptoms (>3 days), high fever (>102 °F), children under 2, elderly patients, pregnant or breastfeeding women, chronic conditions (diabetes, BP, cardiac, kidney/liver disease), severe pain, or any worsening symptoms.
+   526→6. For EMERGENCIES (chest pain, difficulty breathing, severe bleeding, collapse, seizure, stroke symptoms, poisoning), tell the customer to call 112 (India's emergency number) immediately or go to the nearest hospital. Do NOT try to handle emergencies via chat.
+   527→7. For prescription medicines, always remind the customer that a valid prescription is required by Indian law.
+   528→
+   529→# PMS Feature Guidance (nudge the customer toward the right feature)
+   530→- If a product is found → mention "Related Products" and "Frequently Bought Together" sections on the product page.
+   531→- If a product is prescription-required → remind the customer to upload a prescription (Upload Prescription page).
+   532→- If a product is OUT OF STOCK or NOT FOUND → suggest the "Request a Medicine" form.
+   533→- For symptom / health queries → mention relevant Health Bundles (First Aid Kit, Cold & Flu Care, Diabetes Care, etc.) if applicable.
+   534→- For reorder / refill queries → mention the "Reorder" button in My Orders and Refill Reminders in the account.
+   535→- For order-tracking queries → mention "Track Order" in My Orders.
+   536→
+   537→# Response Style Guidelines
+   538→- Keep responses concise (2–4 short sentences max). Use bullet points when listing options or steps.
+   539→- Use simple, friendly, professional language. Avoid medical jargon when a plain word works ("fever reducer" instead of "antipyretic" if helpful).
+   540→- Use ₹ symbol for prices (e.g., ₹499). Round to whole rupees.
+   541→- Always include a brief medical disclaimer when the query is health-related: "This is general information — please consult a doctor for diagnosis and prescription."
+   542→- If product context is provided below, reference the matching products by name and price in your reply.
+   543→- Do NOT mention products that aren't in the provided catalog context.
+   544→- Do NOT make up medicines, prices, or medical advice.
+   545→- If you are unsure about a medical question, say so and recommend consulting a doctor.`;
+   546→}
+   547→
+   548→// ---------------------------------------------------------------------------
+   549→// 6. buildAlternativeContext — explain WHY alternatives were suggested
+   550→// ---------------------------------------------------------------------------
+   551→
+   552→export interface AlternativeProduct {
+   553→  id: string;
+   554→  name: string;
+   555→  genericName: string | null;
+   556→  composition: string | null;
+   557→  manufacturer: string | null;
+   558→  brandName: string | null;
+   559→  sellingPrice: number;
+   560→  prescriptionRequired: boolean;
+   561→  stock: number;
+   562→}
+   563→
+   564→// ---------------------------------------------------------------------------
+   565→// 6.5 BRAND → GENERIC MAP — common Indian / international brand names mapped
+   566→//     to their generic (active ingredient) equivalents. Used by the assistant
+   567→//     route as a fallback when a customer asks for a brand we don't carry
+   568→//     (e.g. "Tylenol") so we can still suggest the generic equivalent from
+   569→//     our catalog. Extend this map freely — no code changes needed elsewhere.
+   570→// ---------------------------------------------------------------------------
+   571→
+   572→export const BRAND_TO_GENERIC: Record<string, string[]> = {
+   573→  // Pain & fever
+   574→  tylenol: ["paracetamol", "acetaminophen"],
+   575→  crocin: ["paracetamol"],
+   576→  dolo: ["paracetamol"],
+   577→  calpol: ["paracetamol"],
+   578→  disprin: ["aspirin"],
+   579→  saridon: ["paracetamol", "propyphenazone", "caffeine"],
+   580→  combiflam: ["ibuprofen", "paracetamol"],
+   581→  brufen: ["ibuprofen"],
+   582→  volini: ["diclofenac", "menthol", "methyl salicylate"],
+   583→  moov: ["diclofenac", "menthol", "methyl salicylate"],
+   584→  iodex: ["menthol", "methyl salicylate"],
+   585→  voveran: ["diclofenac"],
+   586→
+   587→  // Antibiotics
+   588→  augmentin: ["amoxicillin", "clavulanic acid"],
+   589→  amoxil: ["amoxicillin"],
+   590→  zithromax: ["azithromycin"],
+   591→  azithral: ["azithromycin"],
+   592→
+   593→  // Antacids
+   594→  digene: ["aluminium hydroxide", "magnesium hydroxide"],
+   595→  eno: ["sodium bicarbonate", "citric acid"],
+   596→  pan: ["pantoprazole"],
+   597→  zentel: ["albendazole"],
+   598→
+   599→  // Cold / cough / allergy
+   600→  benadryl: ["diphenhydramine"],
+   601→  cetzine: ["cetirizine"],
+   602→  xyzal: ["levocetirizine"],
+   603→  allegra: ["fexofenadine"],
+   604→  alex: ["diphenhydramine", "ammonium chloride"],
+   605→  ascoryl: ["terbutaline", "bromhexine", "guaienesin"],
+   606→  honitus: ["dextromethorphan"],
+   607→
+   608→  // Diabetes
+   609→  glucophage: ["metformin"],
+   610→  glycomet: ["metformin"],
+   611→
+   612→  // Cardiac / BP
+   613→  tenormin: ["atenolol"],
+   614→  amlopress: ["amlodipine"],
+   615→  losacar: ["losartan"],
+   616→
+   617→  // Vitamins
+   618→  zincovit: ["multivitamin", "zinc"],
+   619→  neurobion: ["vitamin b12", "vitamin b1", "vitamin b6"],
+   620→
+   621→  // Eye / ear
+   622→  refresh: ["lubricant"],
+   623→  itone: ["lubricant"],
+   624→
+   625→  // Skin
+   626→  betadine: ["povidone iodine"],
+   627→  soframycin: ["framycetin"],
+   628→
+   629→  // Antiseptics
+   630→  dettol: ["chloroxylenol"],
+   631→  savlon: ["chlorhexidine", "cetrimide"],
+   632→
+   633→  // Women's health
+   634→  folvite: ["folic acid"],
+   635→};
+   636→
+   637→/**
+   638→ * Look up the user's query against the BRAND_TO_GENERIC map and return any
+   639→ * matching generic names. Used as a fallback when no exact catalog match is
+   640→ * found, so we can still suggest the generic equivalent.
+   641→ */
+   642→export function lookupBrandToGeneric(query: string): string[] {
+   643→  if (!query) return [];
+   644→  const lower = query.toLowerCase();
+   645→  const out: string[] = [];
+   646→  const tokens = lower.split(/[^a-z0-9]+/g).filter((t) => t.length > 1);
+   647→  for (const [brand, generics] of Object.entries(BRAND_TO_GENERIC)) {
+   648→    // Match the brand as a whole token (not a substring — so "Dolo" doesn't
+   649→    // match "Dolomite" etc.).
+   650→    if (tokens.includes(brand)) {
+   651→      for (const g of generics) if (!out.includes(g)) out.push(g);
+   652→    }
+   653→  }
+   654→  return out;
+   655→}
+   656→
+   657→/**
+   658→ * Build a plain-text explanation of WHY each alternative was suggested.
+   659→ * The LLM uses this to make the recommendation sound sensible to the customer
+   660→ * ("Same active ingredient as X, but at a lower price" / "Same category — both
+   661→ * treat fever and body ache").
+   662→ */
+   663→export function buildAlternativeContext(
+   664→  alternatives: AlternativeProduct[],
+   665→  context: { genericName?: string | null; categoryId?: string | null; categoryName?: string | null }
+   666→): string {
+   667→  if (alternatives.length === 0) return "";
+   668→  const lines = alternatives.map((p, i) => {
+   669→    const reasons: string[] = [];
+   670→    if (context.genericName && p.genericName && p.genericName.toLowerCase() === context.genericName.toLowerCase()) {
+   671→      reasons.push(`Same active ingredient (${p.genericName})`);
+   672→    } else if (p.genericName) {
+   673→      reasons.push(`Active ingredient: ${p.genericName}`);
+   674→    }
+   675→    if (context.categoryName) {
+   676→      reasons.push(`Same category (${context.categoryName})`);
+   677→    }
+   678→    if (p.brandName) reasons.push(`Brand: ${p.brandName}`);
+   679→    reasons.push(`₹${p.sellingPrice}`);
+   680→    if (p.prescriptionRequired) reasons.push("Rx required");
+   681→    if (p.stock <= 0) reasons.push("out of stock");
+   682→    return `${i + 1}. ${p.name} — ${reasons.join(", ")}`;
+   683→  });
+   684→  return `\n\nSuggested alternatives (reference these by name and price):\n${lines.join("\n")}\n\nExplain briefly WHY each alternative is suitable (same active ingredient / same therapeutic category). Always remind the customer to consult a doctor or pharmacist before switching medicines.`;
+   685→}
+   686→
+   687→/**
+   688→ * Decide which pharmacy feature cues to include in the response, based on the
+   689→ * assistant's action and whether the matched products are Rx / out of stock.
+   690→ */
+   691→export function pickFeatureCues(
+   692→  action: "product_results" | "medicine_request" | "bundle_results" | "faq_answer" | "general_info",
+   693→  context: {
+   694→    hasProducts: boolean;
+   695→    hasRxProduct: boolean;
+   696→    hasOutOfStock: boolean;
+   697→    hasSymptoms: boolean;
+   698→    isHealthQuery: boolean;
+   699→  }
+   700→): PharmacyFeature[] {
+   701→  const cues: PharmacyFeature[] = [];
+   702→  if (action === "product_results" && context.hasProducts) {
+   703→    cues.push("related_products", "frequently_bought");
+   704→    if (context.hasRxProduct) cues.push("upload_prescription");
+   705→    if (context.hasOutOfStock) cues.push("medicine_request");
+   706→  } else if (action === "medicine_request") {
+   707→    cues.push("medicine_request");
+   708→    if (context.hasRxProduct) cues.push("upload_prescription");
+   709→  } else if (action === "bundle_results") {
+   710→    cues.push("health_bundle");
+   711→  } else if (action === "general_info") {
+   712→    if (context.hasSymptoms || context.isHealthQuery) {
+   713→      cues.push("consult_doctor");
+   714→      if (context.hasSymptoms) cues.push("health_bundle");
+   715→    }
+   716→  }
+   717→  return cues;
+   718→}
+   719→

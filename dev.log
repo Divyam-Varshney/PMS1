@@ -228,3 +228,12 @@ prisma:error Error in PostgreSQL connection: Error { kind: Closed, cause: None }
  GET / 200 in 67ms (next.js: 2ms, application-code: 65ms)
  GET / 200 in 66ms (next.js: 3ms, application-code: 64ms)
  GET / 200 in 71ms (next.js: 3ms, application-code: 69ms)
+ GET / 200 in 70ms (next.js: 3ms, application-code: 68ms)
+prisma:error Error in PostgreSQL connection: Error { kind: Closed, cause: None }
+prisma:error Error in PostgreSQL connection: Error { kind: Closed, cause: None }
+prisma:error Error in PostgreSQL connection: Error { kind: Closed, cause: None }
+prisma:error Error in PostgreSQL connection: Error { kind: Closed, cause: None }
+prisma:error Error in PostgreSQL connection: Error { kind: Closed, cause: None }
+prisma:error Error in PostgreSQL connection: Error { kind: Closed, cause: None }
+prisma:error Error in PostgreSQL connection: Error { kind: Closed, cause: None }
+prisma:error Error in PostgreSQL connection: Error { kind: Closed, cause: None }

@@ -57,6 +57,13 @@ export function NotificationPermissionView() {
     }
     setBusy(true);
     try {
+      // 0. Pre-check: if permission is already denied (Brave Shields, browser settings)
+      if (Notification.permission === "denied") {
+        setIsOn(false);
+        toast.error("Notifications are blocked. Enable them in your browser settings → Site permissions → Notifications.");
+        return;
+      }
+
       // 1. Request permission
       if (Notification.permission !== "granted") {
         const perm = await Notification.requestPermission();
@@ -67,20 +74,42 @@ export function NotificationPermissionView() {
         }
       }
 
-      // 2. Ensure SW active
-      let reg: ServiceWorkerRegistration | null = null;
-      if (typeof window.__ensurePushReady === "function") {
-        reg = await window.__ensurePushReady();
-      } else {
-        reg = await navigator.serviceWorker.ready;
+      // 2. Ensure SW is registered and ACTIVE (not just installed)
+      // Register the SW first if it's not already registered.
+      if ("serviceWorker" in navigator) {
+        try {
+          await navigator.serviceWorker.register("/sw.js", { scope: "/" });
+        } catch (e) {
+          console.error("[notif] SW registration failed:", e);
+        }
       }
-      if (!reg) throw new Error("Service Worker not active");
 
-      // 3. Get VAPID key + subscribe
+      let reg: ServiceWorkerRegistration | null = null;
+      // Wait for the SW to be active with a 15s timeout
+      reg = await Promise.race([
+        navigator.serviceWorker.ready,
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 15000)),
+      ]);
+      if (!reg) {
+        throw new Error("Service Worker did not activate within 15 seconds. Please refresh the page and try again.");
+      }
+      // Verify the SW is actually active
+      if (!reg.active) {
+        // Wait a bit more for activation
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        reg = await navigator.serviceWorker.ready;
+        if (!reg?.active) {
+          throw new Error("Service Worker is not active yet. Please refresh the page and try again.");
+        }
+      }
+
+      // 3. Get VAPID key
       const vapidRes = await fetch("/api/push/vapid-public");
+      if (!vapidRes.ok) throw new Error("Push not configured on server");
       const vapidJson = await vapidRes.json();
-      if (!vapidJson.data?.publicKey) throw new Error("Push not configured");
+      if (!vapidJson.data?.publicKey) throw new Error("VAPID key missing");
 
+      // 4. Subscribe (or reuse existing subscription)
       let subscription = await reg.pushManager.getSubscription();
       if (!subscription) {
         subscription = await reg.pushManager.subscribe({
@@ -89,10 +118,10 @@ export function NotificationPermissionView() {
         });
       }
 
-      // 4. POST to backend
+      // 5. POST subscription to backend
       const info = getDeviceInfo();
       const sub = subscription.toJSON();
-      await fetch("/api/push/subscribe", {
+      const subscribeRes = await fetch("/api/push/subscribe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -101,9 +130,10 @@ export function NotificationPermissionView() {
           userAgent: info.userAgent.slice(0, 500),
         }),
       });
+      if (!subscribeRes.ok) throw new Error("Failed to save subscription on server");
 
-      // 5. Register device
-      await fetch("/api/device-registrations/register", {
+      // 6. Register device + send welcome push
+      const registerRes = await fetch("/api/device-registrations/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -115,13 +145,25 @@ export function NotificationPermissionView() {
           pushEndpoint: sub.endpoint,
         }),
       });
+      if (!registerRes.ok) throw new Error("Failed to register device");
 
       setIsOn(true);
       qc.invalidateQueries({ queryKey: ["customer", "app-notif-prefs"] });
       toast.success("Notifications enabled!");
     } catch (e: any) {
+      console.error("[notif] subscribe failed:", e);
       setIsOn(false);
-      toast.error("Could not enable notifications. Try again later.");
+      // Show a more helpful error message based on the failure
+      const msg = e?.message || "";
+      if (msg.includes("Service Worker")) {
+        toast.error("Service Worker is not ready. Please refresh the page and try again.");
+      } else if (msg.includes("denied") || msg.includes("blocked")) {
+        toast.error("Notifications are blocked. Enable them in your browser settings.");
+      } else if (msg.includes("VAPID") || msg.includes("Push not configured")) {
+        toast.error("Push notifications are not configured on the server.");
+      } else {
+        toast.error("Could not enable notifications. Please refresh the page and try again.");
+      }
     } finally {
       setBusy(false);
     }

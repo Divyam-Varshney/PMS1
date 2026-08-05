@@ -46,3 +46,6 @@ agent-ctx/
 # Dev logs + temp files
 dev.log
 tool-results/
+
+# Z.AI platform skills (not part of PMS project)
+skills/

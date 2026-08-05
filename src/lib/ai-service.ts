@@ -240,14 +240,56 @@ async function zaiChat(
   messages: ChatMessage[],
   options: { temperature?: number; max_tokens?: number }
 ): Promise<ChatResult> {
-  // Use our production-safe config loader (env vars → file → database).
-  const zai = await getZaiInstance();
-  const response = await zai.chat.completions.create({
-    messages,
-    temperature: options.temperature ?? 0.7,
-    max_tokens: options.max_tokens ?? 1000,
-  });
-  return { content: response.choices[0]?.message?.content || "" };
+  // Try the Z.AI SDK first. If it fails (e.g. on Vercel where the SDK's
+  // file-based config loading can throw), fall back to a direct fetch() call
+  // using the same config. This makes AI work reliably in production.
+  try {
+    const zai = await getZaiInstance();
+    const response = await zai.chat.completions.create({
+      messages,
+      temperature: options.temperature ?? 0.7,
+      max_tokens: options.max_tokens ?? 1000,
+    });
+    return { content: response.choices[0]?.message?.content || "" };
+  } catch (sdkError: any) {
+    console.error("[ai-service] ZAI SDK failed, falling back to direct fetch:", sdkError?.message);
+    
+    // Fall back to direct fetch — bypasses the SDK entirely.
+    // Uses the same config (baseUrl, apiKey, token, chatId, userId) but
+    // constructs the HTTP request manually. This is production-safe.
+    const { config } = await loadZaiConfig();
+    if (!config) throw new Error("Z.AI config not available for fallback");
+    
+    const url = `${config.baseUrl}/chat/completions`;
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${config.apiKey}`,
+      "X-Z-AI-From": "Z",
+    };
+    if (config.chatId) headers["X-Chat-Id"] = config.chatId;
+    if (config.userId) headers["X-User-Id"] = config.userId;
+    if (config.token) headers["X-Token"] = config.token;
+    
+    const res = await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        messages,
+        temperature: options.temperature ?? 0.7,
+        max_tokens: options.max_tokens ?? 1000,
+        thinking: { type: "disabled" },
+      }),
+      signal: AbortSignal.timeout(30_000),
+    });
+    
+    if (!res.ok) {
+      const errText = await res.text().catch(() => "unknown error");
+      throw new Error(`Z.AI API error (${res.status}): ${errText.slice(0, 200)}`);
+    }
+    
+    const data = await res.json();
+    return { content: data.choices?.[0]?.message?.content || "" };
+  }
 }
 
 // --- OpenAI-compatible API (OpenAI, Groq, DeepSeek, etc.) ---

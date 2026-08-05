@@ -43,59 +43,52 @@ export async function POST(req: Request) {
   const title = body.title.trim();
 
   try {
-    // ── Step 1: Web search on trusted pharmacy sources (Z.AI SDK only) ──
-    // The web_search function is Z.AI-specific. If the provider is not Z.AI,
-    // skip web search and rely on the AI model's knowledge instead.
-    let searchContext = "";
-    let relevantResults: any[] = [];
+    // ── Step 1: Web search on trusted pharmacy sources ──
+    // Search for the product on Indian pharmacy sites to get REAL data.
+    // We search with the product title + "site:1mg.com OR apollopharmacy OR pharmeasy"
+    // to bias results toward pharmacy sources.
+    // Use our production-safe ZAI config loader (env vars → file → database).
+    const { getZaiInstance } = await import("@/lib/ai-service");
+    const zai = await getZaiInstance();
 
-    try {
-      const { getZaiInstance } = await import("@/lib/ai-service");
-      const zai = await getZaiInstance();
+    // Search 1: General pharmacy search (broad)
+    const searchQuery1 = `${title} medicine India pharmacy 1mg apollo pharmeasy`;
+    const searchResults1 = await zai.functions.invoke("web_search", {
+      query: searchQuery1,
+      num: 10,
+    });
 
-      // Search 1: General pharmacy search (broad)
-      const searchQuery1 = `${title} medicine India pharmacy 1mg apollo pharmeasy`;
-      const searchResults1 = await zai.functions.invoke("web_search", {
-        query: searchQuery1,
-        num: 10,
-      });
+    // Search 2: Price-specific search
+    const searchQuery2 = `${title} price MRP India buy online`;
+    const searchResults2 = await zai.functions.invoke("web_search", {
+      query: searchQuery2,
+      num: 5,
+    });
 
-      // Search 2: Price-specific search
-      const searchQuery2 = `${title} price MRP India buy online`;
-      const searchResults2 = await zai.functions.invoke("web_search", {
-        query: searchQuery2,
-        num: 5,
-      });
+    // Combine and deduplicate search results
+    const allResults = [
+      ...(Array.isArray(searchResults1) ? searchResults1 : []),
+      ...(Array.isArray(searchResults2) ? searchResults2 : []),
+    ];
 
-      // Combine and deduplicate search results
-      const allResults = [
-        ...(Array.isArray(searchResults1) ? searchResults1 : []),
-        ...(Array.isArray(searchResults2) ? searchResults2 : []),
-      ];
+    // Filter to pharmacy-relevant sources
+    const pharmacySources = ["1mg.com", "apollopharmacy", "pharmeasy", "netmeds", "amazon", "practo", "medplus"];
+    const pharmacyResults = allResults.filter((r: any) => {
+      const host = (r.host_name || "").toLowerCase();
+      return pharmacySources.some((src) => host.includes(src));
+    });
 
-      // Filter to pharmacy-relevant sources
-      const pharmacySources = ["1mg.com", "apollopharmacy", "pharmeasy", "netmeds", "amazon", "practo", "medplus"];
-      const pharmacyResults = allResults.filter((r: any) => {
-        const host = (r.host_name || "").toLowerCase();
-        return pharmacySources.some((src) => host.includes(src));
-      });
+    // Use pharmacy results if found, otherwise use all results
+    const relevantResults = pharmacyResults.length > 0 ? pharmacyResults : allResults.slice(0, 8);
 
-      // Use pharmacy results if found, otherwise use all results
-      relevantResults = pharmacyResults.length > 0 ? pharmacyResults : allResults.slice(0, 8);
-
-      // Format search context for the AI
-      searchContext = relevantResults
-        .map((r: any, i: number) => {
-          return `[${i + 1}] Source: ${r.host_name}
+    // Format search context for the AI
+    const searchContext = relevantResults
+      .map((r: any, i: number) => {
+        return `[${i + 1}] Source: ${r.host_name}
 Title: ${r.name}
 Details: ${r.snippet}`;
-        })
-        .join("\n\n");
-    } catch (searchError: any) {
-      // Web search is Z.AI-only. If it fails (e.g. using Groq/Gemini/OpenAI),
-      // continue without search context — the AI will use its own knowledge.
-      console.log("[ai/generate-product] Web search skipped (provider doesn't support it):", searchError?.message?.slice(0, 100));
-    }
+      })
+      .join("\n\n");
 
     // ── Step 2: Fetch existing brands + categories for matching ──
     const [brands, categories] = await Promise.all([
@@ -245,7 +238,7 @@ Based on the web search results above AND the field definitions AND the content 
         },
         { role: "user", content: prompt },
       ],
-      { temperature: 0.2, max_tokens: 2000 }
+      { temperature: 0.2, max_tokens: 3500 }
     );
 
     const content = result.content?.trim() || "";

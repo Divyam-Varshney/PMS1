@@ -396,18 +396,7 @@ async function openaiCompatibleChat(
 
   if (!res.ok) {
     const errText = await res.text().catch(() => "unknown error");
-    // Provide helpful error messages for common HTTP status codes
-    let helpfulMsg = `AI API error (${res.status}): ${errText.slice(0, 200)}`;
-    if (res.status === 401 || res.status === 403) {
-      helpfulMsg = `AI provider authentication failed (${res.status}). Your API key may be invalid or expired. Please check your API key in Admin → Settings → AI Integration. Error: ${errText.slice(0, 100)}`;
-    } else if (res.status === 429) {
-      helpfulMsg = `AI provider rate limit exceeded (429). Please wait a moment and try again. Error: ${errText.slice(0, 100)}`;
-    } else if (res.status === 404) {
-      helpfulMsg = `AI model not found (404). The selected model may not be available for this provider. Please select a different model in Admin → Settings → AI Integration. Error: ${errText.slice(0, 100)}`;
-    } else if (res.status >= 500) {
-      helpfulMsg = `AI provider server error (${res.status}). The provider may be temporarily unavailable. Please try again later. Error: ${errText.slice(0, 100)}`;
-    }
-    throw new Error(helpfulMsg);
+    throw new Error(`AI API error (${res.status}): ${errText.slice(0, 200)}`);
   }
 
   const data = await res.json();

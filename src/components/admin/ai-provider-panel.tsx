@@ -54,18 +54,6 @@ const PROVIDERS: ProviderOption[] = [
   { providerId: "custom", label: "Custom OpenAI-Compatible API", provider: "openai-compatible", needsKey: true, needsBaseUrl: true, defaultModel: "", defaultBaseUrl: "" },
 ];
 
-// Dynamic model lists per provider — shown as a dropdown when available
-const PROVIDER_MODELS: Record<string, string[]> = {
-  "openai": ["gpt-4o-mini", "gpt-4o", "gpt-4-turbo", "gpt-3.5-turbo", "o1-mini", "o1-preview"],
-  "gemini": ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash-exp", "gemini-1.0-pro"],
-  "claude": ["claude-3-haiku-20240307", "claude-3-sonnet-20240229", "claude-3-opus-20240229", "claude-3-5-sonnet-20241022"],
-  "groq": ["llama-3.1-8b-instant", "llama-3.1-70b-versatile", "llama-3.3-70b-versatile", "mixtral-8x7b-32768", "gemma2-9b-it"],
-  "deepseek": ["deepseek-chat", "deepseek-reasoner"],
-  "mistral": ["mistral-tiny", "mistral-small", "mistral-medium", "mistral-large-latest"],
-  "openrouter": ["openai/gpt-4o-mini", "openai/gpt-4o", "google/gemini-1.5-flash", "anthropic/claude-3-haiku", "meta-llama/llama-3.1-8b-instruct"],
-  "ollama": ["llama3", "llama3.1", "mistral", "phi3", "gemma2", "qwen2.5"],
-};
-
 export function AiProviderPanel() {
   const qc = useQueryClient();
   const [config, setConfig] = useState<AIConfig>({
@@ -183,17 +171,6 @@ export function AiProviderPanel() {
           <Switch checked={config.enabled} onCheckedChange={(v) => updateField("enabled", v)} />
         </div>
 
-        {/* Provider Status Indicator */}
-        <div className="flex items-center gap-2 rounded-lg bg-muted/30 p-2 text-xs">
-          <span className={`size-2 rounded-full ${config.enabled ? "bg-emerald-500" : "bg-stone-400"}`} />
-          <span className="text-muted-foreground">
-            Active provider: <strong className="text-foreground">{PROVIDERS.find(p => p.providerId === config.providerId)?.label || config.providerId}</strong>
-            {config.provider === "openai-compatible" && config.model && (
-              <span className="ml-1">· Model: <strong className="text-foreground">{config.model}</strong></span>
-            )}
-          </span>
-        </div>
-
         {/* Provider Selector */}
         <div className="space-y-1.5">
           <Label className="text-xs font-medium flex items-center gap-1">
@@ -250,28 +227,15 @@ export function AiProviderPanel() {
           </div>
         )}
 
-        {/* Model — dropdown for known providers, text input for custom */}
+        {/* Model Name */}
         {config.provider !== "z-ai-sdk" && (
           <div className="space-y-1.5">
-            <Label className="text-xs font-medium">Model</Label>
-            {PROVIDER_MODELS[config.providerId] ? (
-              <Select value={config.model} onValueChange={(v) => updateField("model", v)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a model" />
-                </SelectTrigger>
-                <SelectContent>
-                  {PROVIDER_MODELS[config.providerId].map((m) => (
-                    <SelectItem key={m} value={m}>{m}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            ) : (
-              <Input
-                value={config.model}
-                onChange={(e) => updateField("model", e.target.value)}
-                placeholder={selectedProvider?.defaultModel || "model-name"}
-              />
-            )}
+            <Label className="text-xs font-medium">Model Name</Label>
+            <Input
+              value={config.model}
+              onChange={(e) => updateField("model", e.target.value)}
+              placeholder={selectedProvider?.defaultModel || "gpt-4o-mini"}
+            />
           </div>
         )}
 

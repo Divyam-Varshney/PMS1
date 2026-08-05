@@ -310,7 +310,7 @@ export function HeroSettingsPanel({
               )}
               <ToggleInline label="Delivery information" checked={cfg.deliveryInfoEnabled} onChange={(v) => update({ deliveryInfoEnabled: v })} />
               {cfg.deliveryInfoEnabled && (
-                <FieldS label="Delivery info text"><Input value={cfg.deliveryInfoText} onChange={(e) => update({ deliveryInfoText: e.target.value })} placeholder="Free delivery on orders above ₹499" /></FieldS>
+                <FieldS label="Delivery info text"><Input value={cfg.deliveryInfoText} onChange={(e) => update({ deliveryInfoText: e.target.value })} placeholder="Free delivery on orders above ₹500" /></FieldS>
               )}
               <FieldS label="Small notice text"><Input value={cfg.noticeText} onChange={(e) => update({ noticeText: e.target.value })} placeholder="Licensed pharmacy · Verified by pharmacists" /></FieldS>
             </AccordionContent>
@@ -479,7 +479,7 @@ export function HeroSettingsPanel({
               <ToggleInline label="Announcement bar" description="Thin bar above the hero" checked={cfg.announcementEnabled} onChange={(v) => update({ announcementEnabled: v })} />
               {cfg.announcementEnabled && (
                 <>
-                  <FieldS label="Announcement text"><Input value={cfg.announcementText} onChange={(e) => update({ announcementText: e.target.value })} placeholder="🚚 Free delivery on orders above ₹499" /></FieldS>
+                  <FieldS label="Announcement text"><Input value={cfg.announcementText} onChange={(e) => update({ announcementText: e.target.value })} placeholder="🚚 Free delivery on orders above ₹500" /></FieldS>
                   <FieldS label="Link (optional — clicking the bar navigates here)">
                     <Select value={cfg.announcementLink || "__none__"} onValueChange={(v) => update({ announcementLink: v === "__none__" ? "" : v })}>
                       <SelectTrigger><SelectValue /></SelectTrigger>

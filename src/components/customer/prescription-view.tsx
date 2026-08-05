@@ -164,7 +164,7 @@ export function PrescriptionView() {
           <h2 className="text-xl font-bold">Prescription uploaded!</h2>
           <p className="text-sm text-muted-foreground">
             Once your prescription is reviewed and approved by our pharmacist, your medicines
-            are typically delivered within approximately 30–60 minutes (subject to availability
+            are typically delivered within approximately 30-45 minutes (subject to availability
             and service area).
           </p>
           <div className="mt-4 flex flex-col gap-2 sm:flex-row">

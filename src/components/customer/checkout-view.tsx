@@ -806,8 +806,10 @@ function CheckoutViewInner(props: InnerProps) {
                     <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
                       <Clock className="size-3.5" />
                       <span>
-                        Estimated delivery in {effectiveDelivery.estimatedHours} hour
-                        {effectiveDelivery.estimatedHours === 1 ? "" : "s"}
+                        {effectiveDelivery.estimatedHours < 1
+                          ? `Estimated delivery in ${Math.max(15, Math.round(effectiveDelivery.estimatedHours * 60))} minutes`
+                          : `Estimated delivery in ${effectiveDelivery.estimatedHours} hour${effectiveDelivery.estimatedHours === 1 ? "" : "s"}`
+                        }
                       </span>
                     </div>
                   )}

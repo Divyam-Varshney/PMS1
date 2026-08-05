@@ -601,6 +601,9 @@ export function ProductView() {
                 <Check className="size-3.5" /> Eligible for FREE delivery!
               </div>
             )}
+            {/* Note: ₹500 threshold matches Mathura City zone's freeAbove.
+                For Vrindavan (freeAbove=₹1000), the threshold is higher.
+                The actual charge is calculated at checkout based on the delivery address. */}
           </div>
 
           {/* ---------------- PRESCRIPTION WARNING (if applicable) ---------------- */}

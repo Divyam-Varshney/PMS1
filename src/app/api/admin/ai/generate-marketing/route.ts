@@ -115,7 +115,7 @@ Generate EMAIL-focused marketing content. Return JSON:
 Rules:
 - Use ₹ symbol for prices
 - Mention "Pradeep Medical Store" in the email body
-- Include "Free delivery above ₹499" where space allows
+- Include "Free delivery above ₹500" where space allows
 - For prescription medicines, add "Prescription required" disclaimer
 - Content should sound natural, trustworthy, and medically appropriate
 - Return ONLY the JSON, no markdown`;
@@ -174,7 +174,7 @@ Requirements:
 - For EACH selected product: show product image (max-width 100%, border-radius 12px), product name as h2, short description, price row with discount badge, and an individual CTA button linking to its product page URL
 - Hero section at the top: large headline + promotional description
 - Primary CTA button: emerald bg, white bold text "${generated.ctaText || "Shop Now"} →", links to ${productPageUrl}
-- Footer: store name, address "Main Market, Mathura, Uttar Pradesh 281001", "Free delivery above ₹499", phone +91 99999 99999, email care@pradeepmedical.com
+- Footer: store name, address "Main Market, Mathura, Uttar Pradesh 281001", "Free delivery above ₹500", phone +91 99999 99999, email care@pradeepmedical.com
 - Max width 600px, mobile responsive
 - ${product.prescriptionRequired ? "Include prescription-required disclaimer above footer" : "No prescription disclaimer needed"}
 

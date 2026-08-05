@@ -387,7 +387,7 @@ export function AuthView() {
         {/* Feature bullets */}
         <ul className="space-y-3">
           <Feature icon={ShieldCheck} title="100% Genuine Medicines" desc="Sourced from licensed manufacturers only." />
-          <Feature icon={Truck} title="Fast Delivery in Mathura" desc="Same-day delivery, often within 30-40 minutes." />
+          <Feature icon={Truck} title="Fast Delivery in Mathura" desc="Same-day delivery, often within 30-45 minutes." />
           <Feature icon={Award} title="Licensed Pharmacy" desc="Operated by qualified, registered pharmacists." />
           <Feature icon={HeartPulse} title="Health Tips & Articles" desc="Daily insights from our pharmacy team." />
         </ul>

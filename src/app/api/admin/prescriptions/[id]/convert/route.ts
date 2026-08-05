@@ -140,7 +140,7 @@ export async function POST(req: Request, { params }: Ctx) {
       source: "prescription",
       prescriptionId: prescription.id,
       notes: body.notes || prescription.notes || undefined,
-      estimatedDelivery: new Date(Date.now() + (30 + Math.floor(Math.random() * 21)) * 60 * 1000), // 30-50 min
+      estimatedDelivery: new Date(Date.now() + (totals.deliveryEstimatedHours ? Math.max(15, Math.round(totals.deliveryEstimatedHours * 60)) : 45) * 60 * 1000),
       items: {
         create: totals.lines.map((l) => ({
           productId: l.productId,

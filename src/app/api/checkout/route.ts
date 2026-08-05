@@ -145,10 +145,13 @@ export async function POST(req: Request) {
   const loyaltyPointsRedeemed =
     loyaltyDiscount > 0 ? Math.round(loyaltyDiscount) : 0;
 
-  // Estimated delivery — use zone's ETA if available, else default 30-50 min
+  // Estimated delivery — unified formula using zone's ETA.
+  // Phase 42.3: Single source of truth — no random fallback, no 60min cap.
+  // If zone has estimatedHours, use it directly (convert to minutes).
+  // If no zone matched, use 45 minutes as a sensible default for Mathura.
   const deliveryMinutes = totals.deliveryEstimatedHours
-    ? Math.min(60, totals.deliveryEstimatedHours * 60) // cap at 60 min for display
-    : 30 + Math.floor(Math.random() * 21);
+    ? Math.max(15, Math.round(totals.deliveryEstimatedHours * 60))
+    : 45; // default for unmatched zone
   const estimatedDelivery = new Date(Date.now() + deliveryMinutes * 60 * 1000);
 
   const orderNumber = generateOrderNumber();

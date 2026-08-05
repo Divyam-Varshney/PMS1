@@ -307,7 +307,7 @@ export const DEFAULT_HERO_CONFIG = {
   offerText: "Flat ₹100 off on your first order",
   discountLabel: "Use code WELCOME100",
   deliveryInfoEnabled: true,
-  deliveryInfoText: "Free delivery on orders above ₹499 · Same-day in Mathura",
+  deliveryInfoText: "Free delivery on orders above ₹500 · Same-day in Mathura",
   noticeText: "Licensed pharmacy · Verified by qualified pharmacists",
 
   // — Buttons —
@@ -415,7 +415,7 @@ export const DEFAULT_HERO_CONFIG = {
 
   // — Announcement Bar —
   announcementEnabled: true,
-  announcementText: "🚚 Free delivery on orders above ₹499 across Mathura · Same-day delivery available",
+  announcementText: "🚚 Free delivery on orders above ₹500 across Mathura · Same-day delivery available",
   announcementLink: "shop",
   announcementStart: "",
   announcementEnd: "",

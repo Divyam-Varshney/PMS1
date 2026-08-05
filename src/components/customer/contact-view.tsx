@@ -286,7 +286,7 @@ export function ContactView() {
                   How long does delivery take in Mathura?
                 </AccordionTrigger>
                 <AccordionContent className="text-sm text-muted-foreground">
-                  Express delivery within Mathura city typically takes 30-40
+                  Express delivery within Mathura city typically takes 30-45
                   minutes for in-stock items. Orders placed after closing time
                   will be delivered the next business day. You&apos;ll receive live
                   tracking updates once your order is dispatched.

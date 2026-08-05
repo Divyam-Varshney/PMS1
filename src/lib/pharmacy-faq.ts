@@ -45,7 +45,7 @@ export const PHARMACY_FAQS: PharmacyFaq[] = [
     keywords: ["delivery charge", "delivery fee", "shipping charge", "shipping fee", "delivery cost", "free delivery", "free shipping"],
     question: "What are the delivery charges?",
     answer:
-      "Delivery is FREE for all orders above ₹499. For orders below ₹499 within Mathura, a flat ₹40 delivery fee applies. Nationwide shipping fees are calculated at checkout based on the courier's weight slab.",
+      "Delivery is FREE for all orders above ₹500. For orders below ₹500 within Mathura, a flat ₹20 delivery fee applies. Nationwide shipping fees are calculated at checkout based on the courier's weight slab.",
   },
   {
     keywords: ["upload prescription", "how to upload", "upload rx", "prescription upload"],

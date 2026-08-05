@@ -143,7 +143,7 @@ export function AboutView() {
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {[
             { icon: ShieldCheck, title: "Authenticity", desc: "100% genuine medicines sourced from licensed manufacturers only." },
-            { icon: Truck, title: "Speed", desc: "Same-day delivery in Mathura, often within 30–60 minutes." },
+            { icon: Truck, title: "Speed", desc: "Same-day delivery in Mathura, often within 30-45 minutes." },
             { icon: Stethoscope, title: "Expertise", desc: "Licensed pharmacists review every prescription and order." },
             { icon: Heart, title: "Care", desc: "Personal guidance and support — we treat you like family." },
           ].map((v) => {

@@ -48,11 +48,14 @@ export async function GET(req: Request) {
     free: delivery.free,
     zoneName: delivery.zone,
     subtotal,
-    // ETA as a human-readable string
+    // ETA — unified format: convert estimatedHours to a human-readable string.
+    // Phase 42.3: No more "24-48 hours" fallback; uses same 45min default as checkout.
     etaText: zoneMeta
-      ? `Estimated delivery in ${zoneMeta.estimatedHours} hours`
+      ? zoneMeta.estimatedHours < 1
+        ? `Estimated delivery in ${Math.max(15, Math.round(zoneMeta.estimatedHours * 60))} minutes`
+        : `Estimated delivery in ${zoneMeta.estimatedHours} hour${zoneMeta.estimatedHours === 1 ? "" : "s"}`
       : delivery.serviceable
-        ? "Estimated delivery in 24-48 hours"
+        ? "Estimated delivery in 45 minutes"
         : delivery.message ?? "Delivery not available",
     message: delivery.message,
   });

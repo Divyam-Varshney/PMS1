@@ -42,3 +42,7 @@ db/
 .zscripts/mini-service-*.log
 tsconfig.tsbuildinfo
 agent-ctx/
+
+# Dev logs + temp files
+dev.log
+tool-results/

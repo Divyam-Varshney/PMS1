@@ -1,0 +1,7 @@
+{
+  "baseUrl": "https://internal-api.z.ai/v1",
+  "apiKey": "Z.ai",
+  "chatId": "chat-b391670f-bdda-48a4-bf5c-cb6aafc1bc20",
+  "token": "YOUR_ZAI_TOKEN_HERE",
+  "userId": "YOUR_ZAI_USER_ID_HERE"
+}

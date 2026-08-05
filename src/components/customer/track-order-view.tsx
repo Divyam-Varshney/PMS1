@@ -47,6 +47,7 @@ import {
   ORDER_STATUS_FLOW,
   ORDER_STATUS_LABEL,
   PAYMENT_METHOD_LABEL,
+  PAYMENT_STATUS_LABEL,
 } from "@/lib/constants";
 import { motion } from "framer-motion";
 import { ProductImage } from "@/components/shared/product-image";
@@ -760,7 +761,7 @@ export function TrackOrderView() {
                   : ""
               }
             >
-              {order.paymentStatus}
+              {PAYMENT_STATUS_LABEL[order.paymentStatus] || order.paymentStatus?.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
             </Badge>
           </div>
 

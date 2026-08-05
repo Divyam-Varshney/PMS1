@@ -44,6 +44,7 @@ import { toast } from "sonner";
 import { useState, useEffect } from "react";
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/format";
 import { motion } from "framer-motion";
+import { NotificationPreferences } from "./notification-preferences";
 
 export function ProfileView() {
   const { customer, isLoading } = useRequireAuth();
@@ -168,6 +169,9 @@ export function ProfileView() {
         </Button>
         </Card>
       </motion.div>
+
+      {/* App Notifications settings — moved here from Account page per Phase 41 */}
+      <NotificationPreferences />
 
       <Button
         variant="outline"

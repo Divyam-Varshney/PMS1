@@ -54,6 +54,7 @@ const CompareView = dynamic(() => import("@/components/customer/compare-view").t
 const StockAlertsView = dynamic(() => import("@/components/customer/stock-alerts-view").then(m => ({ default: m.StockAlertsView })), { ssr: false });
 const BundleView = dynamic(() => import("@/components/customer/bundle-view").then(m => ({ default: m.BundleView })), { ssr: false });
 const MedicineRemindersView = dynamic(() => import("@/components/customer/medicine-reminders-view").then(m => ({ default: m.MedicineRemindersView })), { ssr: false });
+const NotificationPermissionView = dynamic(() => import("@/components/customer/notification-permission-view").then(m => ({ default: m.NotificationPermissionView })), { ssr: false });
 
 export default function Home() {
   const view = useUI((s) => s.view);
@@ -171,6 +172,8 @@ export default function Home() {
         return <CompareView />;
       case "bundles":
         return <BundleView />;
+      case "notification-permission":
+        return <NotificationPermissionView />;
       default:
         return <HomeView />;
     }

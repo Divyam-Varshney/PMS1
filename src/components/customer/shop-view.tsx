@@ -626,7 +626,7 @@ export function ShopView() {
 
           {isActiveLoading ? (
             viewMode === "grid" ? (
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-5">
                 {Array.from({ length: 12 }).map((_, i) => (
                   <ProductCardSkeleton key={i} />
                 ))}
@@ -690,7 +690,7 @@ export function ShopView() {
                   hidden: {},
                   show: { transition: { staggerChildren: 0.04 } },
                 }}
-                className="relative grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
+                className="relative grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-5"
               >
                 {isActiveFetching && (
                   <div className="absolute right-0 top-0 z-10 flex items-center gap-1.5 rounded-full bg-background/80 px-3 py-1 text-xs backdrop-blur">
@@ -718,7 +718,7 @@ export function ShopView() {
               {pageMode === "infinite" && filteredItems.length > 0 && (
                 <div ref={loadMoreRef} className="mt-6 flex flex-col items-center gap-3">
                   {isFetchingNextPage ? (
-                    <div className="grid w-full grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+                    <div className="grid w-full grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-5">
                       {Array.from({ length: 6 }).map((_, i) => (
                         <ProductCardSkeleton key={i} />
                       ))}
@@ -993,7 +993,8 @@ function ProductListRow({ product }: { product: Product }) {
 // ---------------------------------------------------------------------------
 // ShopPagination — responsive pagination with page number buttons.
 // Shows « First, Previous, [1] [2] [3] [4] [5], Next, » Last.
-// Scrolls to top on page change. Preserves filters + sort automatically.
+// Scrolls to top on page change. Preserves filters + sort automatically
+// (the query key includes all filter params).
 // ---------------------------------------------------------------------------
 function ShopPagination({
   page,
@@ -1009,6 +1010,7 @@ function ShopPagination({
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
+  // Compute which 5 page numbers to show (centered around current page).
   const pages: number[] = [];
   if (totalPages <= 5) {
     for (let i = 1; i <= totalPages; i++) pages.push(i);
@@ -1022,13 +1024,53 @@ function ShopPagination({
 
   return (
     <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
-      <Button variant="outline" size="sm" disabled={page === 1} onClick={() => goTo(1)} className="px-2" aria-label="First page">«</Button>
-      <Button variant="outline" size="sm" disabled={page === 1} onClick={() => goTo(page - 1)}>Previous</Button>
+      <Button
+        variant="outline"
+        size="sm"
+        disabled={page === 1}
+        onClick={() => goTo(1)}
+        className="px-2"
+        aria-label="First page"
+      >
+        «
+      </Button>
+      <Button
+        variant="outline"
+        size="sm"
+        disabled={page === 1}
+        onClick={() => goTo(page - 1)}
+      >
+        Previous
+      </Button>
       {pages.map((p) => (
-        <Button key={p} variant={page === p ? "default" : "outline"} size="sm" onClick={() => goTo(p)} className="min-w-9">{p}</Button>
+        <Button
+          key={p}
+          variant={page === p ? "default" : "outline"}
+          size="sm"
+          onClick={() => goTo(p)}
+          className="min-w-9"
+        >
+          {p}
+        </Button>
       ))}
-      <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => goTo(page + 1)}>Next</Button>
-      <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => goTo(totalPages)} className="px-2" aria-label="Last page">»</Button>
+      <Button
+        variant="outline"
+        size="sm"
+        disabled={page >= totalPages}
+        onClick={() => goTo(page + 1)}
+      >
+        Next
+      </Button>
+      <Button
+        variant="outline"
+        size="sm"
+        disabled={page >= totalPages}
+        onClick={() => goTo(totalPages)}
+        className="px-2"
+        aria-label="Last page"
+      >
+        »
+      </Button>
     </div>
   );
 }

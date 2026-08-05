@@ -34,7 +34,8 @@ export type CustomerView =
   | { name: "refund-policy" }
   | { name: "health-tip"; tipId: number }
   | { name: "compare" }
-  | { name: "bundles" };
+  | { name: "bundles" }
+  | { name: "notification-permission" };
 
 // ---------------------------------------------------------------------------
 // URL hash <-> CustomerView serialization
@@ -67,7 +68,7 @@ function hashToView(hash: string): CustomerView {
     case "auth":
       return { name: "auth", mode: (params.get("mode") as "login" | "register") || "login" };
     default:
-      if (["home","cart","checkout","prescription","manual-request","account","orders","addresses","profile","wishlist","stock-alerts","reminders","about","contact","categories","terms","refund-policy","compare","bundles"].includes(name)) {
+      if (["home","cart","checkout","prescription","manual-request","account","orders","addresses","profile","wishlist","stock-alerts","reminders","about","contact","categories","terms","refund-policy","compare","bundles","notification-permission"].includes(name)) {
         return { name } as CustomerView;
       }
       return { name: "home" };

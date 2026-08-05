@@ -96,6 +96,9 @@ export async function GET(req: Request) {
         brand: { select: { id: true, name: true } },
         category: { select: { id: true, name: true } },
         _count: { select: { orderItems: true } },
+        // Include the primary ProductImage as a fallback when the denormalized
+        // primaryImage cache is NULL. Prevents "missing image" in admin list.
+        images: { where: { isPrimary: true }, take: 1, select: { imagePath: true } },
       },
       orderBy,
       skip: (page - 1) * pageSize,
@@ -103,7 +106,14 @@ export async function GET(req: Request) {
     }),
   ]);
 
-  return ok({ items, total, page, pageSize, totalPages: Math.ceil(total / pageSize) });
+  // Backfill: if primaryImage is null but a primary ProductImage exists, use it.
+  const enriched = items.map((p: any) => ({
+    ...p,
+    primaryImage: p.primaryImage || p.images?.[0]?.imagePath || null,
+    images: undefined, // strip the relation before returning
+  }));
+
+  return ok({ items: enriched, total, page, pageSize, totalPages: Math.ceil(total / pageSize) });
 }
 
 export async function POST(req: Request) {

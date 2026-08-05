@@ -60,6 +60,30 @@ export const PAYMENT_STATUS = {
   REFUNDED: "refunded",
 } as const;
 
+// Payment status labels — proper capitalization for display everywhere.
+// Used by StatusBadge, OrderDetailView, OrdersView, customer portal, invoices.
+export const PAYMENT_STATUS_LABEL: Record<string, string> = {
+  pending: "Pending",
+  paid: "Paid",
+  partially_paid: "Partially Paid",
+  failed: "Failed",
+  refunded: "Refunded",
+  refund_initiated: "Refund Initiated",
+  cancelled: "Cancelled",
+  cod: "Cash on Delivery",
+  // Order status values that sometimes appear in payment context
+  confirmed: "Confirmed",
+  delivered: "Delivered",
+};
+
+/** Format any payment status/method key into a human-readable label. */
+export function formatPaymentStatus(status: string): string {
+  if (!status) return "";
+  return PAYMENT_STATUS_LABEL[status]
+    || PAYMENT_METHOD_LABEL[status]
+    || status.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 export const PRESCRIPTION_STATUS = {
   PENDING: "pending",
   UNDER_REVIEW: "under_review",

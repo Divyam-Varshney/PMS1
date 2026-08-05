@@ -7,7 +7,7 @@
 "use client";
 
 import { useState, useMemo, useEffect, useCallback } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { api, run } from "../api";
 import { PageHeader, TableSkeleton, EmptyState } from "../ui";
 import { Card, CardContent } from "@/components/ui/card";
@@ -249,6 +249,8 @@ export function OrdersView() {
         totalPages: number;
         page: number;
       }>(`/api/admin/orders?${queryParams}`),
+    refetchInterval: 30_000, // Auto-refresh every 30s — preserves filters + pagination
+    placeholderData: keepPreviousData, // Smooth transitions when changing pages
   });
 
   const { data: stats } = useQuery<Stats>({

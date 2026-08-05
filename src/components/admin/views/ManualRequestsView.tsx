@@ -7,7 +7,7 @@
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { api, run } from "../api";
 import { PageHeader, TableSkeleton, EmptyState, CustomerName, CustomerContact, CustomerDetailBlock } from "../ui";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -178,6 +178,8 @@ export function ManualRequestsView() {
       api.get<{ items: ManualRequestListItem[]; total: number; totalPages: number; page: number }>(
         `/api/admin/manual-requests?${query}`
       ),
+    refetchInterval: 30_000, // Auto-refresh every 30s — preserves filters + pagination
+    placeholderData: keepPreviousData, // Smooth transitions when changing pages
   });
 
   const items = data?.items ?? [];
@@ -452,6 +454,16 @@ export function ManualRequestDetailView({ id }: { id: string }) {
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [searching, setSearching] = useState(false);
   const [converting, setConverting] = useState(false);
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState("qr");
+
+  // Fetch active payment methods for the convert dialog dropdown.
+  // Dynamic — automatically reflects newly added methods from Admin Settings.
+  const { data: paymentMethods } = useQuery({
+    queryKey: ["admin", "payment-methods", "active"],
+    queryFn: () => api.get<{ items: Array<{ key: string; label: string }> }>("/api/admin/payment-methods"),
+    staleTime: 60_000,
+  });
+  const activePaymentMethods = (paymentMethods?.items || []).filter((m: any) => m.isActive !== false);
 
   const { data: r, isLoading } = useQuery({
     queryKey: ["admin-manual-request", id],
@@ -506,6 +518,7 @@ export function ManualRequestDetailView({ id }: { id: string }) {
     const res = await run(() =>
       api.post<{ id: string }>(`/api/admin/manual-requests/${id}/convert`, {
         items: lineItems.map((li) => ({ productId: li.productId, qty: li.qty })),
+        paymentMethod: selectedPaymentMethod,
       }), {
       success: "Order created from manual request",
       error: "Conversion failed",
@@ -731,6 +744,32 @@ export function ManualRequestDetailView({ id }: { id: string }) {
                 </div>
               </div>
             )}
+
+            {/* Payment Method Selector — defaults to QR Code Payment */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Payment Method</label>
+              <select
+                value={selectedPaymentMethod}
+                onChange={(e) => setSelectedPaymentMethod(e.target.value)}
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+              >
+                {activePaymentMethods.length > 0 ? (
+                  activePaymentMethods.map((m: any) => (
+                    <option key={m.key} value={m.key}>{m.label}</option>
+                  ))
+                ) : (
+                  <>
+                    <option value="qr">QR Code Payment</option>
+                    <option value="cod">Cash on Delivery</option>
+                    <option value="upi">UPI Payment</option>
+                    <option value="razorpay">Razorpay</option>
+                  </>
+                )}
+              </select>
+              <p className="text-xs text-muted-foreground">
+                The selected payment method will be saved on the order and displayed everywhere (invoice, customer portal, email).
+              </p>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setConvertOpen(false)}>Cancel</Button>

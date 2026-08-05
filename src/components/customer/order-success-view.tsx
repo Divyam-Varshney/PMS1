@@ -33,6 +33,7 @@ import {
 import { useUI } from "@/lib/store";
 import { motion } from "framer-motion";
 import { formatCurrency, formatDateTime } from "@/lib/format";
+import { PAYMENT_METHOD_LABEL, PAYMENT_STATUS_LABEL } from "@/lib/constants";
 import { toast } from "sonner";
 import { useRef, useState } from "react";
 
@@ -119,7 +120,7 @@ export function OrderSuccessView() {
             </p>
             <p className="mt-1 flex items-center gap-2 text-muted-foreground">
               <Package className="size-4" />
-              <span>{order.items.length} item(s) • Payment: {order.paymentMethod.toUpperCase()}</span>
+              <span>{order.items.length} item(s) • Payment: {PAYMENT_METHOD_LABEL[order.paymentMethod] || order.paymentMethod}</span>
             </p>
           </div>
 
@@ -170,7 +171,7 @@ export function OrderSuccessView() {
               <div className="mt-3 flex items-center gap-1.5 rounded-md bg-white/60 p-2 text-[11px] text-sky-800">
                 <Info className="size-3 shrink-0" />
                 <span>
-                  Payment status: <strong className="capitalize">{order.paymentStatus}</strong>.
+                  Payment status: <strong>{PAYMENT_STATUS_LABEL[order.paymentStatus] || order.paymentStatus}</strong>.
                   Once we confirm your UPI transfer, the status will change to{" "}
                   <strong>paid</strong>.
                 </span>

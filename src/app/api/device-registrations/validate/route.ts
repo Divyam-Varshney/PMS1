@@ -95,20 +95,9 @@ export async function POST(req: Request) {
   }
 
   // Completed → validate the push subscription still exists server-side.
-  // CRITICAL FIX (Phase 41.1): Check THIS device's specific subscription,
-  // not just any subscription for the customer. Without this fix, if device A's
-  // subscription expires (FCM endpoint rotation — common in Chrome/Brave), the
-  // validate endpoint sees device B's subscription and thinks everything is
-  // healthy. The wizard never re-prompts on device A, and the customer stops
-  // receiving notifications with no way to know.
-  const serverSubCount = reg.pushEndpoint
-    ? await db.pushSubscription.count({
-        where: { customerId: customer.id, endpoint: reg.pushEndpoint, isActive: true },
-      })
-    : // Fallback: if no pushEndpoint stored, check any active subscription
-      await db.pushSubscription.count({
-        where: { customerId: customer.id, isActive: true },
-      });
+  const serverSubCount = await db.pushSubscription.count({
+    where: { customerId: customer.id, isActive: true },
+  });
 
   const browserPermissionOk = body.hasBrowserPermission !== false;
   const localSubscriptionOk = body.hasLocalSubscription !== false;

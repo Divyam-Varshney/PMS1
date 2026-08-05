@@ -52,6 +52,16 @@ export async function POST(req: Request, { params }: Ctx) {
   if (prescription.status === "converted") {
     return err("This prescription has already been converted to an order", 400);
   }
+  // Race-condition guard: atomically mark as "converting" so a concurrent
+  // convert attempt is rejected. If the order creation fails, we revert.
+  const originalStatus = prescription.status;
+  const raceGuard = await db.prescription.updateMany({
+    where: { id: prescription.id, status: originalStatus },
+    data: { status: "converting" },
+  });
+  if (raceGuard.count === 0) {
+    return err("This prescription is already being converted or has been converted", 409);
+  }
   if (!prescription.customer) {
     return err("Customer record not found for this prescription", 400);
   }
@@ -102,7 +112,9 @@ export async function POST(req: Request, { params }: Ctx) {
   });
   const orderNumber = generateOrderNumber();
 
-  const order = await db.order.create({
+  let order;
+  try {
+    order = await db.order.create({
     data: {
       orderNumber,
       customerId: customer.id,
@@ -153,6 +165,15 @@ export async function POST(req: Request, { params }: Ctx) {
     },
     include: { items: true },
   });
+  } catch (e: any) {
+    // Revert the "converting" status so the admin can retry.
+    await db.prescription.update({
+      where: { id: prescription.id },
+      data: { status: originalStatus },
+    }).catch(() => {});
+    console.error("[prescription-convert] order creation failed:", e);
+    return err("Failed to create order: " + (e?.message || "unknown error"), 500);
+  }
 
   // Mark prescription converted + link back
   await db.prescription.update({

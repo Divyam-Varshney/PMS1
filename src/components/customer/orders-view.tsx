@@ -77,7 +77,7 @@ import {
 import { useUI } from "@/lib/store";
 import { useRequireAuth } from "./use-require-auth";
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/format";
-import { PAYMENT_METHOD_LABEL } from "@/lib/constants";
+import { PAYMENT_METHOD_LABEL, PAYMENT_STATUS_LABEL } from "@/lib/constants";
 import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
@@ -796,10 +796,13 @@ function PaymentStatusBadge({ status }: { status: string }) {
     pending: "border-amber-300 text-amber-700",
     failed: "border-destructive/40 text-destructive",
     refunded: "border-destructive/40 text-destructive",
+    refund_initiated: "border-amber-300 text-amber-700",
+    partially_paid: "border-cyan-300 text-cyan-700",
+    cancelled: "border-stone-300 text-stone-600",
   };
   return (
     <Badge variant="outline" className={`text-[10px] ${map[status] ?? ""}`}>
-      {status}
+      {PAYMENT_STATUS_LABEL[status] || status?.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
     </Badge>
   );
 }

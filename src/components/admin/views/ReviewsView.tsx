@@ -65,7 +65,7 @@ interface ReviewAnalytics {
 
 export function ReviewsView() {
   const qc = useQueryClient();
-  const [status, setStatus] = useState("pending");
+  const [status, setStatus] = useState("all");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
   // Per-review reply editor state. `editing[id]` holds the textarea value;
@@ -82,7 +82,7 @@ export function ReviewsView() {
   const [galleryImages, setGalleryImages] = useState<string[] | null>(null);
   const [galleryIndex, setGalleryIndex] = useState(0);
 
-  const query = useMemo(() => `?status=${status}&pageSize=50`, [status]);
+  const query = useMemo(() => status === "all" ? "?pageSize=50" : `?status=${status}&pageSize=50`, [status]);
 
   const { data, isLoading } = useQuery({
     queryKey: ["admin-reviews", status],
@@ -258,6 +258,7 @@ export function ReviewsView() {
           <Select value={status} onValueChange={(v) => { setStatus(v); clearSelection(); }}>
             <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
             <SelectContent>
+              <SelectItem value="all">All</SelectItem>
               <SelectItem value="pending">Pending</SelectItem>
               <SelectItem value="approved">Approved</SelectItem>
               <SelectItem value="rejected">Rejected</SelectItem>

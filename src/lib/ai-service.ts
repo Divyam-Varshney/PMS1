@@ -37,8 +37,6 @@ interface ZaiConfig {
 // Cache the loaded ZAI instance — constructing it requires config loading
 // which we don't want to repeat on every API call.
 let _zaiInstance: any | null = null;
-// Error cache with TTL — don't permanently cache errors so transient failures
-// (e.g. DB connection drop during cold start) can recover on the next request.
 let _zaiConfigError: { msg: string; ts: number } | null = null;
 const ERROR_CACHE_TTL = 60_000; // 60 seconds — retry after 1 min
 
@@ -50,7 +48,7 @@ const ERROR_CACHE_TTL = 60_000; // 60 seconds — retry after 1 min
  */
 async function loadZaiConfig(): Promise<{ config: ZaiConfig | null; error: string | null }> {
   // ── Priority 1: Environment variables ──
-  // On Vercel, set Z_AI_BASE_URL + Z_AI_API_KEY + Z_AI_TOKEN in Project Settings → Environment Variables.
+  // On Vercel, set Z_AI_BASE_URL + Z_AI_API_KEY + Z_AI_TOKEN in Project Settings.
   const envBaseUrl = process.env.Z_AI_BASE_URL;
   const envApiKey = process.env.Z_AI_API_KEY;
   const envToken = process.env.Z_AI_TOKEN;
@@ -158,7 +156,7 @@ export async function getZaiInstance(): Promise<any> {
     return _zaiInstance;
   } catch (e: any) {
     const msg = `Failed to initialize Z.AI SDK: ${e?.message || e}`;
-    _zaiConfigError = msg;
+    _zaiConfigError = { msg, ts: Date.now() };
     throw new Error(msg);
   }
 }

@@ -14,6 +14,7 @@ import { Inbox } from "lucide-react";
 import {
   ORDER_STATUS_LABEL,
   PAYMENT_METHOD_LABEL,
+  PAYMENT_STATUS_LABEL,
 } from "@/lib/constants";
 
 // --------------------------- Page Header ---------------------------
@@ -85,7 +86,7 @@ export function StatusBadge({ status, label, className }: { status: string; labe
                     ? "bg-orange-500"
                     : "bg-stone-400"
       )} />
-      {label || ORDER_STATUS_LABEL[status] || status.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
+      {label || ORDER_STATUS_LABEL[status] || PAYMENT_STATUS_LABEL[status] || PAYMENT_METHOD_LABEL[status] || status.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
     </Badge>
   );
 }

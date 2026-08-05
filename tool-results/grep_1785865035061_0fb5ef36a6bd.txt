@@ -1,0 +1,252 @@
+/home/z/my-project/src/app/api/delivery/check/route.ts:53:      ? `Estimated delivery in ${zoneMeta.estimatedHours} hours`
+/home/z/my-project/src/app/api/prescriptions/route.ts:105:    message: `${customer.name} uploaded a prescription (${savedPaths.length} image${savedPaths.length > 1 ? "s" : ""})`,
+/home/z/my-project/src/app/api/prescriptions/route.ts:110:      `Customer: ${customer.name} (${customer.email}, ${customer.phone})`,
+/home/z/my-project/src/app/api/prescriptions/route.ts:111:      `Images: ${savedPaths.length}`,
+/home/z/my-project/src/app/api/prescriptions/route.ts:112:      notes ? `Notes: ${notes}` : "",
+/home/z/my-project/src/app/api/cart/add/route.ts:37:    return err(`${product.name} is currently out of stock`, 400);
+/home/z/my-project/src/app/api/cart/add/route.ts:55:    return err(`Only ${product.stock} units of ${product.name} are available`, 400);
+/home/z/my-project/src/app/api/app-notifs/test/route.ts:40:    body: `Hi ${customer.name}, this is a test from Pradeep Medical Store. If you can see this, push notifications are working correctly on your device!`,
+/home/z/my-project/src/app/api/invoice/[orderId]/route.ts:77:      "Content-Disposition": `attachment; filename="invoice-${order.orderNumber}.pdf"`,
+/home/z/my-project/src/app/api/customer/history/route.ts:14://          - number: orderNumber | `RX-${last8}` | `MR-${last8}`
+/home/z/my-project/src/app/api/customer/history/route.ts:246:      number: `RX-${shortId(p.id)}`,
+/home/z/my-project/src/app/api/customer/history/route.ts:264:    number: `MR-${shortId(r.id)}`,
+/home/z/my-project/src/app/api/customer/loyalty/redeem/route.ts:38:      `Insufficient loyalty points. You have ${full.loyaltyPoints} point(s).`
+/home/z/my-project/src/app/api/manual-requests/route.ts:66:    message: `${customer.name} requested: ${body.medicineList.trim().slice(0, 60)}${body.medicineList.trim().length > 60 ? "..." : ""}`,
+/home/z/my-project/src/app/api/manual-requests/route.ts:71:      `Customer: ${customer.name} (${customer.email}, ${customer.phone})`,
+/home/z/my-project/src/app/api/manual-requests/route.ts:74:      body.notes ? `Notes: ${body.notes.trim()}` : "",
+/home/z/my-project/src/app/api/reviews/route.ts:138:Author: ${customer.name}
+/home/z/my-project/src/app/api/reviews/route.ts:139:Rating: ${rating}/5
+/home/z/my-project/src/app/api/reviews/route.ts:140:Title: ${titleTrim}
+/home/z/my-project/src/app/api/reviews/route.ts:141:Body: ${bodyTrim}
+/home/z/my-project/src/app/api/admin/newsletter/export/route.ts:15:  if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+/home/z/my-project/src/app/api/admin/newsletter/export/route.ts:36:      "Content-Disposition": `attachment; filename="newsletter-subscribers-${new Date().toISOString().slice(0, 10)}.csv"`,
+/home/z/my-project/src/app/api/admin/reviews/[id]/ai-moderate/route.ts:52:Product: ${review.product?.name ?? "Unknown"}
+/home/z/my-project/src/app/api/admin/reviews/[id]/ai-moderate/route.ts:53:Author: ${authorName}
+/home/z/my-project/src/app/api/admin/reviews/[id]/ai-moderate/route.ts:54:Rating: ${review.rating}/5
+/home/z/my-project/src/app/api/admin/reviews/[id]/ai-moderate/route.ts:55:Title: ${titleTrim}
+/home/z/my-project/src/app/api/admin/reviews/[id]/ai-moderate/route.ts:56:Body: ${bodyTrim}
+/home/z/my-project/src/app/api/admin/newsletter/bulk/route.ts:67:      console.error(`[newsletter/bulk] failed for ${sub.email}:`, e);
+/home/z/my-project/src/app/api/admin/reviews/[id]/ai-reply/route.ts:46:Customer name: ${authorName}
+/home/z/my-project/src/app/api/admin/reviews/[id]/ai-reply/route.ts:47:Product: ${productName}
+/home/z/my-project/src/app/api/admin/reviews/[id]/ai-reply/route.ts:48:Rating: ${review.rating}/5
+/home/z/my-project/src/app/api/admin/reviews/[id]/ai-reply/route.ts:49:Review title: ${title || "(no title)"}
+/home/z/my-project/src/app/api/admin/reviews/[id]/ai-reply/route.ts:50:Review body: ${body || "(no body)"}
+/home/z/my-project/src/app/api/admin/reviews/[id]/ai-reply/route.ts:54:- ${toneInstruction}
+/home/z/my-project/src/app/api/admin/products/export/route.ts:5:function csvEscape(v: any): string { const s = String(v ?? ""); return /[",\n]/.test(s) ? `"${s.replace(/"/g,'""')}"` : s; }
+/home/z/my-project/src/app/api/admin/products/export/route.ts:17:  return new Response(csv, { headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="products-${new Date().toISOString().slice(0,10)}.csv"` } });
+/home/z/my-project/src/app/api/admin/products/bulk/route.ts:62:          errors.push(`${id}: product not found`);
+/home/z/my-project/src/app/api/admin/products/bulk/route.ts:66:          errors.push(`${id}: must be trashed before permanent delete`);
+/home/z/my-project/src/app/api/admin/products/bulk/route.ts:72:          errors.push(`${id}: has orders, cannot permanently delete`);
+/home/z/my-project/src/app/api/admin/products/bulk/route.ts:93:      errors.push(`${id}: ${e?.message ?? "error"}`);
+/home/z/my-project/src/app/api/admin/products/[id]/gallery/route.ts:37:  return `${productId}-${safe}-${randomUUID().slice(0, 8)}.${ext}`;
+/home/z/my-project/src/app/api/admin/products/[id]/gallery/route.ts:129:        if (!res.ok) { errors.push(`${url}: HTTP ${res.status}`); continue; }
+/home/z/my-project/src/app/api/admin/products/[id]/gallery/route.ts:131:        if (!ALLOWED_MIME.includes(mime)) { errors.push(`${url}: unsupported type ${mime}`); continue; }
+/home/z/my-project/src/app/api/admin/products/[id]/gallery/route.ts:133:        if (buffer.length < 100) { errors.push(`${url}: too small`); continue; }
+/home/z/my-project/src/app/api/admin/products/[id]/gallery/route.ts:134:        if (buffer.length > MAX_FILE_SIZE) { errors.push(`${url}: too large`); continue; }
+/home/z/my-project/src/app/api/admin/products/[id]/gallery/route.ts:136:        if (existingHashes.has(hash)) { errors.push(`${url}: duplicate`); continue; }
+/home/z/my-project/src/app/api/admin/products/[id]/gallery/route.ts:178:        errors.push(`${url}: ${e?.message || "failed"}`);
+/home/z/my-project/src/app/api/admin/products/[id]/gallery/route.ts:206:      if (!ALLOWED_MIME.includes(mime)) { errors.push(`${file.name}: unsupported type`); continue; }
+/home/z/my-project/src/app/api/admin/products/[id]/gallery/route.ts:207:      if (file.size > MAX_FILE_SIZE) { errors.push(`${file.name}: too large`); continue; }
+/home/z/my-project/src/app/api/admin/products/[id]/gallery/route.ts:208:      if (file.size < 100) { errors.push(`${file.name}: too small`); continue; }
+/home/z/my-project/src/app/api/admin/products/[id]/gallery/route.ts:212:      if (existingHashes.has(hash)) { errors.push(`${file.name}: duplicate`); continue; }
+/home/z/my-project/src/app/api/admin/products/[id]/gallery/route.ts:248:        errors.push(`${file.name}: ${e.message}`);
+/home/z/my-project/src/app/api/admin/products/[id]/gallery/route.ts:250:        errors.push(`${file.name}: ${e?.message || "failed"}`);
+/home/z/my-project/src/app/api/admin/products/[id]/gallery/route.ts:355:      return err(`Unknown action: ${body.action}`, 400);
+/home/z/my-project/src/app/api/admin/ai/generate-product/route.ts:55:    const searchQuery1 = `${title} medicine India pharmacy 1mg apollo pharmeasy`;
+/home/z/my-project/src/app/api/admin/ai/generate-product/route.ts:62:    const searchQuery2 = `${title} price MRP India buy online`;
+/home/z/my-project/src/app/api/admin/ai/generate-product/route.ts:87:        return `[${i + 1}] Source: ${r.host_name}
+/home/z/my-project/src/app/api/admin/ai/generate-product/route.ts:88:Title: ${r.name}
+/home/z/my-project/src/app/api/admin/ai/generate-product/route.ts:89:Details: ${r.snippet}`;
+/home/z/my-project/src/app/api/admin/ai/generate-product/route.ts:107:Product Title entered by admin: "${title}"
+/home/z/my-project/src/app/api/admin/ai/generate-product/route.ts:110:${searchContext || "No search results found. Use your pharmaceutical knowledge carefully — do NOT invent product-specific facts."}
+/home/z/my-project/src/app/api/admin/ai/generate-product/route.ts:113:${brandList || "none"}
+/home/z/my-project/src/app/api/admin/ai/generate-product/route.ts:116:${categoryList || "none"}
+/home/z/my-project/src/app/api/admin/products/[id]/route.ts:50:      slug = `${slug}-${Math.random().toString(36).slice(2, 6)}`;
+/home/z/my-project/src/app/api/admin/products/route.ts:131:  const finalSlug = existing ? `${slug}-${Math.random().toString(36).slice(2, 6)}` : slug;
+/home/z/my-project/src/app/api/admin/ai/marketing-broadcast/route.ts:71:      console.error(`[ai/marketing-broadcast] failed for ${c.email}:`, e);
+/home/z/my-project/src/app/api/admin/products/import/route.ts:34:      const name = obj.name; if (!name) { errors.push(`Row ${i+2}: missing name`); continue; }
+/home/z/my-project/src/app/api/admin/products/import/route.ts:47:    } catch (e: any) { errors.push(`Row ${i+2}: ${e?.message ?? "error"}`); }
+/home/z/my-project/src/app/api/admin/ai/providers/test/route.ts:63:        message: `Connected successfully in ${elapsed}s. Response: "${content.slice(0, 50)}"`,
+/home/z/my-project/src/app/api/admin/ai/providers/test/route.ts:69:        message: `Connected but got empty response in ${elapsed}s. Check your model name.`,
+/home/z/my-project/src/app/api/admin/ai/providers/test/route.ts:76:      message: `Failed in ${elapsed}s: ${e?.message?.slice(0, 150) || "unknown error"}`,
+/home/z/my-project/src/app/api/admin/ai/providers/route.ts:22:    ? `••••••••${config.apiKey.slice(-4)}`
+/home/z/my-project/src/app/api/admin/orders/stats/route.ts:36:    db.$queryRaw<{ total: Prisma.Decimal | null }[]>`SELECT COALESCE(SUM("grandTotal"), 0)::numeric AS total FROM "Order" WHERE "paymentStatus" = 'paid' AND "createdAt" >= ${startOfToday}`,
+/home/z/my-project/src/app/api/admin/orders/stats/route.ts:37:    db.$queryRaw<{ total: Prisma.Decimal | null }[]>`SELECT COALESCE(SUM("grandTotal"), 0)::numeric AS total FROM "Order" WHERE "paymentStatus" = 'paid' AND "createdAt" >= ${startOfYesterday} AND "createdAt" < ${startOfToday}`,
+/home/z/my-project/src/app/api/admin/ai/generate-marketing/route.ts:67:    const productPageUrl = `${baseUrl}/products/${product.slug}`;
+/home/z/my-project/src/app/api/admin/ai/generate-marketing/route.ts:70:      ? (rawImage.startsWith("http") ? rawImage : `${baseUrl}${rawImage.startsWith("/") ? "" : "/"}${rawImage}`)
+/home/z/my-project/src/app/api/admin/ai/generate-marketing/route.ts:80:        return `  ${i + 1}. ${p.name} — Brand: ${p.brand?.name || "Unknown"} | ₹${Number(p.sellingPrice)} (MRP ₹${Number(p.mrp)}, ${pct}% off) | ${p.prescriptionRequired ? "Rx required" : "OTC"} | ${p.shortDescription || "Quality pharmacy product"}`;
+/home/z/my-project/src/app/api/admin/ai/generate-marketing/route.ts:86:      ? `\nCampaign Theme: ${campaignType.replace(/_/g, " ")}\nTailor the content to this campaign theme. Use relevant cultural references, seasonal language, and appropriate tone.`
+/home/z/my-project/src/app/api/admin/ai/generate-marketing/route.ts:93:${productListText}
+/home/z/my-project/src/app/api/admin/ai/generate-marketing/route.ts:95:Tone: ${tone}${campaignContext}
+/home/z/my-project/src/app/api/admin/ai/generate-marketing/route.ts:145:          const url = `${baseUrl}/products/${p.slug}`;
+/home/z/my-project/src/app/api/admin/ai/generate-marketing/route.ts:149:                : `${baseUrl}${p.primaryImage.startsWith("/") ? "" : "/"}${p.primaryImage}`)
+/home/z/my-project/src/app/api/admin/ai/generate-marketing/route.ts:151:          return `  ${i + 1}. ${p.name} | Brand: ${p.brand?.name || "Unknown"} | Price: ₹${Number(p.sellingPrice)} (MRP ₹${Number(p.mrp)}, ${pct}% off) | URL: ${url} | Image: ${img || "N/A"} | ${p.prescriptionRequired ? "Rx required" : "OTC"} | Desc: ${p.shortDescription || "Quality pharmacy product"}`;
+/home/z/my-project/src/app/api/admin/ai/generate-marketing/route.ts:158:Website: ${baseUrl}
+/home/z/my-project/src/app/api/admin/ai/generate-marketing/route.ts:159:Logo URL: ${baseUrl}/logo.png (use as the brand logo in the header)
+/home/z/my-project/src/app/api/admin/ai/generate-marketing/route.ts:162:${productsBlock}
+/home/z/my-project/src/app/api/admin/ai/generate-marketing/route.ts:164:Headline to use: ${generated.headline || product.name}
+/home/z/my-project/src/app/api/admin/ai/generate-marketing/route.ts:165:Promotional description: ${generated.promotionalDescription || product.shortDescription || "Quality pharmacy product"}
+/home/z/my-project/src/app/api/admin/ai/generate-marketing/route.ts:166:CTA button text: ${generated.ctaText || "Shop Now"}
+/home/z/my-project/src/app/api/admin/ai/generate-marketing/route.ts:167:CTA button URL: ${productPageUrl}
+/home/z/my-project/src/app/api/admin/ai/generate-marketing/route.ts:173:- Header: gradient emerald bar with the brand logo image (use ${baseUrl}/logo.png) on the left + "Pradeep Medical Store" wordmark
+/home/z/my-project/src/app/api/admin/ai/generate-marketing/route.ts:176:- Primary CTA button: emerald bg, white bold text "${generated.ctaText || "Shop Now"} →", links to ${productPageUrl}
+/home/z/my-project/src/app/api/admin/ai/generate-marketing/route.ts:179:- ${product.prescriptionRequired ? "Include prescription-required disclaimer above footer" : "No prescription disclaimer needed"}
+/home/z/my-project/src/app/api/admin/ai/generate-marketing/route.ts:201:      productName: products.length === 1 ? product.name : `${product.name} + ${products.length - 1} more`,
+/home/z/my-project/src/app/api/admin/orders/export/route.ts:17:  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+/home/z/my-project/src/app/api/admin/orders/export/route.ts:85:      .map((it) => `${it.qty}x ${it.name}`)
+/home/z/my-project/src/app/api/admin/orders/export/route.ts:110:  const filename = `orders-${new Date().toISOString().slice(0, 10)}.csv`;
+/home/z/my-project/src/app/api/admin/orders/export/route.ts:115:      "Content-Disposition": `attachment; filename="${filename}"`,
+/home/z/my-project/src/app/api/admin/orders/bulk/route.ts:48:    return err(`Unsupported action: ${body.action}`, 400);
+/home/z/my-project/src/app/api/admin/customers/[id]/loyalty/route.ts:63:        reason: `Admin adjustment by ${admin.email}: ${reason}`,
+/home/z/my-project/src/app/api/admin/orders/[id]/shipping/route.ts:66:    `[shipping]${shippingHeader}\n` + (cleanedNotes || "");
+/home/z/my-project/src/app/api/admin/orders/[id]/shipping/route.ts:73:    changes.push(`tracking=${body.trackingNumber || "(cleared)"}`);
+/home/z/my-project/src/app/api/admin/orders/[id]/shipping/route.ts:76:    changes.push(`carrier=${body.carrier || "(cleared)"}`);
+/home/z/my-project/src/app/api/admin/orders/[id]/shipping/route.ts:79:    changes.push(`eta=${body.estimatedDelivery || "(cleared)"}`);
+/home/z/my-project/src/app/api/admin/orders/[id]/shipping/route.ts:86:      note: `Shipping details updated — ${changes.join(" · ") || "no changes"}`,
+/home/z/my-project/src/app/api/admin/orders/[id]/payment/route.ts:54:    return err(`Invalid payment status. Allowed: ${Array.from(ALLOWED_PAYMENT_STATUSES).join(", ")}`, 400);
+/home/z/my-project/src/app/api/admin/orders/[id]/payment/route.ts:64:    return err(`Payment status is already "${body.paymentStatus}"`, 400);
+/home/z/my-project/src/app/api/admin/orders/[id]/payment/route.ts:86:      note: body.note?.trim() || `Payment status: ${order.paymentStatus} → ${body.paymentStatus}${body.paymentId ? ` (txn ${body.paymentId})` : ""}`,
+/home/z/my-project/src/app/api/admin/orders/[id]/shipping-label/route.ts:52:      "Content-Disposition": `attachment; filename="shipping-label-${order.orderNumber}.pdf"`,
+/home/z/my-project/src/app/api/admin/brands/export/route.ts:13:  if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+/home/z/my-project/src/app/api/admin/brands/export/route.ts:40:      "Content-Disposition": `attachment; filename="brands-${new Date().toISOString().slice(0, 10)}.csv"`,
+/home/z/my-project/src/app/api/admin/orders/[id]/notes/[noteId]/route.ts:44:        note: `Note ${noteId.slice(-6)} edited by ${admin.name}`,
+/home/z/my-project/src/app/api/admin/brands/bulk/route.ts:35:      errors.push(`${id}: ${e?.message ?? "unknown error"}`);
+/home/z/my-project/src/app/api/admin/orders/[id]/status/route.ts:64:    return err(`Order is already ${body.status}`, 400);
+/home/z/my-project/src/app/api/admin/orders/[id]/status/route.ts:67:    return err(`Cannot change status of a ${order.status} order (terminal state)`, 400);
+/home/z/my-project/src/app/api/admin/orders/[id]/status/route.ts:70:    return err(`Invalid transition: ${order.status} → ${body.status}. Allowed: ${allowedNext.join(", ")}`, 400);
+/home/z/my-project/src/app/api/admin/brands/[id]/route.ts:40:    if (dupe && dupe.id !== id) slug = `${slug}-${Math.random().toString(36).slice(2, 6)}`;
+/home/z/my-project/src/app/api/admin/brands/route.ts:36:  const finalSlug = dupe ? `${slug}-${Math.random().toString(36).slice(2, 6)}` : slug;
+/home/z/my-project/src/app/api/admin/orders/[id]/prescription-verify/route.ts:141:        note: `Prescription rejected: ${reason}`,
+/home/z/my-project/src/app/api/admin/orders/[id]/prescription-verify/route.ts:150:        note: `Prescription rejected: ${reason}`,
+/home/z/my-project/src/app/api/admin/orders/[id]/prescription-verify/route.ts:186:      title: `Prescription rejected — ${order.orderNumber}`,
+/home/z/my-project/src/app/api/admin/orders/[id]/prescription-verify/route.ts:187:      message: `Prescription for order ${order.orderNumber} was rejected by ${admin.name}. Reason: ${reason}`,
+/home/z/my-project/src/app/api/admin/orders/[id]/prescription-verify/route.ts:191:      emailDetails: `Order: ${order.orderNumber}\nReason: ${reason}`,
+/home/z/my-project/src/app/api/admin/brands/import/route.ts:61:      if (!name) { errors.push(`Row ${i + 2}: missing name`); continue; }
+/home/z/my-project/src/app/api/admin/brands/import/route.ts:82:      errors.push(`Row ${i + 2}: ${e?.message ?? "unknown error"}`);
+/home/z/my-project/src/app/api/admin/orders/[id]/invoice/route.ts:75:      "Content-Disposition": `attachment; filename="${order.orderNumber}.pdf"`,
+/home/z/my-project/src/app/api/admin/prescriptions/[id]/convert/route.ts:195:        console.error(`[prescription-convert] stock decrement failed for product ${item.productId}:`, e);
+/home/z/my-project/src/app/api/admin/dashboard/analytics/route.ts:42:    db.$queryRaw<{ total: Prisma.Decimal | null }[]>`SELECT COALESCE(SUM("grandTotal"),0)::numeric AS total FROM "Order" WHERE "paymentStatus"='paid' AND "createdAt" >= ${startOfToday}`,
+/home/z/my-project/src/app/api/admin/dashboard/analytics/route.ts:43:    db.$queryRaw<{ total: Prisma.Decimal | null }[]>`SELECT COALESCE(SUM("grandTotal"),0)::numeric AS total FROM "Order" WHERE "paymentStatus"='paid' AND "createdAt" >= ${startOfYesterday} AND "createdAt" < ${startOfToday}`,
+/home/z/my-project/src/app/api/admin/dashboard/analytics/route.ts:44:    db.$queryRaw<{ total: Prisma.Decimal | null }[]>`SELECT COALESCE(SUM("grandTotal"),0)::numeric AS total FROM "Order" WHERE "paymentStatus"='paid' AND "createdAt" >= ${startOfWeek}`,
+/home/z/my-project/src/app/api/admin/dashboard/analytics/route.ts:45:    db.$queryRaw<{ total: Prisma.Decimal | null }[]>`SELECT COALESCE(SUM("grandTotal"),0)::numeric AS total FROM "Order" WHERE "paymentStatus"='paid' AND "createdAt" >= ${startOfMonth}`,
+/home/z/my-project/src/app/api/admin/dashboard/analytics/route.ts:46:    db.$queryRaw<{ total: Prisma.Decimal | null }[]>`SELECT COALESCE(SUM("grandTotal"),0)::numeric AS total FROM "Order" WHERE "paymentStatus"='paid' AND "createdAt" >= ${startOfYear}`,
+/home/z/my-project/src/app/api/admin/dashboard/ai-insights/route.ts:60:Business Data: ${businessSummary}
+/home/z/my-project/src/app/api/admin/dashboard/ai-insights/route.ts:89:      alerts.push({ level: "warning", icon: "🟠", title: "Low Stock", message: `${lowStockProducts.length} products are running low on stock`, count: lowStockProducts.length });
+/home/z/my-project/src/app/api/admin/dashboard/ai-insights/route.ts:93:      alerts.push({ level: "danger", icon: "🔴", title: "Out of Stock", message: `${outOfStock.length} products are completely out of stock`, count: outOfStock.length });
+/home/z/my-project/src/app/api/admin/dashboard/ai-insights/route.ts:96:      alerts.push({ level: "danger", icon: "📉", title: "Revenue Decline", message: `Revenue dropped ${Math.abs(revenueChange)}% this week`, count: 1 });
+/home/z/my-project/src/app/api/admin/dashboard/ai-insights/route.ts:98:      alerts.push({ level: "success", icon: "📈", title: "Revenue Milestone", message: `Revenue grew ${revenueChange}% this week!`, count: 1 });
+/home/z/my-project/src/app/api/admin/dashboard/ai-insights/route.ts:116:        action: p.stock === 0 ? "Restock immediately" : `Restock soon (only ${p.stock} left)`,
+/home/z/my-project/src/app/api/admin/dashboard/ai-insights/route.ts:127:        currentMargin: `${Math.round(((Number(p.sellingPrice) - Number(p.costPrice)) / Number(p.sellingPrice)) * 100)}%`,
+/home/z/my-project/src/app/api/admin/dashboard/route.ts:391:  const hours = Array.from({ length: 24 }, (_, h) => ({ hour: h, hourLabel: `${h.toString().padStart(2, "0")}:00`, count: 0 }));
+/home/z/my-project/src/app/api/admin/database/tables/[table]/route.ts:31:      WHERE N.nspname = 'public' AND C.relname = ${table} AND C.relkind = 'r'
+/home/z/my-project/src/app/api/admin/database/tables/[table]/route.ts:43:    WHERE table_schema = 'public' AND table_name = ${table}
+/home/z/my-project/src/app/api/admin/database/tables/[table]/route.ts:55:      const conditions = textCols.map((c) => `${c.column_name}::text ILIKE $${queryParams.length + 1}`).join(" OR ");
+/home/z/my-project/src/app/api/admin/database/tables/[table]/route.ts:56:      whereClause = `WHERE ${conditions}`;
+/home/z/my-project/src/app/api/admin/database/tables/[table]/route.ts:57:      queryParams.push(`%${search}%`);
+/home/z/my-project/src/app/api/admin/database/tables/[table]/route.ts:63:    `SELECT COUNT(*) as count FROM "${table}" ${whereClause}`,
+/home/z/my-project/src/app/api/admin/database/tables/[table]/route.ts:71:    `SELECT * FROM "${table}" ${whereClause} ORDER BY 1 LIMIT $${queryParams.length} OFFSET $${queryParams.length - 1}`,
+/home/z/my-project/src/app/api/admin/settings/storage/test/route.ts:108:          message: `${providerName} requires bucket, accessKey, and secretKey. Fill in all fields and try again.`,
+/home/z/my-project/src/app/api/admin/settings/storage/test/route.ts:119:          message: `${providerName} requires URL and service role key. Fill in all fields and try again.`,
+/home/z/my-project/src/app/api/admin/settings/storage/test/route.ts:130:          message: `${providerName} requires a connection string and container name. Fill in all fields and try again.`,
+/home/z/my-project/src/app/api/admin/settings/storage/test/route.ts:143:      message: `Failed to initialize ${providerName}: ${e.message}`,
+/home/z/my-project/src/app/api/admin/settings/storage/usage/route.ts:152:  return `${size.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
+/home/z/my-project/src/app/api/device-registrations/skip/route.ts:41:  const deviceLabel = (body.deviceLabel || `${browserName} · ${osName}`).slice(0, 120);
+/home/z/my-project/src/app/api/admin/branding/route.ts:69:    return err(`Invalid file type: ${mime}. Allowed: PNG, JPEG, WEBP, SVG, ICO`, 400);
+/home/z/my-project/src/app/api/admin/branding/route.ts:80:    const filename = `branding-${assetKey.replace(/\./g, "-")}-${Date.now()}.${ext}`;
+/home/z/my-project/src/app/api/device-registrations/register/route.ts:57:  const deviceLabel = (body.deviceLabel || `${browserName} · ${osName}`).slice(0, 120);
+/home/z/my-project/src/app/api/health-assistant/route.ts:425:    const price = `₹${p.sellingPrice}`;
+/home/z/my-project/src/app/api/health-assistant/route.ts:428:    const brand = p.brandName ? ` (${p.brandName})` : "";
+/home/z/my-project/src/app/api/health-assistant/route.ts:429:    const generic = p.genericName ? ` — generic: ${p.genericName}` : "";
+/home/z/my-project/src/app/api/health-assistant/route.ts:430:    return `${i + 1}. ${p.name}${brand} — ${price}, ${stock}${rx}${generic}`;
+/home/z/my-project/src/app/api/health-assistant/route.ts:432:  return `\n\nAvailable products in our catalog (reference these in your reply):\n${lines.join("\n")}`;
+/home/z/my-project/src/app/api/health-assistant/route.ts:556:        `\n\nThe customer asked: "${userQuery}". ` +
+/home/z/my-project/src/app/api/health-assistant/route.ts:572:        `\n\nThe customer asked: "${userQuery}". ` +
+/home/z/my-project/src/app/api/health-assistant/route.ts:582:        `\n\nThe customer asked: "${userQuery}". ` +
+/home/z/my-project/src/app/api/health-assistant/route.ts:583:        `We found relevant health bundle(s) in our catalog: ${bundleIds.join(", ")}. ` +
+/home/z/my-project/src/app/api/health-assistant/route.ts:592:        `\n\nThe customer asked: "${userQuery}". ` +
+/home/z/my-project/src/app/api/health-assistant/route.ts:606:        ? `\n\nThe customer's query mentions symptoms: ${symptomMatches
+/home/z/my-project/src/app/api/health-assistant/route.ts:635:          `I found ${products.length} product${products.length === 1 ? "" : "s"} matching your search. ` +
+/home/z/my-project/src/app/api/health-assistant/route.ts:637:            ? `I also found ${alternatives.length} alternative${alternatives.length === 1 ? "" : "s"} you might consider. `
+/home/z/my-project/src/app/api/health-assistant/route.ts:642:          `I couldn't find an exact match, but I found ${alternatives.length} alternative${alternatives.length === 1 ? "" : "s"} that may be suitable. ` +
+/home/z/my-project/src/app/api/contact/route.ts:30:    const subject = body.subject?.trim() || `Contact form: ${body.name}`;
+/home/z/my-project/src/app/api/contact/route.ts:34:      `Name: ${body.name}`,
+/home/z/my-project/src/app/api/contact/route.ts:35:      `Email: ${body.email}`,
+/home/z/my-project/src/app/api/contact/route.ts:36:      body.phone ? `Phone: ${body.phone}` : null,
+/home/z/my-project/src/app/api/checkout/razorpay/verify/route.ts:87:        note: `Razorpay payment verified — payment_id: ${body.razorpayPaymentId}`,
+/home/z/my-project/src/app/api/admin/app-notifs/test/route.ts:60:    body: `Hi ${customer.name}, this is a test push from the PMS admin team. Your notifications are working correctly.`,
+/home/z/my-project/src/app/api/admin/app-notifs/test/route.ts:75:        body: `Test sent by ${admin.name}`,
+/home/z/my-project/src/app/api/admin/app-notifs/test/route.ts:78:        error: result.sent > 0 ? null : `${result.failed} failed, ${result.pruned} pruned`,
+/home/z/my-project/src/app/api/checkout/razorpay/route.ts:84:      note: `Razorpay order created: ${razorpayOrder.id} (Rs. ${Number(order.grandTotal).toFixed(2)})`,
+/home/z/my-project/src/app/api/checkout/route.ts:61:          `Insufficient loyalty points. You have ${loyaltyCustomer.loyaltyPoints} point(s).`
+/home/z/my-project/src/app/api/checkout/route.ts:94:        `Insufficient loyalty points. You have ${loyaltyCustomer.loyaltyPoints} point(s).`
+/home/z/my-project/src/app/api/checkout/route.ts:219:          console.error(`[checkout] stock decrement failed for product ${item.productId}:`, e);
+/home/z/my-project/src/app/api/checkout/route.ts:292:    title: `New Order: ${orderNumber}`,
+/home/z/my-project/src/app/api/checkout/route.ts:293:    message: `${customer.name} placed an order of Rs. ${finalGrandTotal.toFixed(2)} (${paymentLabel})`,
+/home/z/my-project/src/app/api/checkout/route.ts:298:      `Order Number: ${orderNumber}`,
+/home/z/my-project/src/app/api/checkout/route.ts:299:      `Customer: ${customer.name} (${customer.email}, ${customer.phone})`,
+/home/z/my-project/src/app/api/checkout/route.ts:300:      `Payment Method: ${paymentLabel}`,
+/home/z/my-project/src/app/api/checkout/route.ts:301:      `Grand Total: Rs. ${finalGrandTotal.toFixed(2)}`,
+/home/z/my-project/src/app/api/checkout/route.ts:303:        ? `Voucher Applied: ${totals.voucherCode} (-Rs. ${totals.voucherDiscount.toFixed(2)})`
+/home/z/my-project/src/app/api/checkout/route.ts:306:        ? `Loyalty Redeemed: ${loyaltyPointsRedeemed} pts (-Rs. ${loyaltyDiscount.toFixed(2)})`
+/home/z/my-project/src/app/api/checkout/route.ts:308:      `Delivery: ${totals.deliveryZoneName ?? "Standard"} (Rs. ${totals.deliveryCharge.toFixed(2)})`,
+/home/z/my-project/src/app/api/checkout/route.ts:309:      `Items: ${inputs.length}`,
+/home/z/my-project/src/app/api/checkout/route.ts:310:      body.notes ? `Notes: ${body.notes}` : "",
+/home/z/my-project/src/app/p/[slug]/page.tsx:59:    if (host) return `${proto}://${host}`;
+/home/z/my-project/src/app/p/[slug]/page.tsx:70:  if (imagePath.startsWith("//")) return `https:${imagePath}`;
+/home/z/my-project/src/app/p/[slug]/page.tsx:73:    ? `${origin}${imagePath}`
+/home/z/my-project/src/app/p/[slug]/page.tsx:74:    : `${origin}/${imagePath}`;
+/home/z/my-project/src/app/p/[slug]/page.tsx:88:        url: `${origin}/p/${slug}`,
+/home/z/my-project/src/app/p/[slug]/page.tsx:100:  const title = `${cleanName} — Buy Online | Pradeep Medical Store`;
+/home/z/my-project/src/app/p/[slug]/page.tsx:102:    `Buy ${cleanName} online at Pradeep Medical Store. ${product.composition ? `Contains ${product.composition}. ` : ""}Genuine medicine, fast delivery in Mathura.`;
+/home/z/my-project/src/app/p/[slug]/page.tsx:104:  const canonicalPath = `/p/${product.slug}`;
+/home/z/my-project/src/app/p/[slug]/page.tsx:105:  const canonicalUrl = `${origin}${canonicalPath}`;
+/home/z/my-project/src/app/p/[slug]/page.tsx:155:  const hash = `#v=product&productId=${product.id}&slug=${encodeURIComponent(product.slug)}`;
+/home/z/my-project/src/app/p/[slug]/page.tsx:159:        <meta httpEquiv="refresh" content={`0; url=/${hash}`} />
+/home/z/my-project/src/app/p/[slug]/page.tsx:160:        <script dangerouslySetInnerHTML={{ __html: `window.location.replace('/${hash}');` }} />
+/home/z/my-project/src/app/p/[slug]/page.tsx:163:        <noscript><p>Redirecting to <a href={`/${hash}`}>{product.name}</a>...</p></noscript>
+/home/z/my-project/src/app/api/admin/app-notifs/generate/route.ts:60:- Tone: ${tone}.
+/home/z/my-project/src/app/api/admin/app-notifs/generate/route.ts:65:  const userPrompt = `Topic: ${topic}
+/home/z/my-project/src/app/api/admin/app-notifs/generate/route.ts:66:Audience: ${audience}
+/home/z/my-project/src/app/api/admin/app-notifs/generate/route.ts:67:Tone: ${tone}
+/home/z/my-project/src/app/api/admin/app-notifs/generate/route.ts:112:      `AI generation failed: ${e?.message || "unknown error"}. Make sure the AI provider is configured in Settings → AI Providers.`,
+/home/z/my-project/src/app/products/[slug]/page.tsx:12:  if (product) permanentRedirect(`/p/${product.slug}`);
+/home/z/my-project/src/app/products/[slug]/page.tsx:14:  if (byId) permanentRedirect(`/p/${byId.slug}`);
+/home/z/my-project/src/app/layout.tsx:72:        className={`${geistSans.variable} antialiased bg-background text-foreground min-h-screen`}
+/home/z/my-project/src/hooks/use-mobile.ts:9:    const mql = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`)
+/home/z/my-project/src/components/customer/contact-view.tsx:124:                className={`flex size-2.5 items-center justify-center rounded-full ${
+/home/z/my-project/src/components/customer/contact-view.tsx:129:                  className={`size-1.5 rounded-full ${
+/home/z/my-project/src/components/customer/contact-view.tsx:331:                <a href={`tel:${settings?.store.phone}`} className="hover:text-primary">
+/home/z/my-project/src/components/customer/contact-view.tsx:336:                <a href={`mailto:${settings?.store.email}`} className="hover:text-primary">
+/home/z/my-project/src/components/customer/contact-view.tsx:382:                <a href={`tel:${settings?.store.phone}`}>
+/home/z/my-project/src/components/customer/contact-view.tsx:387:                <a href={`mailto:${settings?.store.email}`}>
+/home/z/my-project/src/components/customer/contact-view.tsx:394:                    href={`https://wa.me/${settings.store.phone.replace(/[^0-9]/g, "")}`}
+/home/z/my-project/src/components/customer/contact-view.tsx:429:                  href={`https://wa.me/${settings.store.phone.replace(/[^0-9]/g, "")}`}
+/home/z/my-project/src/components/customer/contact-view.tsx:473:                  href={`https://maps.google.com/?q=${encodeURIComponent(settings?.store.address || "Mathura")}`}
+/home/z/my-project/src/components/customer/contact-view.tsx:562:      className={`flex size-9 items-center justify-center rounded-full border bg-card text-muted-foreground transition-colors ${color}`}
+/home/z/my-project/src/app/api/admin/storage/diagnostics/route.ts:99:          message: `Connected to bucket "${config.s3.bucket}" successfully. Credentials are valid.`,
+/home/z/my-project/src/app/api/admin/storage/diagnostics/route.ts:109:          message: `Connection failed${status ? ` (HTTP ${status})` : ""}: ${e?.message || e?.name}. ${hint}`,
+/home/z/my-project/src/app/api/admin/storage/diagnostics/route.ts:135:                ? `${config.s3!.publicBaseUrl}/${obj.Key}`
+/home/z/my-project/src/app/api/admin/storage/diagnostics/route.ts:136:                : `${config.s3!.endpoint}/${config.s3!.bucket}/${obj.Key}`,
+/home/z/my-project/src/app/api/admin/storage/diagnostics/route.ts:143:            message: `ListObjects failed: ${e?.message || e?.name}`,
+/home/z/my-project/src/app/api/admin/vouchers/route.ts:52:    return err(`Target ${scope} IDs are required when scope is ${scope}`);
+/home/z/my-project/src/components/customer/product-view.tsx:121:    queryFn: () => api<ProductDetail>(`/api/catalog/products/${slug}`),
+/home/z/my-project/src/components/customer/product-view.tsx:155:        `/api/catalog/recommendations/${encodeURIComponent(product!.id)}`
+/home/z/my-project/src/components/customer/product-view.tsx:204:      toast.success(`Added ${products.length} items to cart`, {
+/home/z/my-project/src/components/customer/product-view.tsx:269:  if (product.composition) highlights.push(`Contains ${product.composition}`);
+/home/z/my-project/src/components/customer/product-view.tsx:270:  if (product.genericName) highlights.push(`Generic: ${product.genericName}`);
+/home/z/my-project/src/components/customer/product-view.tsx:271:  if (product.manufacturer) highlights.push(`By ${product.manufacturer}`);
+/home/z/my-project/src/components/customer/product-view.tsx:430:                    className={`size-4 ${
+/home/z/my-project/src/components/customer/product-view.tsx:594:                    style={{ width: `${Math.min(100, (product.sellingPrice / 500) * 100)}%` }}
+/home/z/my-project/src/components/customer/product-view.tsx:890:                        className={`flex w-28 flex-col gap-1.5 rounded-lg border bg-card p-2 text-left transition-all sm:w-36 ${
+/home/z/my-project/src/app/api/admin/manual-requests/[id]/convert/route.ts:190:        console.error(`[manual-request-convert] stock decrement failed for product ${item.productId}:`, e);
+/home/z/my-project/src/components/customer/categories-view.tsx:104:              {query ? `No matches for "${query}". Try a different search.` : "Categories will appear here once added."}
+/home/z/my-project/src/components/customer/categories-view.tsx:180:          <div className={`relative flex size-full items-center justify-center bg-gradient-to-br ${gradient}`}>
+/home/z/my-project/src/components/customer/categories-view.tsx:198:            ? `${category.productCount} ${category.productCount === 1 ? "item" : "items"}`
+/home/z/my-project/src/components/customer/medicine-reminders-view.tsx:94:  return `${h12}:${mStr} ${period}`;
+/home/z/my-project/src/components/customer/medicine-reminders-view.tsx:140:        `/api/catalog/products?query=${encodeURIComponent(debouncedQuery)}&limit=5`
+/home/z/my-project/src/components/customer/medicine-reminders-view.tsx:159:        return api.patch(`/api/customer/reminders/${editingId}`, body);
+/home/z/my-project/src/components/customer/medicine-reminders-view.tsx:177:      api.patch(`/api/customer/reminders/${id}`, { isActive }),
+/home/z/my-project/src/components/customer/medicine-reminders-view.tsx:186:    mutationFn: (id: string) => api.del(`/api/customer/reminders/${id}`),
+/home/z/my-project/src/components/customer/medicine-reminders-view.tsx:326:                  if (confirm(`Delete the reminder for "${r.productName}"?`)) {
+
+[Showing results with pagination = limit: 250]

@@ -7,7 +7,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
+import { useQuery, useQueryClient, useMutation, keepPreviousData } from "@tanstack/react-query";
 import { api, run } from "../api";
 import { PageHeader, StatusBadge, TableSkeleton, EmptyState } from "../ui";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -72,6 +72,8 @@ export function CustomersView() {
       api.get<{ items: any[]; total: number; totalPages: number; page: number }>(
         `/api/admin/customers?${query}`
       ),
+    refetchInterval: 30_000, // Auto-refresh every 30s — preserves filters + pagination
+    placeholderData: keepPreviousData,
   });
 
   const allSelected = (data?.items?.length ?? 0) > 0 && data!.items.every((c) => selected.has(c.id));

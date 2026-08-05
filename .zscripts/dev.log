@@ -293,3 +293,46 @@ You may use the --force-reset flag to drop the database before push like prisma 
 All data will be lost.
       
 error: script "db:push" exited with code 1
+==========================================
+[2026-08-05 04:57:25] Starting: bun install
+==========================================
+[BUN] Installing dependencies...
+[0.04ms] ".env"
+bun install v1.3.14 (0d9b296a)
+
+$ prisma generate
+Environment variables loaded from .env
+Prisma schema loaded from prisma/schema.prisma
+
+✔ Generated Prisma Client (v6.19.3) to ./node_modules/@prisma/client in 323ms
+
+Start by importing your Prisma Client (See: https://pris.ly/d/importing-client)
+
+Tip: Interested in query caching in just a few lines of code? Try Accelerate today! https://pris.ly/tip-3-accelerate
+
+
+Checked 614 installs across 708 packages (no changes) [2.43s]
+==========================================
+[2026-08-05 04:57:27] Completed: bun install
+[LOG] Step: bun install | Duration: 2s
+==========================================
+
+==========================================
+[2026-08-05 04:57:27] Starting: bun run db:push
+==========================================
+[BUN] Setting up database...
+$ node scripts/with-env.mjs prisma db push
+[with-env] DATABASE_URL is SQLite (file:) — overriding with PostgreSQL fallback
+Environment variables loaded from .env
+Prisma schema loaded from prisma/schema.prisma
+Datasource "db": PostgreSQL database "postgres", schema "public" at "aws-1-ap-south-1.pooler.supabase.com:5432"
+
+Error: 
+⚠️ We found changes that cannot be executed:
+
+  • Made the column `fullMessage` on table `AppNotifTemplate` required, but there are 16 existing NULL values.
+
+You may use the --force-reset flag to drop the database before push like prisma db push --force-reset
+All data will be lost.
+      
+error: script "db:push" exited with code 1

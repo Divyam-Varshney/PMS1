@@ -72,11 +72,10 @@ interface StepProgress {
 }
 
 const BENEFITS = [
-  { icon: Package, title: "Order Updates", desc: "Real-time alerts when your order is confirmed, packed, or delivered." },
-  { icon: Truck, title: "Delivery Status", desc: "Know the moment your delivery is on its way to your doorstep." },
-  { icon: FileText, title: "Prescription Updates", desc: "Get notified when your prescription is reviewed and approved." },
-  { icon: Tag, title: "Exclusive Offers", desc: "Be the first to know about deals, vouchers, and seasonal discounts." },
-  { icon: Megaphone, title: "Pharmacy Announcements", desc: "Important updates about your account, medicine stock, and store hours." },
+  { icon: Package, title: "Order Updates" },
+  { icon: Truck, title: "Delivery Tracking" },
+  { icon: FileText, title: "Medicine Request Updates" },
+  { icon: Tag, title: "Exclusive Offers" },
 ];
 
 export function DeviceRegistrationWizard({
@@ -433,57 +432,37 @@ function WelcomeStep({
 }) {
   return (
     <>
-      {/* Header */}
-      <div className="relative bg-gradient-to-br from-emerald-600 via-emerald-700 to-teal-700 px-6 pb-7 pt-8 text-white">
+      {/* Minimal header — no logo, just title + close */}
+      <div className="relative px-6 pt-6 pb-4">
         <button
           onClick={onSkip}
-          className="absolute right-4 top-4 rounded-full bg-white/15 p-1.5 transition hover:bg-white/25"
+          className="absolute right-4 top-4 rounded-full bg-muted p-1.5 transition hover:bg-muted/80"
           aria-label="Close"
         >
           <X className="size-4" />
         </button>
-        <div className="mb-3 flex size-14 items-center justify-center rounded-2xl bg-white/15 backdrop-blur-sm ring-1 ring-white/30">
-          <BellRing className="size-7" />
+        <div className="mb-3 flex size-12 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">
+          <BellRing className="size-6" />
         </div>
-        <h2 className="text-xl font-bold leading-tight">Stay Updated</h2>
-        <p className="mt-1.5 text-sm text-emerald-50/90">
-          Enable App Notifications to receive important updates about your orders and prescriptions.
+        <h2 className="text-lg font-bold leading-tight">Stay Updated</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Get instant alerts for your orders, deliveries, and exclusive offers.
         </p>
-        {deviceLabel && (
-          <div className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-white/15 px-2.5 py-1 text-[11px] font-medium text-emerald-50 backdrop-blur-sm">
-            <Smartphone className="size-3" />
-            {deviceLabel}
-          </div>
-        )}
       </div>
 
-      {/* Benefits list */}
-      <div className="space-y-3 px-6 py-5">
+      {/* Benefits — clean 2x2 grid, no descriptions */}
+      <div className="grid grid-cols-2 gap-2 px-6 pb-4">
         {BENEFITS.map((b) => {
           const Icon = b.icon;
           return (
-            <div key={b.title} className="flex items-start gap-3">
-              <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">
-                <Icon className="size-4" />
+            <div key={b.title} className="flex items-center gap-2 rounded-lg border border-border/60 bg-card px-3 py-2.5">
+              <div className="flex size-7 shrink-0 items-center justify-center rounded-md bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">
+                <Icon className="size-3.5" />
               </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold text-foreground">{b.title}</p>
-                <p className="mt-0.5 text-xs text-muted-foreground">{b.desc}</p>
-              </div>
+              <p className="text-xs font-medium text-foreground">{b.title}</p>
             </div>
           );
         })}
-      </div>
-
-      {/* Privacy note */}
-      <div className="px-6 pb-3">
-        <div className="flex items-start gap-2 rounded-lg border border-emerald-100 bg-emerald-50/50 p-3 text-xs text-emerald-900 dark:border-emerald-900/30 dark:bg-emerald-950/20 dark:text-emerald-200">
-          <ShieldCheck className="mt-0.5 size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
-          <p>
-            We only send transactional updates and occasional offers — no spam. You can change your preference at any time from{" "}
-            <span className="font-medium">Profile → Settings</span>.
-          </p>
-        </div>
       </div>
 
       {/* Buttons */}

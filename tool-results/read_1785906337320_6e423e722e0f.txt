@@ -1,0 +1,734 @@
+     1→// ============================================================================
+     2→// File: src/app/api/health-assistant/route.ts
+     3→// Purpose: AI-powered pharmacy assistant chatbot endpoint.
+     4→//          Fully integrated with the PMS catalog: searches products (by name,
+     5→//          generic, composition, category name, and SYMPTOM-BASED keywords),
+     6→//          suggests alternative products (same generic name → same category),
+     7→//          checks medical bundles, answers FAQs instantly (no LLM cost), guides
+     8→//          customers to the Medicine Request flow when a product is unavailable,
+     9→//          nudges customers toward pharmacy features (Upload Prescription,
+    10→//          Health Bundles, Related Products, Frequently Bought Together), and
+    11→//          falls back to the Z.AI LLM for general pharmacy questions.
+    12→//
+    13→// Response priority (highest → lowest):
+    14→//   1. FAQ knowledge base  — instant, deterministic, zero API cost.
+    15→//   2. Product catalog     — exact + symptom + category-aware matches.
+    16→//   3. Alternatives        — same generic name → same category, with a
+    17→//                            plain-language explanation of WHY each is suitable.
+    18→//   4. Medical bundles     — relevant curated kits (when symptom/health query).
+    19→//   5. Medicine Request    — guide the customer to request an unavailable item.
+    20→//   6. General AI reply    — LLM handles everything else (with product context).
+    21→//
+    22→// Response shape: { ok: true, data: { reply, products, suggestions, action, faqQuestion? } }
+    23→//   - reply:       string  (always present — the assistant's text answer)
+    24→//   - products:    ProductSearchResult[] (empty if none)
+    25→//   - alternatives: ProductSearchResult[] (empty if none — populated when the
+    26→//                  exact product is out of stock or not found)
+    27→//   - suggestions: string[] (follow-up chip suggestions, may be empty)
+    28→//   - featureCues: string[] (PMS features to nudge the customer toward)
+    29→//   - action:      "product_results" | "medicine_request" | "bundle_results" | "faq_answer" | "general_info"
+    30→//
+    31→// Auth: The route is PUBLIC (no login required). Customers can ask questions
+    32→//       before signing up. This matches the existing widget behavior and the
+    33→//       store's "browse without account" UX.
+    34→//
+    35→// Phase 28.4: Now powered by the centralized knowledge layer
+    36→//             (src/lib/ai-knowledge-layer.ts) — system prompt, symptom map,
+    37→//             category keywords, and feature cues are all defined there.
+    38→// ============================================================================
+    39→
+    40→import { ok, err, parseBody } from "@/lib/api";
+    41→import { aiChatCompletion } from "@/lib/ai-service";
+    42→import { db } from "@/lib/db";
+    43→import { PHARMACY_FAQS, matchFaq } from "@/lib/pharmacy-faq";
+    44→import { MEDICAL_BUNDLES } from "@/lib/medical-bundles";
+    45→import {
+    46→  buildAssistantSystemPrompt,
+    47→  expandQueryWithSymptoms,
+    48→  matchSymptoms,
+    49→  matchCategoryKeywords,
+    50→  buildAlternativeContext,
+    51→  pickFeatureCues,
+    52→  lookupBrandToGeneric,
+    53→  PHARMACY_FEATURE_CUES,
+    54→  type PharmacyFeature,
+    55→} from "@/lib/ai-knowledge-layer";
+    56→
+    57→export const dynamic = "force-dynamic";
+    58→export const maxDuration = 30;
+    59→
+    60→// ---------------------------------------------------------------------------
+    61→// Types
+    62→// ---------------------------------------------------------------------------
+    63→
+    64→interface ChatMessage {
+    65→  role: "user" | "assistant";
+    66→  content: string;
+    67→}
+    68→
+    69→export type AssistantAction =
+    70→  | "product_results"
+    71→  | "medicine_request"
+    72→  | "bundle_results"
+    73→  | "faq_answer"
+    74→  | "general_info";
+    75→
+    76→export interface ProductSearchResult {
+    77→  id: string;
+    78→  name: string;
+    79→  slug: string;
+    80→  genericName: string | null;
+    81→  composition: string | null;
+    82→  manufacturer: string | null;
+    83→  shortDescription: string | null;
+    84→  mrp: number;
+    85→  sellingPrice: number;
+    86→  stock: number;
+    87→  prescriptionRequired: boolean;
+    88→  primaryImage: string | null;
+    89→  brandName: string | null;
+    90→  image: string | null;
+    91→  categoryId: string | null;
+    92→  categoryName: string | null;
+    93→}
+    94→
+    95→export interface AssistantResponse {
+    96→  reply: string;
+    97→  products: ProductSearchResult[];
+    98→  alternatives?: ProductSearchResult[];
+    99→  suggestions: string[];
+   100→  action: AssistantAction;
+   101→  faqQuestion?: string;
+   102→  bundleIds?: string[];
+   103→  featureCues?: PharmacyFeature[];
+   104→}
+   105→
+   106→// ---------------------------------------------------------------------------
+   107→// Helpers
+   108→// ---------------------------------------------------------------------------
+   109→
+   110→/**
+   111→ * Extract a search query from the user's latest message.
+   112→ * Strips common question words ("what", "which", "is", "are", "the", "a", "an",
+   113→ * "medicine", "for", "tablet", etc.) so the catalog search is more accurate.
+   114→ */
+   115→function extractSearchQuery(message: string): string {
+   116→  const cleaned = message
+   117→    .toLowerCase()
+   118→    .replace(/[?.!]+$/g, "")
+   119→    .trim();
+   120→
+   121→  // Common stopwords that don't add value for product search.
+   122→  const stopwords = new Set([
+   123→    "the", "a", "an", "is", "are", "was", "were", "be", "been", "being",
+   124→    "what", "which", "who", "whom", "whose", "when", "where", "why", "how",
+   125→    "do", "does", "did", "can", "could", "would", "should", "will", "shall",
+   126→    "i", "me", "my", "we", "our", "you", "your", "he", "she", "it", "they",
+   127→    "for", "of", "to", "in", "on", "at", "by", "with", "from", "about",
+   128→    "and", "or", "but", "not", "so", "than", "too", "very", "just",
+   129→    "medicine", "tablet", "tablets", "drug", "drugs", "pill", "pills",
+   130→    "please", "need", "want", "looking", "find", "give", "show", "tell",
+   131→    "have", "has", "had", "get", "got",
+   132→  ]);
+   133→
+   134→  const tokens = cleaned
+   135→    .split(/[^a-z0-9]+/g)
+   136→    .filter((t) => t.length > 1 && !stopwords.has(t));
+   137→
+   138→  // If everything got stripped (e.g. "what medicine?"), fall back to the
+   139→  // original cleaned message so we at least try something.
+   140→  return tokens.length > 0 ? tokens.join(" ") : cleaned;
+   141→}
+   142→
+   143→/**
+   144→ * Decide whether the user's message looks like a product search (vs. a
+   145→ * general pharmacy question or greeting). We consider it a product search if:
+   146→ *   - It contains a medicine-like token (>= 4 chars, alphabetic), AND
+   147→ *   - It isn't clearly a FAQ-style question (handled by matchFaq before this),
+   148→ *     AND
+   149→ *   - It isn't a pure greeting / conversational utterance.
+   150→ */
+   151→function looksLikeProductSearch(message: string): boolean {
+   152→  const cleaned = message.toLowerCase().trim();
+   153→  if (cleaned.length < 3) return false;
+   154→
+   155→  // Pure greetings / conversational utterances — don't trigger a catalog
+   156→  // search (the LLM can handle these gracefully).
+   157→  const conversational = /^(hi|hello|hey|yo|hiya|hey there|hello there|hi there|good (morning|afternoon|evening|night)|thanks|thank you|ty|thx|ok|okay|got it|sure|cool|nice|great|bye|goodbye|see ya|yes|no|yep|nope|help|please help|hi bot|hello bot)\b/i;
+   158→  if (conversational.test(cleaned)) return false;
+   159→
+   160→  // FAQ-style questions usually start with these words — skip product search
+   161→  // for them since matchFaq() will have already handled them. BUT allow
+   162→  // "do you have X" / "is X available" patterns through (they're product
+   163→  // searches phrased as questions).
+   164→  if (/^(how|what|when|where|why|who|do|does|can|is|are)\b/.test(cleaned)) {
+   165→    if (/\b(have|stock|available|sell|carry|give|find|show)\b/.test(cleaned)) return true;
+   166→    return false;
+   167→  }
+   168→  return true;
+   169→}
+   170→
+   171→/**
+   172→ * Search the product catalog. Returns up to `limit` active, public products
+   173→ * matching the query across name, genericName, composition, description,
+   174→ * manufacturer, AND category name (so "pain relief" matches products in the
+   175→ * Pain Relief category even if no product name contains that phrase).
+   176→ *
+   177→ * The query is also expanded with symptom-based keywords (e.g. "I have fever"
+   178→ * is enriched with "paracetamol crocin dolo thermometer") so symptom queries
+   179→ * return relevant products instead of empty results.
+   180→ */
+   181→async function searchCatalogProducts(
+   182→  rawQuery: string,
+   183→  limit = 5
+   184→): Promise<ProductSearchResult[]> {
+   185→  if (!rawQuery || rawQuery.trim().length < 2) return [];
+   186→
+   187→  // Expand the query with symptom-based product keywords (e.g. "fever" → also
+   188→  // search for "paracetamol"). The original query is preserved so a search
+   189→  // like "paracetamol for fever" still matches the exact name.
+   190→  const expanded = expandQueryWithSymptoms(rawQuery);
+   191→  // Also include category-name keywords (e.g. "pain relief" → expand with
+   192→  // "paracetamol ibuprofen diclofenac" via CATEGORY_KEYWORDS).
+   193→  const categoryMatches = matchCategoryKeywords(expanded);
+   194→
+   195→  // The base OR clauses search by name, generic, composition, description,
+   196→  // manufacturer. We ALSO search by category name (joined via the `category`
+   197→  // relation) so that "pain relief" matches products in the Pain Relief
+   198→  // category even when no individual product name contains that phrase.
+   199→  const tokens = expanded
+   200→    .split(/[^a-z0-9]+/i)
+   201→    .map((t) => t.trim())
+   202→    .filter((t) => t.length >= 2);
+   203→
+   204→  // Build the OR clauses — use the expanded tokens to search each text field.
+   205→  // This handles multi-word queries like "paracetamol syrup for child".
+   206→  const orClauses: Array<Record<string, unknown>> = [];
+   207→
+   208→  // Always include the FULL expanded query as a phrase (best for multi-word
+   209→  // brand/product names like "Crocin Advance").
+   210→  orClauses.push({ name: { contains: expanded, mode: "insensitive" } });
+   211→  orClauses.push({ genericName: { contains: expanded, mode: "insensitive" } });
+   212→  orClauses.push({ composition: { contains: expanded, mode: "insensitive" } });
+   213→  orClauses.push({ shortDescription: { contains: expanded, mode: "insensitive" } });
+   214→  orClauses.push({ manufacturer: { contains: expanded, mode: "insensitive" } });
+   215→
+   216→  // Add per-token searches so "Crocin 500" still matches "Crocin" + "500".
+   217→  for (const tok of tokens) {
+   218→    orClauses.push({ name: { contains: tok, mode: "insensitive" } });
+   219→    orClauses.push({ genericName: { contains: tok, mode: "insensitive" } });
+   220→    orClauses.push({ composition: { contains: tok, mode: "insensitive" } });
+   221→  }
+   222→
+   223→  // Category-name search — match products whose category name contains the
+   224→  // query OR any of the matched category keywords from CATEGORY_KEYWORDS.
+   225→  if (categoryMatches.length > 0) {
+   226→    orClauses.push({
+   227→      category: {
+   228→        name: { contains: categoryMatches[0], mode: "insensitive" },
+   229→      },
+   230→    });
+   231→  }
+   232→
+   233→  const products = await db.product.findMany({
+   234→    where: {
+   235→      status: "active",
+   236→      visibility: "public",
+   237→      OR: orClauses,
+   238→    },
+   239→    take: limit,
+   240→    orderBy: [{ stock: "desc" }, { isBestSeller: "desc" }, { reviewCount: "desc" }],
+   241→    include: {
+   242→      brand: { select: { name: true } },
+   243→      category: { select: { id: true, name: true } },
+   244→      images: {
+   245→        where: { isPrimary: true },
+   246→        take: 1,
+   247→        select: { imagePath: true },
+   248→      },
+   249→    },
+   250→  });
+   251→
+   252→  return products.map((p) => ({
+   253→    id: p.id,
+   254→    name: p.name,
+   255→    slug: p.slug,
+   256→    genericName: p.genericName,
+   257→    composition: p.composition,
+   258→    manufacturer: p.manufacturer,
+   259→    shortDescription: p.shortDescription,
+   260→    mrp: Number(p.mrp),
+   261→    sellingPrice: Number(p.sellingPrice),
+   262→    stock: p.stock,
+   263→    prescriptionRequired: p.prescriptionRequired,
+   264→    primaryImage: p.primaryImage,
+   265→    brandName: p.brand?.name ?? null,
+   266→    image: p.images[0]?.imagePath ?? p.primaryImage ?? null,
+   267→    categoryId: p.category?.id ?? null,
+   268→    categoryName: p.category?.name ?? null,
+   269→  }));
+   270→}
+   271→
+   272→/**
+   273→ * Find alternative products for a query that didn't match (or matched only
+   274→ * out-of-stock products). Strategy:
+   275→ *   1. Extract the most likely "generic name" hint from the query.
+   276→ *   2. Search the catalog for products with that generic name (excluding the
+   277→ *      out-of-stock ones already shown to the customer).
+   278→ *   3. If still empty, search the same category.
+   279→ *   4. If still empty, return [] — the assistant will then suggest the
+   280→ *      Medicine Request form.
+   281→ *
+   282→ * Note on admin-defined ProductRelationships:
+   283→ *   The PMS schema does not currently have a ProductRelationship table. When
+   284→ *   one is added in the future, this function should ALSO consult
+   285→ *   `db.productRelationship.findMany({ where: { type: "alternative",
+   286→ *   productId: ... } })` to surface admin-curated alternatives first. For now,
+   287→ *   we rely on the generic-name + category fallback, which is what the
+   288→ *   existing /api/catalog/recommendations engine already uses.
+   289→ */
+   290→async function findAlternativeProducts(
+   291→  query: string,
+   292→  excludeIds: string[] = [],
+   293→  limit = 3
+   294→): Promise<ProductSearchResult[]> {
+   295→  if (!query || query.trim().length < 2) return [];
+   296→  const lower = query.toLowerCase();
+   297→
+   298→  // Step 1: try to find any product that matches the query loosely — that
+   299→  // gives us the generic name + category to search for alternatives. This is
+   300→  // important when the user asked for "Crocin" and we have 0 in stock — we
+   301→  // still want to find the generic-name "Paracetamol" matches.
+   302→  const seed = await db.product.findFirst({
+   303→    where: {
+   304→      OR: [
+   305→        { name: { contains: lower, mode: "insensitive" } },
+   306→        { genericName: { contains: lower, mode: "insensitive" } },
+   307→        { composition: { contains: lower, mode: "insensitive" } },
+   308→        { shortDescription: { contains: lower, mode: "insensitive" } },
+   309→      ],
+   310→    },
+   311→    select: { genericName: true, categoryId: true, category: { select: { id: true, name: true } } },
+   312→  });
+   313→
+   314→  // Build exclusion list (so we don't re-show out-of-stock items).
+   315→  const excludeFilter = excludeIds.length > 0 ? { id: { notIn: excludeIds } } : {};
+   316→
+   317→  // Step 2: same generic name (excluding the seed itself + already-shown items)
+   318→  // We also fall back to the BRAND_TO_GENERIC map — e.g. if the customer asked
+   319→  // for "Tylenol" (which we don't carry), we look up that Tylenol = Paracetamol
+   320→  // and search our catalog for paracetamol products.
+   321→  const genericHints = new Set<string>();
+   322→  if (seed?.genericName) genericHints.add(seed.genericName);
+   323→  for (const g of lookupBrandToGeneric(lower)) genericHints.add(g);
+   324→
+   325→  if (genericHints.size > 0) {
+   326→    const sameGeneric = await db.product.findMany({
+   327→      where: {
+   328→        status: "active",
+   329→        visibility: "public",
+   330→        stock: { gt: 0 },
+   331→        OR: Array.from(genericHints).map((g) => ({
+   332→          genericName: { equals: g, mode: "insensitive" },
+   333→        })),
+   334→        ...excludeFilter,
+   335→      },
+   336→      take: limit,
+   337→      orderBy: [{ isGeneric: "desc" }, { sellingPrice: "asc" }, { reviewCount: "desc" }],
+   338→      include: {
+   339→        brand: { select: { name: true } },
+   340→        category: { select: { id: true, name: true } },
+   341→        images: { where: { isPrimary: true }, take: 1, select: { imagePath: true } },
+   342→      },
+   343→    });
+   344→    if (sameGeneric.length > 0) {
+   345→      return sameGeneric.map(mapToResult);
+   346→    }
+   347→  }
+   348→
+   349→  // Step 3: same category
+   350→  if (seed?.categoryId) {
+   351→    const sameCategory = await db.product.findMany({
+   352→      where: {
+   353→        status: "active",
+   354→        visibility: "public",
+   355→        stock: { gt: 0 },
+   356→        categoryId: seed.categoryId,
+   357→        ...excludeFilter,
+   358→      },
+   359→      take: limit,
+   360→      orderBy: [{ isBestSeller: "desc" }, { sellingPrice: "asc" }, { reviewCount: "desc" }],
+   361→      include: {
+   362→        brand: { select: { name: true } },
+   363→        category: { select: { id: true, name: true } },
+   364→        images: { where: { isPrimary: true }, take: 1, select: { imagePath: true } },
+   365→      },
+   366→    });
+   367→    if (sameCategory.length > 0) {
+   368→      return sameCategory.map(mapToResult);
+   369→    }
+   370→  }
+   371→
+   372→  // Step 4: no safe alternative found — return [] so the route can suggest
+   373→  // the Medicine Request form / consult-a-pharmacist message.
+   374→  return [];
+   375→}
+   376→
+   377→/** Map a Prisma product row to the API response shape (used by both helpers). */
+   378→function mapToResult(p: any): ProductSearchResult {
+   379→  return {
+   380→    id: p.id,
+   381→    name: p.name,
+   382→    slug: p.slug,
+   383→    genericName: p.genericName,
+   384→    composition: p.composition,
+   385→    manufacturer: p.manufacturer,
+   386→    shortDescription: p.shortDescription,
+   387→    mrp: Number(p.mrp),
+   388→    sellingPrice: Number(p.sellingPrice),
+   389→    stock: p.stock,
+   390→    prescriptionRequired: p.prescriptionRequired,
+   391→    primaryImage: p.primaryImage,
+   392→    brandName: p.brand?.name ?? null,
+   393→    image: p.images?.[0]?.imagePath ?? p.primaryImage ?? null,
+   394→    categoryId: p.category?.id ?? null,
+   395→    categoryName: p.category?.name ?? null,
+   396→  };
+   397→}
+   398→
+   399→/**
+   400→ * Find medical bundles whose keywords overlap with the query tokens.
+   401→ * Returns up to 3 bundle IDs (sorted by match count, desc).
+   402→ */
+   403→function searchBundles(query: string): string[] {
+   404→  if (!query || query.trim().length < 2) return [];
+   405→  const q = query.toLowerCase();
+   406→  const scored: Array<{ bundleId: string; score: number }> = [];
+   407→  for (const bundle of MEDICAL_BUNDLES) {
+   408→    let score = 0;
+   409→    for (const kw of bundle.keywords) {
+   410→      if (q.includes(kw.toLowerCase())) score += 1;
+   411→    }
+   412→    if (score > 0) scored.push({ bundleId: bundle.id, score });
+   413→  }
+   414→  scored.sort((a, b) => b.score - a.score);
+   415→  return scored.slice(0, 3).map((s) => s.bundleId);
+   416→}
+   417→
+   418→/**
+   419→ * Build a compact string summary of the matched products to inject into the
+   420→ * LLM context, so the model can reference them by name/price in its reply.
+   421→ */
+   422→function buildProductContext(products: ProductSearchResult[]): string {
+   423→  if (products.length === 0) return "";
+   424→  const lines = products.map((p, i) => {
+   425→    const price = `₹${p.sellingPrice}`;
+   426→    const rx = p.prescriptionRequired ? " [Rx required]" : "";
+   427→    const stock = p.stock > 0 ? "in stock" : "out of stock";
+   428→    const brand = p.brandName ? ` (${p.brandName})` : "";
+   429→    const generic = p.genericName ? ` — generic: ${p.genericName}` : "";
+   430→    return `${i + 1}. ${p.name}${brand} — ${price}, ${stock}${rx}${generic}`;
+   431→  });
+   432→  return `\n\nAvailable products in our catalog (reference these in your reply):\n${lines.join("\n")}`;
+   433→}
+   434→
+   435→// ---------------------------------------------------------------------------
+   436→// Route handler
+   437→// ---------------------------------------------------------------------------
+   438→
+   439→export async function POST(req: Request) {
+   440→  try {
+   441→    const body = await parseBody<{ messages: ChatMessage[]; query?: string }>(req);
+   442→
+   443→    // Support both multi-message chat and a single `query` field.
+   444→    let messages: ChatMessage[];
+   445→    if (body?.messages && Array.isArray(body.messages) && body.messages.length > 0) {
+   446→      messages = body.messages;
+   447→    } else if (body?.query) {
+   448→      messages = [{ role: "user", content: body.query }];
+   449→    } else {
+   450→      return err("No message provided", 400);
+   451→    }
+   452→
+   453→    // Keep only the last 8 messages to stay within token limits.
+   454→    const recentMessages = messages.slice(-8);
+   455→
+   456→    // Validate message content.
+   457→    for (const m of recentMessages) {
+   458→      if (!m.content || typeof m.content !== "string" || m.content.length > 1000) {
+   459→        return err("Invalid message format", 400);
+   460→      }
+   461→    }
+   462→
+   463→    // The latest user message drives the search.
+   464→    const lastUserMsg = [...recentMessages].reverse().find((m) => m.role === "user");
+   465→    const userQuery = lastUserMsg?.content?.trim() ?? "";
+   466→
+   467→    // -------------------------------------------------------------------
+   468→    // Priority 1: FAQ knowledge base — instant, no LLM call, no DB hit.
+   469→    // -------------------------------------------------------------------
+   470→    if (userQuery) {
+   471→      const faqMatch = matchFaq(userQuery);
+   472→      if (faqMatch) {
+   473→        const suggestions = pickFaqSuggestions(faqMatch.faq);
+   474→        return ok<AssistantResponse>({
+   475→          reply: faqMatch.faq.answer,
+   476→          products: [],
+   477→          suggestions,
+   478→          action: "faq_answer",
+   479→          faqQuestion: faqMatch.faq.question,
+   480→        });
+   481→      }
+   482→    }
+   483→
+   484→    // Detect symptom phrases for later feature-cue selection.
+   485→    const symptomMatches = matchSymptoms(userQuery);
+   486→    const hasSymptoms = symptomMatches.length > 0;
+   487→    const recommendDoctor =
+   488→      hasSymptoms && symptomMatches.some((m) => m.recommendDoctor);
+   489→
+   490→    // -------------------------------------------------------------------
+   491→    // Priority 2: Product catalog search (enriched with symptom + category
+   492→    // keywords).
+   493→    // -------------------------------------------------------------------
+   494→    let products: ProductSearchResult[] = [];
+   495→    let bundleIds: string[] = [];
+   496→    if (userQuery && looksLikeProductSearch(userQuery)) {
+   497→      const searchQuery = extractSearchQuery(userQuery);
+   498→      // Run product + bundle search in parallel — they hit different sources
+   499→      // (DB vs. the in-memory MEDICAL_BUNDLES constant).
+   500→      const [prodResults, bundleResults] = await Promise.all([
+   501→        searchCatalogProducts(searchQuery || userQuery, 5),
+   502→        Promise.resolve(searchBundles(searchQuery || userQuery)),
+   503→      ]);
+   504→      products = prodResults;
+   505→      bundleIds = bundleResults;
+   506→    }
+   507→
+   508→    // -------------------------------------------------------------------
+   509→    // Priority 3: ALTERNATIVES — if any matched product is out of stock, OR
+   510→    // if no products matched at all but the query looked like a product
+   511→    // search, find alternatives (same generic name → same category).
+   512→    // -------------------------------------------------------------------
+   513→    let alternatives: ProductSearchResult[] = [];
+   514→    const outOfStockIds = products.filter((p) => p.stock <= 0).map((p) => p.id);
+   515→    const hasOutOfStock = outOfStockIds.length > 0;
+   516→
+   517→    if (products.length === 0 && userQuery && looksLikeProductSearch(userQuery)) {
+   518→      // No products matched — try to find alternatives (e.g. user asked for
+   519→      // "Crocin" and we have it in stock under a different brand, or we have
+   520→      // the generic "Paracetamol").
+   521→      const searchQuery = extractSearchQuery(userQuery);
+   522→      alternatives = await findAlternativeProducts(searchQuery || userQuery, [], 3);
+   523→    } else if (hasOutOfStock) {
+   524→      // Some matched products are out of stock — find alternatives based on
+   525→      // the FIRST out-of-stock product's generic name / category.
+   526→      const seedProduct = products.find((p) => p.stock <= 0);
+   527→      if (seedProduct) {
+   528→        const altQuery =
+   529→          seedProduct.genericName || seedProduct.name || extractSearchQuery(userQuery);
+   530→        alternatives = await findAlternativeProducts(altQuery, outOfStockIds, 3);
+   531→      }
+   532→    }
+   533→
+   534→    // -------------------------------------------------------------------
+   535→    // Priority 4/5/6: Build the AI prompt based on what we found.
+   536→    // -------------------------------------------------------------------
+   537→    const productContext = buildProductContext(products);
+   538→    const altContext = buildAlternativeContext(alternatives, {
+   539→      genericName: products[0]?.genericName ?? alternatives[0]?.genericName,
+   540→      categoryId: products[0]?.categoryId ?? alternatives[0]?.categoryId,
+   541→      categoryName: products[0]?.categoryName ?? alternatives[0]?.categoryName,
+   542→    });
+   543→
+   544→    let contextNote = "";
+   545→    let action: AssistantAction;
+   546→
+   547→    const hasRxProduct =
+   548→      products.some((p) => p.prescriptionRequired) ||
+   549→      alternatives.some((p) => p.prescriptionRequired);
+   550→
+   551→    if (products.length > 0) {
+   552→      action = "product_results";
+   553→      contextNote =
+   554→        productContext +
+   555→        (alternatives.length > 0 ? altContext : "") +
+   556→        `\n\nThe customer asked: "${userQuery}". ` +
+   557→        `The products above match their query. Recommend the most relevant one(s) from this list in your reply — reference them by name and price. ` +
+   558→        (hasOutOfStock
+   559→          ? `Some matched products are OUT OF STOCK — mention the alternatives provided below if they're a good substitute. `
+   560→          : "") +
+   561→        (hasRxProduct
+   562→          ? `One or more of these products requires a prescription — remind the customer to upload a valid prescription. `
+   563→          : "") +
+   564→        `If none are a perfect match, mention that and suggest the closest alternative. ` +
+   565→        `Do NOT mention products that aren't in the lists above.`;
+   566→    } else if (alternatives.length > 0) {
+   567→      // No direct matches but we found alternatives — surface them and ask
+   568→      // the customer if any would work.
+   569→      action = "product_results";
+   570→      contextNote =
+   571→        altContext +
+   572→        `\n\nThe customer asked: "${userQuery}". ` +
+   573→        `We could NOT find an exact match in our catalog, but the alternatives above may be suitable. ` +
+   574→        `Present them to the customer with name, price, and a one-line reason WHY each is a suitable substitute (same active ingredient / same therapeutic category). ` +
+   575→        `If the customer wants the exact medicine they originally asked for, suggest the "Request a Medicine" form.`;
+   576→    } else if (bundleIds.length > 0) {
+   577→      // Bundles matched even though no individual products did — surface the
+   578→      // bundle CTA instead of telling the customer to request a new medicine.
+   579→      // (e.g. "show me diabetes care kits" → suggest the Diabetes Care bundle.)
+   580→      action = "bundle_results";
+   581→      contextNote =
+   582→        `\n\nThe customer asked: "${userQuery}". ` +
+   583→        `We found relevant health bundle(s) in our catalog: ${bundleIds.join(", ")}. ` +
+   584→        `Tell the customer that we have curated health bundles they might find useful, ` +
+   585→        `and they can browse them on the Health Bundles page (a button is shown below the chat ` +
+   586→        `to take them there). Keep your reply brief and helpful.`;
+   587→    } else if (userQuery && looksLikeProductSearch(userQuery)) {
+   588→      // No products found AND no bundles matched AND it looked like a product
+   589→      // search → guide to the Medicine Request form.
+   590→      action = "medicine_request";
+   591→      contextNote =
+   592→        `\n\nThe customer asked: "${userQuery}". ` +
+   593→        `We searched our catalog but could NOT find any matching product, and could not determine a safe alternative. ` +
+   594→        `Politely tell the customer that this medicine is not currently in our catalog, ` +
+   595→        `and guide them to use the "Request a Medicine" feature — they can list the ` +
+   596→        `medicine and our pharmacist will check availability and contact them with price ` +
+   597→        `and delivery details. ` +
+   598→        (hasSymptoms
+   599→          ? `The customer described symptoms, so also recommend consulting a doctor for a proper diagnosis. `
+   600→          : "") +
+   601→        `Keep it brief and helpful.`;
+   602→    } else {
+   603→      // General pharmacy question — let the LLM handle it freely.
+   604→      action = "general_info";
+   605→      contextNote = hasSymptoms
+   606→        ? `\n\nThe customer's query mentions symptoms: ${symptomMatches
+   607→            .map((m) => m.symptoms[0])
+   608→            .join(", ")}. Provide helpful general information AND recommend consulting a doctor if symptoms persist beyond 3 days, worsen, or affect a child, elderly person, or pregnant woman.`
+   609→        : "";
+   610→    }
+   611→
+   612→    // -------------------------------------------------------------------
+   613→    // Call the LLM with the system prompt + conversation + product context.
+   614→    // -------------------------------------------------------------------
+   615→    const systemPrompt = buildAssistantSystemPrompt();
+   616→    let reply: string;
+   617→    try {
+   618→      const result = await aiChatCompletion(
+   619→        [
+   620→          { role: "system", content: systemPrompt + contextNote },
+   621→          ...recentMessages.map((m) => ({
+   622→            role: m.role as "user" | "assistant",
+   623→            content: m.content,
+   624→          })),
+   625→        ],
+   626→        { temperature: 0.6, max_tokens: 500 }
+   627→      );
+   628→      reply = result.content || "";
+   629→    } catch (aiErr) {
+   630→      console.error("[health-assistant] AI call failed:", aiErr);
+   631→      // If the AI fails but we have product results, still return them with a
+   632→      // sensible fallback message — don't leave the customer hanging.
+   633→      if (products.length > 0) {
+   634→        reply =
+   635→          `I found ${products.length} product${products.length === 1 ? "" : "s"} matching your search. ` +
+   636→          (alternatives.length > 0
+   637→            ? `I also found ${alternatives.length} alternative${alternatives.length === 1 ? "" : "s"} you might consider. `
+   638→            : "") +
+   639→          `Tap any product card below to view details, or use the search bar for more options.`;
+   640→      } else if (alternatives.length > 0) {
+   641→        reply =
+   642→          `I couldn't find an exact match, but I found ${alternatives.length} alternative${alternatives.length === 1 ? "" : "s"} that may be suitable. ` +
+   643→          `Tap any product card below to view details, or use the "Request a Medicine" form to source the exact item.`;
+   644→      } else if (action === "medicine_request") {
+   645→        reply =
+   646→          `I couldn't find that medicine in our catalog right now. ` +
+   647→          `You can request it via our "Request a Medicine" form — our pharmacist ` +
+   648→          `will check availability and get back to you with price and delivery details.`;
+   649→      } else {
+   650→        reply =
+   651→          `I'm having trouble generating a response right now. ` +
+   652→          `Please try again in a moment, or call us at +91 99999 99999 for immediate help.`;
+   653→      }
+   654→    }
+   655→
+   656→    // -------------------------------------------------------------------
+   657→    // Feature cues — guide the customer toward the right PMS feature.
+   658→    // -------------------------------------------------------------------
+   659→    const featureCues = pickFeatureCues(action, {
+   660→      hasProducts: products.length > 0 || alternatives.length > 0,
+   661→      hasRxProduct,
+   662→      hasOutOfStock,
+   663→      hasSymptoms,
+   664→      isHealthQuery: action === "general_info",
+   665→    });
+   666→    if (recommendDoctor && !featureCues.includes("consult_doctor")) {
+   667→      featureCues.push("consult_doctor");
+   668→    }
+   669→
+   670→    // -------------------------------------------------------------------
+   671→    // Suggestions (follow-up chips) — pick based on the action.
+   672→    // -------------------------------------------------------------------
+   673→    const suggestions =
+   674→      action === "product_results"
+   675→        ? alternatives.length > 0
+   676→          ? [
+   677→              "Show me more options",
+   678→              "Why is this an alternative?",
+   679→              "Do I need a prescription?",
+   680→            ]
+   681→          : [
+   682→              "Show me more options",
+   683→              "Are there generic alternatives?",
+   684→              "Do I need a prescription?",
+   685→            ]
+   686→        : action === "medicine_request"
+   687→          ? ["Open Medicine Request", "Upload prescription instead", "Browse all products"]
+   688→          : action === "bundle_results"
+   689→            ? ["View all health bundles", "What's in the First Aid Kit?", "Delivery charges?"]
+   690→            : hasSymptoms
+   691→              ? ["Suggest a medicine", "Show health bundles", "When should I see a doctor?"]
+   692→              : ["Delivery charges?", "How to track my order?", "Upload prescription"];
+   693→
+   694→    const response: AssistantResponse = {
+   695→      reply,
+   696→      products,
+   697→      suggestions,
+   698→      action,
+   699→      ...(alternatives.length > 0 ? { alternatives } : {}),
+   700→      ...(bundleIds.length > 0 ? { bundleIds } : {}),
+   701→      ...(featureCues.length > 0 ? { featureCues } : {}),
+   702→    };
+   703→
+   704→    return ok<AssistantResponse>(response);
+   705→  } catch (e) {
+   706→    console.error("[health-assistant] Error:", e);
+   707→    return err("Assistant is temporarily unavailable. Please try again.", 500);
+   708→  }
+   709→}
+   710→
+   711→// ---------------------------------------------------------------------------
+   712→// Suggestion chip helpers
+   713→// ---------------------------------------------------------------------------
+   714→
+   715→/** Pick 2–3 follow-up suggestion chips based on which FAQ was matched. */
+   716→function pickFaqSuggestions(faq: { keywords: string[]; question: string }): string[] {
+   717→  // Find the FAQ entries that share keywords with the matched FAQ — those are
+   718→  // the most likely "next questions" the customer will have.
+   719→  const related = PHARMACY_FAQS.filter(
+   720→    (f) => f.question !== faq.question && f.keywords.some((k) => faq.keywords.includes(k))
+   721→  ).slice(0, 2);
+   722→
+   723→  const chips = related.map((f) => f.question);
+   724→
+   725→  // Always offer one general follow-up so the customer isn't stuck.
+   726→  chips.push("Talk to a pharmacist");
+   727→
+   728→  return chips.slice(0, 3);
+   729→}
+   730→
+   731→// Re-export the feature-cue metadata so the frontend widget can render the
+   732→// cues without having to duplicate the labels.
+   733→export { PHARMACY_FEATURE_CUES };
+   734→

@@ -41,10 +41,10 @@ export async function GET() {
     const revenueChange = lastWeekRevenue > 0 ? Math.round(((thisWeekRevenue - lastWeekRevenue) / lastWeekRevenue) * 100) : 0;
     const cancellationRate = thisWeekOrders.length > 0 ? Math.round((thisWeekOrders.filter(o => o.status === "cancelled").length / thisWeekOrders.length) * 100) : 0;
 
-    // Build summary for AI
+    // Build summary for AI — use ₹ prefix so the AI knows this is Indian Rupees
     const businessSummary = JSON.stringify({
-      thisWeekRevenue,
-      lastWeekRevenue,
+      thisWeekRevenue: `₹${thisWeekRevenue}`,
+      lastWeekRevenue: `₹${lastWeekRevenue}`,
       revenueChange,
       totalOrders: thisWeekOrders.length,
       cancellationRate,

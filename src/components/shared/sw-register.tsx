@@ -101,11 +101,14 @@ export function SWRegister() {
         // Otherwise, wait for `navigator.serviceWorker.ready` which resolves
         // only when an active SW controls the page. Add a 10s timeout to
         // avoid hanging forever if something goes wrong.
+        // CRITICAL FIX (Phase 41.1): Return null on timeout, NOT the un-activated
+        // registration. Returning an un-activated reg causes pushManager.subscribe()
+        // to throw "no active Service Worker" — a confusing error for the user.
         const ready = await Promise.race([
           navigator.serviceWorker.ready,
           new Promise<null>((resolve) => setTimeout(() => resolve(null), 10000)),
         ]);
-        return ready || reg;
+        return ready; // null on timeout — caller's if(!reg) guard fires correctly
       } catch (err) {
         console.error("[sw] __ensurePushReady failed:", err);
         return null;

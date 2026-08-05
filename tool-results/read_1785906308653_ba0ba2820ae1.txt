@@ -1,0 +1,809 @@
+     1→     1→// ============================================================================
+     2→     2→// File: src/components/customer/device-registration-wizard.tsx
+     3→     3→// Purpose: New Device Registration Wizard (Phase 40). Replaces the old
+     4→     4→//          `notification-onboarding.tsx` with a 4-step guided flow inspired
+     5→     5→//          by Amazon / Flipkart / Blinkit / Swiggy onboarding.
+     6→     6→//
+     7→     7→//  Steps:
+     8→     8→//    1. WELCOME       — explain benefits, two buttons: "Turn On" / "Skip"
+     9→     9→//    2. PERMISSION    — request browser permission, handle deny gracefully
+    10→    10→//    3. REGISTERING   — show progress as we register SW + create subscription
+    11→    11→//                       + POST to backend + send welcome push
+    12→    12→//    4. TEST_RESULT   — show whether the welcome push was delivered
+    13→    13→//    5. DONE          — "You're All Set!" success screen
+    14→    14→//
+    15→    15→//  When the wizard should NOT appear (checked on mount + on auth change):
+    16→    16→//    • Not authenticated
+    17→    17→//    • Push API not supported by the browser
+    18→    18→//    • POST /api/device-registrations/validate returns shouldShowWizard=false
+    19→    19→//
+    20→    20→//  When the wizard SHOULD appear:
+    21→    21→//    • New device (no DeviceRegistration row)
+    22→    22→//    • status="pending" (started but not completed)
+    23→    23→//    • status="completed" but permission revoked / subscription expired
+    24→    24→//
+    25→    25→//  Skip behaviour:
+    26→    26→//    • POST /api/device-registrations/skip with the device info.
+    27→    27→//    • Wizard never re-appears on this device (status="skipped").
+    28→    28→//    • Customer can still enable from Profile → Settings → App Notifications.
+    29→    29→//
+    30→    30→//  The existing App Notification Center + automatic notification system are
+    31→    31→//  untouched. This wizard ONLY orchestrates the onboarding UX.
+    32→    32→// ============================================================================
+    33→    33→
+    34→    34→"use client";
+    35→    35→
+    36→    36→import { useState, useEffect, useCallback, useRef } from "react";
+    37→    37→import { useQueryClient } from "@tanstack/react-query";
+    38→    38→import {
+    39→    39→  Dialog,
+    40→    40→  DialogContent,
+    41→    41→} from "@/components/ui/dialog";
+    42→    42→import { Button } from "@/components/ui/button";
+    43→    43→import {
+    44→    44→  Bell,
+    45→    45→  BellRing,
+    46→    46→  BellOff,
+    47→    47→  Truck,
+    48→    48→  Package,
+    49→    49→  FileText,
+    50→    50→  Tag,
+    51→    51→  Megaphone,
+    52→    52→  ShieldCheck,
+    53→    53→  Loader2,
+    54→    54→  CheckCircle2,
+    55→    55→  XCircle,
+    56→    56→  X,
+    57→    57→  Sparkles,
+    58→    58→  Smartphone,
+    59→    59→  Send,
+    60→    60→  AlertCircle,
+    61→    61→  RefreshCw,
+    62→    62→} from "lucide-react";
+    63→    63→import { toast } from "sonner";
+    64→    64→import { getDeviceInfo } from "@/lib/device-utils";
+    65→    65→
+    66→    66→type WizardStep = "welcome" | "permission" | "registering" | "registering_failed" | "test_result" | "done" | "denied";
+    67→    67→
+    68→    68→interface StepProgress {
+    69→    69→  step: string;
+    70→    70→  label: string;
+    71→    71→  status: "pending" | "active" | "done" | "failed";
+    72→    72→}
+    73→    73→
+    74→    74→const BENEFITS = [
+    75→    75→  { icon: Package, title: "Order Updates", desc: "Real-time alerts when your order is confirmed, packed, or delivered." },
+    76→    76→  { icon: Truck, title: "Delivery Status", desc: "Know the moment your delivery is on its way to your doorstep." },
+    77→    77→  { icon: FileText, title: "Prescription Updates", desc: "Get notified when your prescription is reviewed and approved." },
+    78→    78→  { icon: Tag, title: "Exclusive Offers", desc: "Be the first to know about deals, vouchers, and seasonal discounts." },
+    79→    79→  { icon: Megaphone, title: "Pharmacy Announcements", desc: "Important updates about your account, medicine stock, and store hours." },
+    80→    80→];
+    81→    81→
+    82→    82→export function DeviceRegistrationWizard({
+    83→    83→  isAuthenticated,
+    84→    84→}: {
+    85→    85→  isAuthenticated: boolean;
+    86→    86→}) {
+    87→    87→  const qc = useQueryClient();
+    88→    88→  const [open, setOpen] = useState(false);
+    89→    89→  const [step, setStep] = useState<WizardStep>("welcome");
+    90→    90→  const [busy, setBusy] = useState(false);
+    91→    91→  const [pushSupported, setPushSupported] = useState(true);
+    92→    92→  const [testPushSent, setTestPushSent] = useState(false);
+    93→    93→  const [deviceLabel, setDeviceLabel] = useState<string>("");
+    94→    94→  const [steps, setSteps] = useState<StepProgress[]>([]);
+    95→    95→  const validatedRef = useRef(false);
+    96→    96→
+    97→    97→  // ─── Mount: detect Push API support ────────────────────────────────────
+    98→    98→  useEffect(() => {
+    99→    99→    if (typeof window === "undefined") return;
+   100→   100→    const supported =
+   101→   101→      "serviceWorker" in navigator &&
+   102→   102→      "PushManager" in window &&
+   103→   103→      "Notification" in window;
+   104→   104→    setPushSupported(supported);
+   105→   105→  }, []);
+   106→   106→
+   107→   107→  // ─── Auth change: check whether the wizard should appear ────────────────
+   108→   108→  useEffect(() => {
+   109→   109→    if (!isAuthenticated || !pushSupported) return;
+   110→   110→    if (validatedRef.current) return;
+   111→   111→    validatedRef.current = true;
+   112→   112→
+   113→   113→    let cancelled = false;
+   114→   114→    const check = async () => {
+   115→   115→      try {
+   116→   116→        const deviceInfo = getDeviceInfo();
+   117→   117→        setDeviceLabel(deviceInfo.deviceLabel);
+   118→   118→
+   119→   119→        // Check whether the browser still has permission + a local subscription.
+   120→   120→        const hasBrowserPermission = Notification.permission === "granted";
+   121→   121→        let hasLocalSubscription = false;
+   122→   122→        if (hasBrowserPermission && typeof window.__ensurePushReady === "function") {
+   123→   123→          try {
+   124→   124→            const reg = await window.__ensurePushReady();
+   125→   125→            if (reg) {
+   126→   126→              const sub = await reg.pushManager.getSubscription();
+   127→   127→              hasLocalSubscription = !!sub;
+   128→   128→            }
+   129→   129→          } catch {}
+   130→   130→        }
+   131→   131→
+   132→   132→        // POST /api/device-registrations/validate
+   133→   133→        const res = await fetch("/api/device-registrations/validate", {
+   134→   134→          method: "POST",
+   135→   135→          headers: { "Content-Type": "application/json" },
+   136→   136→          body: JSON.stringify({
+   137→   137→            deviceId: deviceInfo.deviceId,
+   138→   138→            hasBrowserPermission,
+   139→   139→            hasLocalSubscription,
+   140→   140→          }),
+   141→   141→        });
+   142→   142→        if (!res.ok) return;
+   143→   143→        const json = await res.json();
+   144→   144→        const data = json.data;
+   145→   145→        if (!data) return;
+   146→   146→
+   147→   147→        if (data.shouldShowWizard && !cancelled) {
+   148→   148→          // Delay so it doesn't appear instantly on page load — gives the
+   149→   149→          // page time to settle.
+   150→   150→          setTimeout(() => {
+   151→   151→            if (!cancelled) {
+   152→   152→              setStep(data.reason === "incomplete" ? "welcome" : "welcome");
+   153→   153→              setOpen(true);
+   154→   154→            }
+   155→   155→          }, 2000);
+   156→   156→        }
+   157→   157→      } catch {
+   158→   158→        // Best-effort — if anything fails, just don't show the wizard.
+   159→   159→      }
+   160→   160→    };
+   161→   161→
+   162→   162→    check();
+   163→   163→    return () => { cancelled = true; };
+   164→   164→  }, [isAuthenticated, pushSupported]);
+   165→   165→
+   166→   166→  // ─── Skip handler ───────────────────────────────────────────────────────
+   167→   167→  const handleSkip = useCallback(async () => {
+   168→   168→    setBusy(true);
+   169→   169→    try {
+   170→   170→      const info = getDeviceInfo();
+   171→   171→      await fetch("/api/device-registrations/skip", {
+   172→   172→        method: "POST",
+   173→   173→        headers: { "Content-Type": "application/json" },
+   174→   174→        body: JSON.stringify({
+   175→   175→          deviceId: info.deviceId,
+   176→   176→          deviceLabel: info.deviceLabel,
+   177→   177→          browserName: info.browserName,
+   178→   178→          osName: info.osName,
+   179→   179→          deviceType: info.deviceType,
+   180→   180→        }),
+   181→   181→      });
+   182→   182→    } catch {}
+   183→   183→    setOpen(false);
+   184→   184→    setBusy(false);
+   185→   185→  }, []);
+   186→   186→
+   187→   187→  // ─── Start the wizard: request permission ───────────────────────────────
+   188→   188→  const handleStart = useCallback(async () => {
+   189→   189→    setBusy(true);
+   190→   190→    setStep("permission");
+   191→   191→    try {
+   192→   192→      const perm = await Notification.requestPermission();
+   193→   193→      if (perm !== "granted") {
+   194→   194→        setStep("denied");
+   195→   195→        setBusy(false);
+   196→   196→        return;
+   197→   197→      }
+   198→   198→      // Permission granted — proceed to registration.
+   199→   199→      await runRegistration();
+   200→   200→    } catch (e) {
+   201→   201→      console.error("[wizard] permission request failed:", e);
+   202→   202→      setStep("denied");
+   203→   203→      setBusy(false);
+   204→   204→    }
+   205→   205→  }, []);
+   206→   206→
+   207→   207→  // ─── Registration: SW + subscription + backend + welcome push ───────────
+   208→   208→  const runRegistration = useCallback(async () => {
+   209→   209→    setBusy(true);
+   210→   210→    setStep("registering");
+   211→   211→
+   212→   212→    const info = getDeviceInfo();
+   213→   213→    const stepList: StepProgress[] = [
+   214→   214→      { step: "sw", label: "Activating Service Worker", status: "pending" },
+   215→   215→      { step: "subscription", label: "Creating Push Subscription", status: "pending" },
+   216→   216→      { step: "backend", label: "Registering Device on Server", status: "pending" },
+   217→   217→      { step: "test", label: "Sending Welcome Notification", status: "pending" },
+   218→   218→    ];
+   219→   219→    setSteps(stepList);
+   220→   220→
+   221→   221→    try {
+   222→   222→      // Step 1: ensure SW is registered + active.
+   223→   223→      stepList[0].status = "active";
+   224→   224→      setSteps([...stepList]);
+   225→   225→
+   226→   226→      let reg: ServiceWorkerRegistration | null = null;
+   227→   227→      if (typeof window.__ensurePushReady === "function") {
+   228→   228→        reg = await window.__ensurePushReady();
+   229→   229→      } else {
+   230→   230→        reg = await navigator.serviceWorker.ready;
+   231→   231→      }
+   232→   232→      if (!reg) throw new Error("Service Worker activation failed");
+   233→   233→      stepList[0].status = "done";
+   234→   234→      setSteps([...stepList]);
+   235→   235→
+   236→   236→      // Step 2: create push subscription (or reuse existing).
+   237→   237→      stepList[1].status = "active";
+   238→   238→      setSteps([...stepList]);
+   239→   239→
+   240→   240→      let subscription = await reg.pushManager.getSubscription();
+   241→   241→      if (!subscription) {
+   242→   242→        const vapidRes = await fetch("/api/push/vapid-public");
+   243→   243→        const vapidJson = await vapidRes.json();
+   244→   244→        if (!vapidJson.data?.publicKey) {
+   245→   245→          throw new Error("Push notifications are not configured on the server.");
+   246→   246→        }
+   247→   247→        const applicationServerKey = urlBase64ToUint8Array(vapidJson.data.publicKey);
+   248→   248→        subscription = await reg.pushManager.subscribe({
+   249→   249→          userVisibleOnly: true,
+   250→   250→          applicationServerKey: applicationServerKey as BufferSource,
+   251→   251→        });
+   252→   252→      }
+   253→   253→      stepList[1].status = "done";
+   254→   254→      setSteps([...stepList]);
+   255→   255→
+   256→   256→      // Step 3: POST subscription to backend (saves PushSubscription + ensures
+   257→   257→      // AppNotifPreference exists).
+   258→   258→      stepList[2].status = "active";
+   259→   259→      setSteps([...stepList]);
+   260→   260→
+   261→   261→      const sub = subscription.toJSON();
+   262→   262→      const subscribeRes = await fetch("/api/push/subscribe", {
+   263→   263→        method: "POST",
+   264→   264→        headers: { "Content-Type": "application/json" },
+   265→   265→        body: JSON.stringify({
+   266→   266→          endpoint: sub.endpoint,
+   267→   267→          keys: sub.keys,
+   268→   268→          userAgent: info.userAgent.slice(0, 500),
+   269→   269→        }),
+   270→   270→      });
+   271→   271→      if (!subscribeRes.ok) {
+   272→   272→        const errData = await subscribeRes.json().catch(() => ({}));
+   273→   273→        throw new Error(errData.error || "Failed to save subscription");
+   274→   274→      }
+   275→   275→      stepList[2].status = "done";
+   276→   276→      setSteps([...stepList]);
+   277→   277→
+   278→   278→      // Step 4: register the device + send welcome push via the dedicated endpoint.
+   279→   279→      stepList[3].status = "active";
+   280→   280→      setSteps([...stepList]);
+   281→   281→
+   282→   282→      const registerRes = await fetch("/api/device-registrations/register", {
+   283→   283→        method: "POST",
+   284→   284→        headers: { "Content-Type": "application/json" },
+   285→   285→        body: JSON.stringify({
+   286→   286→          deviceId: info.deviceId,
+   287→   287→          deviceLabel: info.deviceLabel,
+   288→   288→          browserName: info.browserName,
+   289→   289→          osName: info.osName,
+   290→   290→          deviceType: info.deviceType,
+   291→   291→          pushEndpoint: sub.endpoint,
+   292→   292→        }),
+   293→   293→      });
+   294→   294→      if (!registerRes.ok) {
+   295→   295→        const errData = await registerRes.json().catch(() => ({}));
+   296→   296→        throw new Error(errData.error || "Failed to register device");
+   297→   297→      }
+   298→   298→      const regJson = await registerRes.json();
+   299→   299→      const regData = regJson.data;
+   300→   300→      const welcomed = regData?.welcomed === true;
+   301→   301→      setTestPushSent(welcomed);
+   302→   302→      stepList[3].status = welcomed ? "done" : "failed";
+   303→   303→      setSteps([...stepList]);
+   304→   304→
+   305→   305→      // Invalidate preferences query so the toggle in settings reflects the
+   306→   306→      // new "enabled" state.
+   307→   307→      qc.invalidateQueries({ queryKey: ["customer", "app-notif-prefs"] });
+   308→   308→
+   309→   309→      // Move to the test result step.
+   310→   310→      setStep("test_result");
+   311→   311→      setBusy(false);
+   312→   312→    } catch (e: any) {
+   313→   313→      console.error("[wizard] registration failed:", e);
+   314→   314→      // Mark any active step as failed.
+   315→   315→      setSteps((prev) =>
+   316→   316→        prev.map((s) =>
+   317→   317→          s.status === "active" ? { ...s, status: "failed" } : s
+   318→   318→        )
+   319→   319→      );
+   320→   320→      // Move to the failed step — shows retry + skip options.
+   321→   321→      setStep("registering_failed");
+   322→   322→      setBusy(false);
+   323→   323→    }
+   324→   324→  }, [qc]);
+   325→   325→
+   326→   326→  // ─── Done handler ───────────────────────────────────────────────────────
+   327→   327→  const handleDone = useCallback(() => {
+   328→   328→    setOpen(false);
+   329→   329→    // Reset to welcome in case the wizard is ever re-opened.
+   330→   330→    setTimeout(() => setStep("welcome"), 300);
+   331→   331→  }, []);
+   332→   332→
+   333→   333→  // ─── Retry handler ──────────────────────────────────────────────────────
+   334→   334→  const handleRetry = useCallback(async () => {
+   335→   335→    await runRegistration();
+   336→   336→  }, [runRegistration]);
+   337→   337→
+   338→   338→  if (!isAuthenticated || !pushSupported) return null;
+   339→   339→
+   340→   340→  return (
+   341→   341→    <Dialog
+   342→   342→      open={open}
+   343→   343→      onOpenChange={(o) => {
+   344→   344→        // Prevent closing while busy (registration in progress) — the user
+   345→   345→        // must wait for the async flow to finish or fail.
+   346→   346→        if (!o && busy) return;
+   347→   347→        if (!o) handleSkip();
+   348→   348→      }}
+   349→   349→    >
+   350→   350→      <DialogContent
+   351→   351→        className="max-w-md overflow-hidden p-0 sm:rounded-2xl"
+   352→   352→        onInteractOutside={(e) => e.preventDefault()}
+   353→   353→        onEscapeKeyDown={(e) => {
+   354→   354→          // Only allow escape when not busy + on the welcome/denied/done steps.
+   355→   355→          if (busy || step === "registering" || step === "permission") {
+   356→   356→            e.preventDefault();
+   357→   357→          }
+   358→   358→        }}
+   359→   359→      >
+   360→   360→        {/* ── Step: WELCOME ─────────────────────────────────────────────── */}
+   361→   361→        {step === "welcome" && (
+   362→   362→          <WelcomeStep
+   363→   363→            deviceLabel={deviceLabel}
+   364→   364→            onTurnOn={handleStart}
+   365→   365→            onSkip={handleSkip}
+   366→   366→            busy={busy}
+   367→   367→          />
+   368→   368→        )}
+   369→   369→
+   370→   370→        {/* ── Step: PERMISSION (waiting on browser prompt) ──────────────── */}
+   371→   371→        {step === "permission" && (
+   372→   372→          <CenteredMessage
+   373→   373→            icon={<Bell className="size-8" />}
+   374→   374→            title="Waiting for permission"
+   375→   375→            message="Your browser is asking for permission to send notifications. Click 'Allow' to continue."
+   376→   376→            spinner
+   377→   377→          />
+   378→   378→        )}
+   379→   379→
+   380→   380→        {/* ── Step: REGISTERING (progress) ──────────────────────────────── */}
+   381→   381→        {step === "registering" && (
+   382→   382→          <RegisteringStep steps={steps} />
+   383→   383→        )}
+   384→   384→
+   385→   385→        {/* ── Step: REGISTERING FAILED ──────────────────────────────────── */}
+   386→   386→        {step === "registering_failed" && (
+   387→   387→          <RegisteringFailedStep
+   388→   388→            steps={steps}
+   389→   389→            onRetry={handleRetry}
+   390→   390→            onSkip={handleSkip}
+   391→   391→            busy={busy}
+   392→   392→          />
+   393→   393→        )}
+   394→   394→
+   395→   395→        {/* ── Step: TEST_RESULT ─────────────────────────────────────────── */}
+   396→   396→        {step === "test_result" && (
+   397→   397→          <TestResultStep
+   398→   398→            sent={testPushSent}
+   399→   399→            onContinue={() => setStep("done")}
+   400→   400→            onRetry={handleRetry}
+   401→   401→            busy={busy}
+   402→   402→          />
+   403→   403→        )}
+   404→   404→
+   405→   405→        {/* ── Step: DENIED (permission blocked) ─────────────────────────── */}
+   406→   406→        {step === "denied" && (
+   407→   407→          <DeniedStep onSkip={handleSkip} onRetry={handleStart} />
+   408→   408→        )}
+   409→   409→
+   410→   410→        {/* ── Step: DONE ────────────────────────────────────────────────── */}
+   411→   411→        {step === "done" && (
+   412→   412→          <DoneStep onDone={handleDone} deviceLabel={deviceLabel} />
+   413→   413→        )}
+   414→   414→      </DialogContent>
+   415→   415→    </Dialog>
+   416→   416→  );
+   417→   417→}
+   418→   418→
+   419→   419→// ===========================================================================
+   420→   420→// Step components
+   421→   421→// ===========================================================================
+   422→   422→
+   423→   423→function WelcomeStep({
+   424→   424→  deviceLabel,
+   425→   425→  onTurnOn,
+   426→   426→  onSkip,
+   427→   427→  busy,
+   428→   428→}: {
+   429→   429→  deviceLabel: string;
+   430→   430→  onTurnOn: () => void;
+   431→   431→  onSkip: () => void;
+   432→   432→  busy: boolean;
+   433→   433→}) {
+   434→   434→  return (
+   435→   435→    <>
+   436→   436→      {/* Header */}
+   437→   437→      <div className="relative bg-gradient-to-br from-emerald-600 via-emerald-700 to-teal-700 px-6 pb-7 pt-8 text-white">
+   438→   438→        <button
+   439→   439→          onClick={onSkip}
+   440→   440→          className="absolute right-4 top-4 rounded-full bg-white/15 p-1.5 transition hover:bg-white/25"
+   441→   441→          aria-label="Close"
+   442→   442→        >
+   443→   443→          <X className="size-4" />
+   444→   444→        </button>
+   445→   445→        <div className="mb-3 flex size-14 items-center justify-center rounded-2xl bg-white/15 backdrop-blur-sm ring-1 ring-white/30">
+   446→   446→          <BellRing className="size-7" />
+   447→   447→        </div>
+   448→   448→        <h2 className="text-xl font-bold leading-tight">Stay Updated</h2>
+   449→   449→        <p className="mt-1.5 text-sm text-emerald-50/90">
+   450→   450→          Enable App Notifications to receive important updates about your orders and prescriptions.
+   451→   451→        </p>
+   452→   452→        {deviceLabel && (
+   453→   453→          <div className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-white/15 px-2.5 py-1 text-[11px] font-medium text-emerald-50 backdrop-blur-sm">
+   454→   454→            <Smartphone className="size-3" />
+   455→   455→            {deviceLabel}
+   456→   456→          </div>
+   457→   457→        )}
+   458→   458→      </div>
+   459→   459→
+   460→   460→      {/* Benefits list */}
+   461→   461→      <div className="space-y-3 px-6 py-5">
+   462→   462→        {BENEFITS.map((b) => {
+   463→   463→          const Icon = b.icon;
+   464→   464→          return (
+   465→   465→            <div key={b.title} className="flex items-start gap-3">
+   466→   466→              <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">
+   467→   467→                <Icon className="size-4" />
+   468→   468→              </div>
+   469→   469→              <div className="min-w-0 flex-1">
+   470→   470→                <p className="text-sm font-semibold text-foreground">{b.title}</p>
+   471→   471→                <p className="mt-0.5 text-xs text-muted-foreground">{b.desc}</p>
+   472→   472→              </div>
+   473→   473→            </div>
+   474→   474→          );
+   475→   475→        })}
+   476→   476→      </div>
+   477→   477→
+   478→   478→      {/* Privacy note */}
+   479→   479→      <div className="px-6 pb-3">
+   480→   480→        <div className="flex items-start gap-2 rounded-lg border border-emerald-100 bg-emerald-50/50 p-3 text-xs text-emerald-900 dark:border-emerald-900/30 dark:bg-emerald-950/20 dark:text-emerald-200">
+   481→   481→          <ShieldCheck className="mt-0.5 size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+   482→   482→          <p>
+   483→   483→            We only send transactional updates and occasional offers — no spam. You can change your preference at any time from{" "}
+   484→   484→            <span className="font-medium">Profile → Settings</span>.
+   485→   485→          </p>
+   486→   486→        </div>
+   487→   487→      </div>
+   488→   488→
+   489→   489→      {/* Buttons */}
+   490→   490→      <div className="border-t bg-muted/30 px-6 py-4">
+   491→   491→        <div className="flex flex-col gap-2">
+   492→   492→          <Button
+   493→   493→            onClick={onTurnOn}
+   494→   494→            disabled={busy}
+   495→   495→            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
+   496→   496→          >
+   497→   497→            {busy ? (
+   498→   498→              <><Loader2 className="size-4 mr-1.5 animate-spin" /> Setting up...</>
+   499→   499→            ) : (
+   500→   500→              <><BellRing className="size-4 mr-1.5" /> Turn On Notifications</>
+   501→   501→            )}
+   502→   502→          </Button>
+   503→   503→          <Button
+   504→   504→            onClick={onSkip}
+   505→   505→            disabled={busy}
+   506→   506→            variant="ghost"
+   507→   507→            className="w-full text-muted-foreground"
+   508→   508→          >
+   509→   509→            Skip for Now
+   510→   510→          </Button>
+   511→   511→        </div>
+   512→   512→      </div>
+   513→   513→    </>
+   514→   514→  );
+   515→   515→}
+   516→   516→
+   517→   517→function RegisteringStep({ steps }: { steps: StepProgress[] }) {
+   518→   518→  return (
+   519→   519→    <>
+   520→   520→      <div className="bg-gradient-to-br from-emerald-600 via-emerald-700 to-teal-700 px-6 pb-6 pt-7 text-white">
+   521→   521→        <div className="mb-3 flex size-14 items-center justify-center rounded-2xl bg-white/15 backdrop-blur-sm ring-1 ring-white/30">
+   522→   522→          <Loader2 className="size-7 animate-spin" />
+   523→   523→        </div>
+   524→   524→        <h2 className="text-xl font-bold leading-tight">Setting up notifications</h2>
+   525→   525→        <p className="mt-1.5 text-sm text-emerald-50/90">
+   526→   526→          We're registering this device. This only takes a few seconds.
+   527→   527→        </p>
+   528→   528→      </div>
+   529→   529→      <div className="space-y-3 px-6 py-5">
+   530→   530→        {steps.map((s) => (
+   531→   531→          <div key={s.step} className="flex items-center gap-3">
+   532→   532→            <div className="flex size-8 shrink-0 items-center justify-center rounded-full">
+   533→   533→              {s.status === "done" ? (
+   534→   534→                <CheckCircle2 className="size-5 text-emerald-600" />
+   535→   535→              ) : s.status === "active" ? (
+   536→   536→                <Loader2 className="size-5 animate-spin text-emerald-600" />
+   537→   537→              ) : s.status === "failed" ? (
+   538→   538→                <XCircle className="size-5 text-rose-500" />
+   539→   539→              ) : (
+   540→   540→                <div className="size-5 rounded-full border-2 border-muted" />
+   541→   541→              )}
+   542→   542→            </div>
+   543→   543→            <p className={`text-sm ${s.status === "done" ? "font-medium text-foreground" : s.status === "active" ? "font-medium text-foreground" : "text-muted-foreground"}`}>
+   544→   544→              {s.label}
+   545→   545→            </p>
+   546→   546→          </div>
+   547→   547→        ))}
+   548→   548→      </div>
+   549→   549→    </>
+   550→   550→  );
+   551→   551→}
+   552→   552→
+   553→   553→function RegisteringFailedStep({
+   554→   554→  steps,
+   555→   555→  onRetry,
+   556→   556→  onSkip,
+   557→   557→  busy,
+   558→   558→}: {
+   559→   559→  steps: StepProgress[];
+   560→   560→  onRetry: () => void;
+   561→   561→  onSkip: () => void;
+   562→   562→  busy: boolean;
+   563→   563→}) {
+   564→   564→  return (
+   565→   565→    <>
+   566→   566→      <div className="bg-gradient-to-br from-amber-500 to-orange-600 px-6 pb-6 pt-7 text-white">
+   567→   567→        <div className="mb-3 flex size-14 items-center justify-center rounded-2xl bg-white/15 backdrop-blur-sm ring-1 ring-white/30">
+   568→   568→          <AlertCircle className="size-7" />
+   569→   569→        </div>
+   570→   570→        <h2 className="text-xl font-bold leading-tight">Setup incomplete</h2>
+   571→   571→        <p className="mt-1.5 text-sm text-amber-50/90">
+   572→   572→          We couldn't finish setting up notifications on this device. This is usually temporary.
+   573→   573→        </p>
+   574→   574→      </div>
+   575→   575→      <div className="space-y-3 px-6 py-5">
+   576→   576→        {steps.map((s) => (
+   577→   577→          <div key={s.step} className="flex items-center gap-3">
+   578→   578→            <div className="flex size-8 shrink-0 items-center justify-center rounded-full">
+   579→   579→              {s.status === "done" ? (
+   580→   580→                <CheckCircle2 className="size-5 text-emerald-600" />
+   581→   581→              ) : s.status === "failed" ? (
+   582→   582→                <XCircle className="size-5 text-rose-500" />
+   583→   583→              ) : (
+   584→   584→                <div className="size-5 rounded-full border-2 border-muted" />
+   585→   585→              )}
+   586→   586→            </div>
+   587→   587→            <p className={`text-sm ${s.status === "failed" ? "font-medium text-rose-600 dark:text-rose-400" : "text-muted-foreground"}`}>
+   588→   588→              {s.label}
+   589→   589→            </p>
+   590→   590→          </div>
+   591→   591→        ))}
+   592→   592→        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-200">
+   593→   593→          <p>
+   594→   594→            You can try again, or skip for now — we'll ask again next time you log in from this device.
+   595→   595→          </p>
+   596→   596→        </div>
+   597→   597→      </div>
+   598→   598→      <div className="border-t bg-muted/30 px-6 py-4 space-y-2">
+   599→   599→        <Button onClick={onRetry} disabled={busy} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white">
+   600→   600→          {busy ? <Loader2 className="size-4 mr-1.5 animate-spin" /> : <RefreshCw className="size-4 mr-1.5" />}
+   601→   601→          Try Again
+   602→   602→        </Button>
+   603→   603→        <Button onClick={onSkip} disabled={busy} variant="ghost" className="w-full text-muted-foreground">
+   604→   604→          Skip for Now
+   605→   605→        </Button>
+   606→   606→      </div>
+   607→   607→    </>
+   608→   608→  );
+   609→   609→}
+   610→   610→
+   611→   611→function TestResultStep({
+   612→   612→  sent,
+   613→   613→  onContinue,
+   614→   614→  onRetry,
+   615→   615→  busy,
+   616→   616→}: {
+   617→   617→  sent: boolean;
+   618→   618→  onContinue: () => void;
+   619→   619→  onRetry: () => void;
+   620→   620→  busy: boolean;
+   621→   621→}) {
+   622→   622→  if (sent) {
+   623→   623→    return (
+   624→   624→      <>
+   625→   625→        <div className="bg-gradient-to-br from-emerald-600 via-emerald-700 to-teal-700 px-6 pb-6 pt-7 text-white">
+   626→   626→          <div className="mb-3 flex size-14 items-center justify-center rounded-2xl bg-white/15 backdrop-blur-sm ring-1 ring-white/30">
+   627→   627→            <Send className="size-7" />
+   628→   628→          </div>
+   629→   629→          <h2 className="text-xl font-bold leading-tight">Test notification sent!</h2>
+   630→   630→          <p className="mt-1.5 text-sm text-emerald-50/90">
+   631→   631→            We sent a welcome notification to this device. Did you see it?
+   632→   632→          </p>
+   633→   633→        </div>
+   634→   634→        <div className="space-y-3 px-6 py-5">
+   635→   635→          <p className="text-sm text-muted-foreground">
+   636→   636→            If you didn't see the notification, check your system notification settings and make sure browser notifications aren't muted.
+   637→   637→          </p>
+   638→   638→        </div>
+   639→   639→        <div className="border-t bg-muted/30 px-6 py-4">
+   640→   640→          <Button onClick={onContinue} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white">
+   641→   641→            <CheckCircle2 className="size-4 mr-1.5" /> Continue
+   642→   642→          </Button>
+   643→   643→        </div>
+   644→   644→      </>
+   645→   645→    );
+   646→   646→  }
+   647→   647→
+   648→   648→  // Test push failed — still allow continuing, but offer retry.
+   649→   649→  return (
+   650→   650→    <>
+   651→   651→      <div className="bg-gradient-to-br from-amber-500 to-orange-600 px-6 pb-6 pt-7 text-white">
+   652→   652→        <div className="mb-3 flex size-14 items-center justify-center rounded-2xl bg-white/15 backdrop-blur-sm ring-1 ring-white/30">
+   653→   653→          <XCircle className="size-7" />
+   654→   654→        </div>
+   655→   655→        <h2 className="text-xl font-bold leading-tight">Almost there</h2>
+   656→   656→        <p className="mt-1.5 text-sm text-amber-50/90">
+   657→   657→          Your device is registered, but we couldn't confirm the test notification was delivered.
+   658→   658→        </p>
+   659→   659→      </div>
+   660→   660→      <div className="space-y-3 px-6 py-5">
+   661→   661→        <p className="text-sm text-muted-foreground">
+   662→   662→          This sometimes happens when the device is offline or the push service is busy. Don't worry — your registration is saved, and you can send another test from <span className="font-medium">Profile → Settings</span> later.
+   663→   663→        </p>
+   664→   664→      </div>
+   665→   665→      <div className="border-t bg-muted/30 px-6 py-4 space-y-2">
+   666→   666→        <Button onClick={onRetry} disabled={busy} className="w-full" variant="outline">
+   667→   667→          {busy ? <Loader2 className="size-4 mr-1.5 animate-spin" /> : <Send className="size-4 mr-1.5" />}
+   668→   668→          Send Test Again
+   669→   669→        </Button>
+   670→   670→        <Button onClick={onContinue} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white">
+   671→   671→          Continue Anyway
+   672→   672→        </Button>
+   673→   673→      </div>
+   674→   674→    </>
+   675→   675→  );
+   676→   676→}
+   677→   677→
+   678→   678→function DeniedStep({
+   679→   679→  onSkip,
+   680→   680→  onRetry,
+   681→   681→}: {
+   682→   682→  onSkip: () => void;
+   683→   683→  onRetry: () => void;
+   684→   684→}) {
+   685→   685→  return (
+   686→   686→    <>
+   687→   687→      <div className="bg-gradient-to-br from-stone-600 to-stone-800 px-6 pb-6 pt-7 text-white">
+   688→   688→        <div className="mb-3 flex size-14 items-center justify-center rounded-2xl bg-white/15 backdrop-blur-sm ring-1 ring-white/30">
+   689→   689→          <BellOff className="size-7" />
+   690→   690→        </div>
+   691→   691→        <h2 className="text-xl font-bold leading-tight">Notifications are off</h2>
+   692→   692→        <p className="mt-1.5 text-sm text-stone-50/90">
+   693→   693→          You chose not to enable notifications right now.
+   694→   694→        </p>
+   695→   695→      </div>
+   696→   696→      <div className="space-y-3 px-6 py-5">
+   697→   697→        <p className="text-sm text-muted-foreground">
+   698→   698→          No worries — you can enable notifications anytime from your browser settings or from:
+   699→   699→        </p>
+   700→   700→        <div className="rounded-lg border border-border bg-muted/40 p-3 text-xs">
+   701→   701→          <p className="font-medium text-foreground">Profile → Settings → App Notifications</p>
+   702→   702→          <p className="mt-1 text-muted-foreground">
+   703→   703→            We'll never show this popup again unless you sign in from a new device.
+   704→   704→          </p>
+   705→   705→        </div>
+   706→   706→      </div>
+   707→   707→      <div className="border-t bg-muted/30 px-6 py-4 space-y-2">
+   708→   708→        <Button onClick={onRetry} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white">
+   709→   709→          <BellRing className="size-4 mr-1.5" /> Try Again
+   710→   710→        </Button>
+   711→   711→        <Button onClick={onSkip} variant="ghost" className="w-full text-muted-foreground">
+   712→   712→          Skip for Now
+   713→   713→        </Button>
+   714→   714→      </div>
+   715→   715→    </>
+   716→   716→  );
+   717→   717→}
+   718→   718→
+   719→   719→function DoneStep({
+   720→   720→  onDone,
+   721→   721→  deviceLabel,
+   722→   722→}: {
+   723→   723→  onDone: () => void;
+   724→   724→  deviceLabel: string;
+   725→   725→}) {
+   726→   726→  return (
+   727→   727→    <>
+   728→   728→      <div className="relative bg-gradient-to-br from-emerald-500 via-emerald-600 to-teal-600 px-6 pb-7 pt-8 text-white">
+   729→   729→        <div className="mb-4 flex size-20 items-center justify-center rounded-full bg-white/15 backdrop-blur-sm ring-2 ring-white/40">
+   730→   730→          <CheckCircle2 className="size-12" />
+   731→   731→        </div>
+   732→   732→        <h2 className="text-2xl font-bold leading-tight">You're All Set!</h2>
+   733→   733→        <p className="mt-2 text-sm text-emerald-50/90">
+   734→   734→          App Notifications have been enabled successfully on this device.
+   735→   735→        </p>
+   736→   736→        {deviceLabel && (
+   737→   737→          <div className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-white/15 px-2.5 py-1 text-[11px] font-medium text-emerald-50 backdrop-blur-sm">
+   738→   738→            <Smartphone className="size-3" />
+   739→   739→            {deviceLabel}
+   740→   740→          </div>
+   741→   741→        )}
+   742→   742→      </div>
+   743→   743→      <div className="space-y-3 px-6 py-5">
+   744→   744→        <div className="space-y-2">
+   745→   745→          {BENEFITS.slice(0, 4).map((b) => {
+   746→   746→            const Icon = b.icon;
+   747→   747→            return (
+   748→   748→              <div key={b.title} className="flex items-center gap-2 text-xs">
+   749→   749→                <CheckCircle2 className="size-4 shrink-0 text-emerald-600" />
+   750→   750→                <span className="text-muted-foreground">{b.title}</span>
+   751→   751→              </div>
+   752→   752→            );
+   753→   753→          })}
+   754→   754→        </div>
+   755→   755→        <div className="rounded-lg border border-emerald-100 bg-emerald-50/50 p-3 text-xs text-emerald-900 dark:border-emerald-900/30 dark:bg-emerald-950/20 dark:text-emerald-200">
+   756→   756→          <p className="flex items-start gap-2">
+   757→   757→            <Sparkles className="mt-0.5 size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+   758→   758→            <span>
+   759→   759→              You'll receive order updates, delivery notifications, medicine request updates, and exclusive offers on this device.
+   760→   760→            </span>
+   761→   761→          </p>
+   762→   762→        </div>
+   763→   763→      </div>
+   764→   764→      <div className="border-t bg-muted/30 px-6 py-4">
+   765→   765→        <Button onClick={onDone} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white">
+   766→   766→          Done
+   767→   767→        </Button>
+   768→   768→      </div>
+   769→   769→    </>
+   770→   770→  );
+   771→   771→}
+   772→   772→
+   773→   773→// ===========================================================================
+   774→   774→// Helpers
+   775→   775→// ===========================================================================
+   776→   776→
+   777→   777→function CenteredMessage({
+   778→   778→  icon,
+   779→   779→  title,
+   780→   780→  message,
+   781→   781→  spinner,
+   782→   782→}: {
+   783→   783→  icon: React.ReactNode;
+   784→   784→  title: string;
+   785→   785→  message: string;
+   786→   786→  spinner?: boolean;
+   787→   787→}) {
+   788→   788→  return (
+   789→   789→    <div className="px-6 py-12 text-center">
+   790→   790→      <div className="mx-auto mb-4 flex size-16 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">
+   791→   791→        {spinner ? <Loader2 className="size-8 animate-spin" /> : icon}
+   792→   792→      </div>
+   793→   793→      <h2 className="text-lg font-bold text-foreground">{title}</h2>
+   794→   794→      <p className="mt-1.5 text-sm text-muted-foreground">{message}</p>
+   795→   795→    </div>
+   796→   796→  );
+   797→   797→}
+   798→   798→
+   799→   799→function urlBase64ToUint8Array(base64Url: string): Uint8Array {
+   800→   800→  const padding = "=".repeat((4 - (base64Url.length % 4)) % 4);
+   801→   801→  const base64 = (base64Url + padding).replace(/-/g, "+").replace(/_/g, "/");
+   802→   802→  const raw = atob(base64);
+   803→   803→  const arr = new Uint8Array(raw.length);
+   804→   804→  for (let i = 0; i < raw.length; i++) {
+   805→   805→    arr[i] = raw.charCodeAt(i);
+   806→   806→  }
+   807→   807→  return arr;
+   808→   808→}
+   809→   809→

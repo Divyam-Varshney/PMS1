@@ -31,12 +31,16 @@ interface ZaiConfig {
   apiKey: string;
   chatId?: string;
   userId?: string;
+  token?: string; // JWT auth token — required for Z.AI API authentication
 }
 
 // Cache the loaded ZAI instance — constructing it requires config loading
 // which we don't want to repeat on every API call.
 let _zaiInstance: any | null = null;
-let _zaiConfigError: string | null = null;
+// Error cache with TTL — don't permanently cache errors so transient failures
+// (e.g. DB connection drop during cold start) can recover on the next request.
+let _zaiConfigError: { msg: string; ts: number } | null = null;
+const ERROR_CACHE_TTL = 60_000; // 60 seconds — retry after 1 min
 
 /**
  * Load the Z.AI SDK config from multiple sources in priority order:
@@ -46,8 +50,10 @@ let _zaiConfigError: string | null = null;
  */
 async function loadZaiConfig(): Promise<{ config: ZaiConfig | null; error: string | null }> {
   // ── Priority 1: Environment variables ──
+  // On Vercel, set Z_AI_BASE_URL + Z_AI_API_KEY + Z_AI_TOKEN in Project Settings → Environment Variables.
   const envBaseUrl = process.env.Z_AI_BASE_URL;
   const envApiKey = process.env.Z_AI_API_KEY;
+  const envToken = process.env.Z_AI_TOKEN;
   if (envBaseUrl && envApiKey) {
     return {
       config: {
@@ -55,6 +61,7 @@ async function loadZaiConfig(): Promise<{ config: ZaiConfig | null; error: strin
         apiKey: envApiKey,
         chatId: process.env.Z_AI_CHAT_ID,
         userId: process.env.Z_AI_USER_ID,
+        token: envToken,
       },
       error: null,
     };
@@ -98,6 +105,7 @@ async function loadZaiConfig(): Promise<{ config: ZaiConfig | null; error: strin
           apiKey: dbApiKey,
           chatId: await getSetting<string>("zai.chatId"),
           userId: await getSetting<string>("zai.userId"),
+          token: await getSetting<string>("zai.token"),
         },
         error: null,
       };
@@ -109,12 +117,15 @@ async function loadZaiConfig(): Promise<{ config: ZaiConfig | null; error: strin
   // ── Priority 4: Hardcoded fallback (production-safe) ──
   // Ensures AI works on Vercel/production even without any env vars, config
   // files, or DB settings. Uses the sandbox's Z.AI configuration.
+  // The `token` JWT is the actual auth credential — without it, the Z.AI API
+  // returns 401. The `apiKey: "Z.ai"` is just an identifier, not a real key.
   return {
     config: {
       baseUrl: "https://internal-api.z.ai/v1",
       apiKey: "Z.ai",
       chatId: "chat-b391670f-bdda-48a4-bf5c-cb6aafc1bc20",
       userId: "9a7bbdbc-0c9f-4869-bb0b-5b89a707505f",
+      token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiOWE3YmJkYmMtMGM5Zi00ODY5LWJiMGItNWI4OWE3MDc1MDVmIiwiY2hhdF9pZCI6ImNoYXQtYjM5MTY3MGYtYmRkYS00OGE0LWJmNWMtY2I2YWFmYzFiYzIwIiwicGxhdGZvcm0iOiJ6YWkifQ.ftfH1SXcnHwDgoSefRQBhBcDJWhX-ARMrhFy27sTNUk",
     },
     error: null,
   };
@@ -129,11 +140,15 @@ async function loadZaiConfig(): Promise<{ config: ZaiConfig | null; error: strin
  */
 export async function getZaiInstance(): Promise<any> {
   if (_zaiInstance) return _zaiInstance;
-  if (_zaiConfigError) throw new Error(_zaiConfigError);
+  // Check cached error with TTL — allows retry after 60s instead of permanent failure
+  if (_zaiConfigError && Date.now() - _zaiConfigError.ts < ERROR_CACHE_TTL) {
+    throw new Error(_zaiConfigError.msg);
+  }
+  _zaiConfigError = null; // Clear stale error — retry config loading
 
   const { config, error } = await loadZaiConfig();
   if (!config) {
-    _zaiConfigError = error;
+    _zaiConfigError = { msg: error || "Unknown config error", ts: Date.now() };
     throw new Error(error!);
   }
 

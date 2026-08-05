@@ -9074,3 +9074,49 @@ Stage Summary:
 - Connection pool timeouts eliminated.
 - Auth caching cuts ~150ms off every authenticated request.
 - The app is now significantly faster and more stable.
+
+---
+Task ID: QA-41.1
+Agent: Main agent (QA + Bug Fixes)
+Task: Assess project status, perform QA testing via agent-browser, fix bugs found.
+
+Work Log:
+- Reviewed worklog (Phase 40.1 performance audit complete).
+- Performed comprehensive QA testing via agent-browser across desktop/tablet/mobile.
+
+Bugs Found + Fixed:
+
+1. Horizontal scroll on customer mobile (375px):
+   - Root cause: Brand marquee animation (w-max = 4360px) overflowed the viewport.
+   - The Phase 40.4 fix (overflow-hidden on marquee parent) was reverted by a git reset.
+   - Fix: Re-added `overflow-hidden` to the marquee parent div in home-view.tsx.
+   - Fix: Re-added `overflow-x-hidden` to customer-layout.tsx root div.
+   - Verified: docW=375, hScroll=false on mobile.
+
+2. Horizontal scroll on admin desktop (1440px):
+   - Root cause: SidebarInset (sidebar.tsx) was missing `min-w-0` — flexbox overflow.
+   - The Phase 40.4 fix was reverted by a git reset.
+   - Fix: Re-added `min-w-0 overflow-x-hidden` to SidebarInset className.
+   - Fix: Re-added `min-w-0` to AdminLayout main + motion.div.
+   - Fix: Removed `max-w-[1600px]` constraint.
+   - Verified: docW=1440, hScroll=false on desktop.
+
+3. Shop pagination not showing:
+   - Root cause: Default pageMode was still 'infinite' (Phase 41 change was reverted).
+   - The ShopPagination component was also missing (reverted).
+   - Fix: Changed default pageMode from 'infinite' to 'pages'.
+   - Fix: Re-created ShopPagination component with page number buttons.
+   - Shows: « First, Previous, [1][2][3][4][5], Next, » Last.
+   - Verified: All pagination buttons visible + functional.
+
+4. AI verification:
+   - Health Assistant: Returns 493-char reply with product suggestions ✅
+   - Admin AI Insights: Returns 5 insights ✅
+   - Currency: AI uses ₹ (Indian Rupees) ✅
+
+Stage Summary:
+- 3 critical bugs fixed (all were regressions from git resets).
+- All viewports verified: no horizontal scroll on mobile/tablet/desktop.
+- Shop pagination fully functional with page number buttons.
+- AI features confirmed working.
+- Lint passes (0 errors).

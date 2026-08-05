@@ -396,7 +396,23 @@ async function openaiCompatibleChat(
 
   if (!res.ok) {
     const errText = await res.text().catch(() => "unknown error");
-    throw new Error(`AI API error (${res.status}): ${errText.slice(0, 200)}`);
+    // Provide helpful error messages for common HTTP status codes
+    let helpfulMsg = `AI API error (${res.status}): ${errText.slice(0, 200)}`;
+    if (res.status === 401 || res.status === 403) {
+      // Check if it's a region restriction
+      if (errText.includes("location") || errText.includes("region") || errText.includes("country")) {
+        helpfulMsg = `AI provider blocked this region (${res.status}). The selected provider may not be available in your server's geographic location. Try a different provider (e.g., Groq) or use Z.AI SDK for local development. Error: ${errText.slice(0, 100)}`;
+      } else {
+        helpfulMsg = `AI provider authentication failed (${res.status}). Your API key may be invalid, expired, or lacking permissions. Please verify your API key in Admin → Settings → AI Integration. Error: ${errText.slice(0, 100)}`;
+      }
+    } else if (res.status === 429) {
+      helpfulMsg = `AI provider rate limit exceeded (429). Please wait a moment and try again. Error: ${errText.slice(0, 100)}`;
+    } else if (res.status === 404) {
+      helpfulMsg = `AI model not found (404). The model "${model}" may not be available for this provider. Please select a different model. Error: ${errText.slice(0, 100)}`;
+    } else if (res.status >= 500) {
+      helpfulMsg = `AI provider server error (${res.status}). The provider may be temporarily unavailable. Error: ${errText.slice(0, 100)}`;
+    }
+    throw new Error(helpfulMsg);
   }
 
   const data = await res.json();

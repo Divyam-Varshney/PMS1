@@ -112,11 +112,71 @@ async function loadZaiConfig(): Promise<{ config: ZaiConfig | null; error: strin
     // DB unavailable — skip
   }
 
-  // ── Priority 4: Hardcoded fallback (production-safe) ──
-  // Ensures AI works on Vercel/production even without any env vars, config
-  // files, or DB settings. Uses the sandbox's Z.AI configuration.
-  // The `token` JWT is the actual auth credential — without it, the Z.AI API
-  // returns 401. The `apiKey: "Z.ai"` is just an identifier, not a real key.
+  // ── Priority 3.5: OpenAI-compatible env vars (production fallback) ──
+  // Supports OPENAI_API_KEY + OPENAI_BASE_URL for any OpenAI-compatible provider.
+  // This is the recommended way to use free providers (Gemini, Groq) on Vercel:
+  //   OPENAI_API_KEY=your-gemini-or-groq-key
+  //   OPENAI_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai
+  //   OPENAI_MODEL=gemini-1.5-flash
+  const openaiKey = process.env.OPENAI_API_KEY;
+  const openaiBaseUrl = process.env.OPENAI_BASE_URL;
+  if (openaiKey) {
+    // Store this as an AI config override so aiChatCompletion() uses the
+    // openai-compatible path instead of the z-ai-sdk path.
+    const overrideConfig: AIConfig = {
+      provider: "openai-compatible",
+      providerId: "env-openai",
+      apiKey: openaiKey,
+      baseUrl: openaiBaseUrl || "https://api.openai.com/v1",
+      model: process.env.OPENAI_MODEL || "gpt-4o-mini",
+      enabled: true,
+    };
+    // Write it to the in-memory AI config cache so getAIConfig() returns it.
+    try {
+      const { setSetting } = await import("@/lib/settings");
+      await setSetting("ai.config", overrideConfig, "ai");
+    } catch {}
+    // Return a ZAI config that won't be used (the openai-compatible path will be used instead).
+    return {
+      config: {
+        baseUrl: openaiBaseUrl || "https://api.openai.com/v1",
+        apiKey: openaiKey,
+      },
+      error: null,
+    };
+  }
+
+  // ── Priority 4: Hardcoded fallback ──
+  // 
+  // IMPORTANT: The Z.AI "internal-api.z.ai" endpoint resolves to PRIVATE IP
+  // addresses (172.25.x.x) that are ONLY reachable from within the Z.AI sandbox
+  // network. On Vercel/production (public internet), these IPs are unreachable
+  // → ConnectTimeoutError.
+  //
+  // SOLUTION for production:
+  // 1. Set Z_AI_BASE_URL + Z_AI_API_KEY + Z_AI_TOKEN env vars on Vercel (Priority 1)
+  //    using a PUBLIC Z.AI endpoint if one becomes available.
+  // 2. OR configure a public AI provider (Google Gemini, Groq) via Admin → Settings → AI.
+  // 3. OR set OPENAI_API_KEY + OPENAI_BASE_URL env vars to use an OpenAI-compatible provider.
+  //
+  // In development (sandbox), the internal-api endpoint works because we're on
+  // the same network. In production, it does NOT work.
+  //
+  // If we're in the sandbox (internal-api is reachable), use the hardcoded config.
+  // If we're in production (internal-api is NOT reachable), return null so the
+  // caller shows a helpful "AI not configured" message instead of a timeout.
+  const isProduction = process.env.NODE_ENV === "production";
+  if (isProduction) {
+    // In production, the internal-api is not reachable.
+    // Check if the user has configured a public provider via env vars or DB.
+    // If not, return null with a helpful error message.
+    return {
+      config: null,
+      error: "AI is not configured for production. Please set Z_AI_BASE_URL + Z_AI_API_KEY + Z_AI_TOKEN environment variables on Vercel, OR configure a public AI provider (Google Gemini, Groq, OpenAI) via Admin → Settings → AI. The default Z.AI endpoint (internal-api.z.ai) is only accessible from the development sandbox and cannot be reached from Vercel.",
+    };
+  }
+  
+  // In development (sandbox), use the hardcoded Z.AI config.
   return {
     config: {
       baseUrl: "https://internal-api.z.ai/v1",
@@ -188,6 +248,18 @@ const DEFAULT_CONFIG: AIConfig = {
 // ---------------------------------------------------------------------------
 
 export async function getAIConfig(): Promise<AIConfig> {
+  // Priority: OPENAI_API_KEY env var overrides everything (production fallback)
+  const openaiKey = process.env.OPENAI_API_KEY;
+  if (openaiKey) {
+    return {
+      provider: "openai-compatible",
+      providerId: "env-openai",
+      apiKey: openaiKey,
+      baseUrl: process.env.OPENAI_BASE_URL || "https://api.openai.com/v1",
+      model: process.env.OPENAI_MODEL || "gpt-4o-mini",
+      enabled: true,
+    };
+  }
   const raw = await getSetting<any>("ai.config");
   if (!raw) return DEFAULT_CONFIG;
   return { ...DEFAULT_CONFIG, ...raw };

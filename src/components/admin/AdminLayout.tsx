@@ -732,7 +732,7 @@ export function AdminLayout({
             fade/slide animation. Covers all detail views: product-edit,
             order-detail, prescription-detail, manual-request-detail,
             customer-detail. */}
-        <main className="flex-1 p-4 md:p-6 max-w-[1600px] w-full mx-auto">
+        <main className="flex-1 p-4 md:p-6 w-full mx-auto min-w-0">
           <AnimatePresence mode="wait">
             <motion.div
               key={view.name + ("id" in view ? (view as any).id ?? "" : "")}
@@ -740,7 +740,7 @@ export function AdminLayout({
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -8 }}
               transition={{ duration: 0.2, ease: "easeOut" }}
-              className="animate-page-enter"
+              className="animate-page-enter min-w-0"
             >
               {children}
             </motion.div>

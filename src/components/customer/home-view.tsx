@@ -395,7 +395,7 @@ export function HomeView() {
       {brands && brands.length > 0 && (
         <section>
           <SectionHeader eyebrow="Partners" title="Trusted Brands" />
-          <div className="relative">
+          <div className="relative overflow-hidden">
             {/* Gradient fade edges */}
             <div className="pointer-events-none absolute left-0 top-0 z-10 h-full w-12 bg-gradient-to-r from-background to-transparent" />
             <div className="pointer-events-none absolute right-0 top-0 z-10 h-full w-12 bg-gradient-to-l from-background to-transparent" />

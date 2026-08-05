@@ -51,7 +51,7 @@ export function CustomerLayout({ children }: { children: ReactNode }) {
   const customOffers = settings?.offers?.filter((o) => o.position === "custom") ?? [];
 
   return (
-    <div className="flex min-h-screen flex-col bg-background">
+    <div className="flex min-h-screen flex-col overflow-x-hidden bg-background">
       <ThemeApplier />
 
       {/* Promotional top-banner offer */}

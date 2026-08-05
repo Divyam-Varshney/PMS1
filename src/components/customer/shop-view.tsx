@@ -83,13 +83,11 @@ export function ShopView() {
     if (typeof window === "undefined") return "grid";
     return (localStorage.getItem("pms_shop_view") as "grid" | "list") || "grid";
   });
-  // Page mode — infinite scroll (default) vs classic pagination.
-  // Persisted to localStorage so the customer's preference survives reloads.
-  // Infinite scroll auto-loads the next page when the sentinel approaches the
-  // viewport; Pages keeps the Previous/Next buttons.
-  const [pageMode, setPageMode] = useState<"infinite" | "pages">(() => {
-    if (typeof window === "undefined") return "infinite";
-    return (localStorage.getItem("pms_shop_page_mode") as "infinite" | "pages") || "infinite";
+  // Page mode — classic pagination (default) vs infinite scroll.
+  // Classic pagination is better for SEO + user experience on product listings.
+  const [pageMode, setPageMode] = useState<"pages" | "infinite">(() => {
+    if (typeof window === "undefined") return "pages";
+    return (localStorage.getItem("pms_shop_page_mode") as "pages" | "infinite") || "pages";
   });
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -741,29 +739,9 @@ export function ShopView() {
                 </div>
               )}
 
-              {/* Classic pagination — only rendered when pageMode === "pages". */}
+              {/* Classic pagination — grid view */}
               {pageMode === "pages" && totalPages > 1 && (
-                <div className="mt-6 flex items-center justify-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={page === 1}
-                    onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  >
-                    Previous
-                  </Button>
-                  <span className="text-sm text-muted-foreground">
-                    Page {page} of {totalPages}
-                  </span>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={page >= totalPages}
-                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                  >
-                    Next
-                  </Button>
-                </div>
+                <ShopPagination page={page} totalPages={totalPages} setPage={setPage} />
               )}
             </>
           ) : (
@@ -823,29 +801,9 @@ export function ShopView() {
                 </div>
               )}
 
-              {/* Classic pagination — only rendered when pageMode === "pages". */}
+              {/* Classic pagination — list view */}
               {pageMode === "pages" && totalPages > 1 && (
-                <div className="mt-6 flex items-center justify-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={page === 1}
-                    onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  >
-                    Previous
-                  </Button>
-                  <span className="text-sm text-muted-foreground">
-                    Page {page} of {totalPages}
-                  </span>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={page >= totalPages}
-                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                  >
-                    Next
-                  </Button>
-                </div>
+                <ShopPagination page={page} totalPages={totalPages} setPage={setPage} />
               )}
             </>
           )}
@@ -1029,5 +987,48 @@ function ProductListRow({ product }: { product: Product }) {
         </div>
       </div>
     </motion.div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// ShopPagination — responsive pagination with page number buttons.
+// Shows « First, Previous, [1] [2] [3] [4] [5], Next, » Last.
+// Scrolls to top on page change. Preserves filters + sort automatically.
+// ---------------------------------------------------------------------------
+function ShopPagination({
+  page,
+  totalPages,
+  setPage,
+}: {
+  page: number;
+  totalPages: number;
+  setPage: (fn: (p: number) => number) => void;
+}) {
+  const goTo = (p: number) => {
+    setPage(() => p);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const pages: number[] = [];
+  if (totalPages <= 5) {
+    for (let i = 1; i <= totalPages; i++) pages.push(i);
+  } else if (page <= 3) {
+    for (let i = 1; i <= 5; i++) pages.push(i);
+  } else if (page >= totalPages - 2) {
+    for (let i = totalPages - 4; i <= totalPages; i++) pages.push(i);
+  } else {
+    for (let i = page - 2; i <= page + 2; i++) pages.push(i);
+  }
+
+  return (
+    <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
+      <Button variant="outline" size="sm" disabled={page === 1} onClick={() => goTo(1)} className="px-2" aria-label="First page">«</Button>
+      <Button variant="outline" size="sm" disabled={page === 1} onClick={() => goTo(page - 1)}>Previous</Button>
+      {pages.map((p) => (
+        <Button key={p} variant={page === p ? "default" : "outline"} size="sm" onClick={() => goTo(p)} className="min-w-9">{p}</Button>
+      ))}
+      <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => goTo(page + 1)}>Next</Button>
+      <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => goTo(totalPages)} className="px-2" aria-label="Last page">»</Button>
+    </div>
   );
 }

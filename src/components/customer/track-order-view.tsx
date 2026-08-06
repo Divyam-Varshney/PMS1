@@ -236,7 +236,7 @@ export function TrackOrderView() {
     queryFn: () => api<OrderTrackWithQr>(`/api/orders/${orderId}/track`),
     enabled: !!orderId,
     staleTime: 10 * 1000, // Refresh after 10 seconds
-    refetchInterval: 15 * 1000, // Auto-poll every 15 seconds for live status updates
+    refetchInterval: 30 * 1000, // 30s (was 15s — reduced for memory)
   });
 
   const reorderMutation = useMutation({

@@ -72,7 +72,7 @@ export function CustomersView() {
       api.get<{ items: any[]; total: number; totalPages: number; page: number }>(
         `/api/admin/customers?${query}`
       ),
-    refetchInterval: 30_000, // Auto-refresh every 30s — preserves filters + pagination
+    refetchInterval: 60_000, // 60s (was 30s — reduced for memory) // Auto-refresh every 30s — preserves filters + pagination
     placeholderData: keepPreviousData,
   });
 

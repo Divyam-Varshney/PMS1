@@ -245,7 +245,7 @@ function NavList({ admin, searchQuery }: { admin: AdminInfo; searchQuery: string
   const { data: counts } = useQuery({
     queryKey: ["admin-counts"],
     queryFn: () => api.get<{ pendingOrders: number; lowStock: number; pendingPrescriptions: number; pendingManualRequests: number; unreadNotifications: number }>("/api/admin/counts"),
-    refetchInterval: 30 * 1000,
+    refetchInterval: 60 * 1000, // 60s (was 30s — reduced for memory)
   });
 
   const badgeFor = (viewName: string): number | null => {

@@ -249,7 +249,7 @@ export function OrdersView() {
         totalPages: number;
         page: number;
       }>(`/api/admin/orders?${queryParams}`),
-    refetchInterval: 30_000, // Auto-refresh every 30s — preserves filters + pagination
+    refetchInterval: 60_000, // 60s (was 30s — reduced for memory) // Auto-refresh every 30s — preserves filters + pagination
     placeholderData: keepPreviousData, // Smooth transitions when changing pages
   });
 

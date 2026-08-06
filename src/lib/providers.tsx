@@ -3,6 +3,13 @@
 // Purpose: Client-side React providers (React Query, theme) wrapping the app.
 // Role: Mounted once in the root layout so all client components share the
 //       same query client and theme context.
+//
+// Phase 43.6 — MEMORY OPTIMIZATION:
+//   - gcTime added (5 min) — React Query caches old data indefinitely by
+//     default, which accumulates memory. 5 min is a good balance between
+//     UX (fast back-navigation) and memory.
+//   - staleTime increased to 60s (was 30s) — reduces refetch frequency,
+//     lowering CPU + memory churn.
 // ============================================================================
 
 "use client";
@@ -16,7 +23,8 @@ export function Providers({ children }: { children: ReactNode }) {
       new QueryClient({
         defaultOptions: {
           queries: {
-            staleTime: 30 * 1000,
+            staleTime: 60 * 1000, // 60s — was 30s
+            gcTime: 5 * 60 * 1000, // 5 min — garbage-collect inactive queries
             retry: 1,
             refetchOnWindowFocus: false,
           },

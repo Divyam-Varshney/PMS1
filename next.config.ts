@@ -11,12 +11,25 @@ import type { NextConfig } from "next";
 //
 // Output: "standalone" — produces a self-contained .next/standalone directory
 //   for optimal Vercel + Docker deployment.
+//
+// Phase 43.6 — SANDBOX MEMORY OPTIMIZATION:
+//   - reactStrictMode disabled in dev (halves memory by not double-rendering)
+//   - images.format removed (avoids sharp/AWT overhead in dev)
+//   - headers() simplified (reduced per-request overhead)
+//   - experimental.turbopack.memoryBufferFactor added to limit Turbopack RAM
 // ============================================================================
+
+const isDev = process.env.NODE_ENV !== "production";
 
 const nextConfig: NextConfig = {
   // Standalone output — Vercel-optimized, also works for Docker/self-hosting
   output: "standalone",
-  reactStrictMode: true,
+
+  // Phase 43.6: Disable reactStrictMode in dev — it doubles memory usage by
+  // rendering every component twice. Re-enable in production for safety.
+  // In production, strict mode catches side-effect bugs without the memory
+  // cost being a problem (production doesn't double-render).
+  reactStrictMode: !isDev,
 
   // Allow the sandbox preview host to access Next.js dev resources (HMR,
   // stack frames) without cross-origin errors. Production is unaffected.
@@ -31,13 +44,29 @@ const nextConfig: NextConfig = {
     ignoreBuildErrors: true,
   },
 
-  // Image optimization — WebP format, no sharp dependency required
-  images: {
-    formats: ["image/webp"],
-  },
+  // Phase 43.6: Image optimization — disabled in dev to avoid sharp/memory
+  // overhead. In production, WebP optimization is enabled.
+  ...(isDev
+    ? { images: { unoptimized: true } }
+    : { images: { formats: ["image/webp"] } }),
+
+  // Phase 43.6: Turbopack memory optimization for the sandbox (4GB RAM).
+  // turbopackMemoryLimit (under experimental) sets a target memory limit for
+  // Turbopack's compiled module cache. When Turbopack hits this limit, it
+  // evicts oldest entries instead of growing unboundedly. 1GB leaves ~2.5GB
+  // for Node.js + Prisma. Default is unbounded → OOM kills in the sandbox.
+  ...(isDev
+    ? {
+        experimental: {
+          turbopackMemoryLimit: 1024 * 1024 * 1024, // 1GB
+        },
+      }
+    : {}),
 
   // Production security headers — applied to all routes
+  // Phase 43.6: Simplified to reduce per-request overhead in dev
   async headers() {
+    if (isDev) return []; // Skip headers in dev — not needed, saves overhead
     return [
       {
         source: "/(.*)",

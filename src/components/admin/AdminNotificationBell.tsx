@@ -92,7 +92,7 @@ export function AdminNotificationBell() {
     queryFn: () => api.get<{ notifications: AdminNotification[]; unreadCount: number }>(
       "/api/admin/notifications-list?limit=30"
     ),
-    refetchInterval: 15000, // Poll every 15 seconds
+    refetchInterval: 60000, // Poll every 60 seconds (was 15s — reduced for memory)
     refetchOnWindowFocus: true,
   });
 

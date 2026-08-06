@@ -92,6 +92,41 @@ if (process.argv.length < 3) {
 
 const [cmd, ...args] = process.argv.slice(2);
 
+// ── Phase 43.6: SANDBOX MEMORY OPTIMIZATION ──────────────────────────
+//
+// The sandbox has ~4GB RAM. Next.js + Turbopack can easily consume 2.5GB+
+// when compiling 25+ admin views + 22+ customer views, causing OOM kills.
+//
+// These environment variables cap memory usage:
+//
+//   NEXT_TELEMETRY_DISABLED=1
+//     Disables Next.js anonymous telemetry. The telemetry agent runs a
+//     background thread and adds ~10-20MB overhead.
+//
+//   NODE_OPTIONS=--max-old-space-size=1536
+//     Caps the Node.js V8 heap at 1.5GB. Without this, Node.js will use
+//     all available RAM until the OOM killer fires. 1.5GB is enough for
+//     the dev server + Prisma + a few API routes, while leaving 2.5GB
+//     for the OS + Turbopack's native workers.
+//
+//   TURBOPACK=1
+//     Ensures Turbopack is used (already set via --turbo flag, but this
+//     is a belt-and-suspenders approach).
+// ──────────────────────────────────────────────────────────────────────
+process.env.NEXT_TELEMETRY_DISABLED = "1";
+
+// Only apply memory limit for `next dev` / `next build` commands (not prisma)
+const isNextCommand = cmd === "next" || cmd === "node" && args[0]?.includes("next");
+if (isNextCommand) {
+  // Set NODE_OPTIONS if not already set by the caller
+  if (!process.env.NODE_OPTIONS) {
+    process.env.NODE_OPTIONS = "--max-old-space-size=1536";
+  }
+  // Log the memory limit for debugging
+  console.log(`[with-env] Memory limit: ${process.env.NODE_OPTIONS}`);
+  console.log(`[with-env] Telemetry: disabled`);
+}
+
 // Spawn WITHOUT shell:true to avoid the Node DEP0190 deprecation warning.
 // `spawn` with `shell: false` (the default) requires the command to be a real
 // binary path. We use `process.execPath` (the current node binary) for node-

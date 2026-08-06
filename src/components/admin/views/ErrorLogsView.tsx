@@ -109,7 +109,7 @@ export function ErrorLogsView() {
   const { data, isLoading, isFetching } = useQuery({
     queryKey: ["admin-error-logs", page, severity, status, search],
     queryFn: () => api.get<ErrorLogsResponse>(`/api/admin/error-logs?${queryParams}`),
-    refetchInterval: 30 * 1000, // auto-refresh every 30s
+    refetchInterval: 60 * 1000, // 60s (was 30s — reduced for memory) // auto-refresh every 30s
   });
 
   const updateStatus = useMutation({

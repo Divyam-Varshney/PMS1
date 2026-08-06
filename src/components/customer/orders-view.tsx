@@ -171,7 +171,7 @@ export function OrdersView() {
     queryFn: () => api<UnifiedHistoryResponse>("/api/customer/history"),
     enabled: !!customer,
     staleTime: 10 * 1000,
-    refetchInterval: 10 * 1000,
+    refetchInterval: 30 * 1000, // 30s (was 10s — reduced for memory)
   });
 
   // ---- Reorder mutation — reuses the existing /api/orders/[id]/reorder

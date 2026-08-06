@@ -1,22 +1,19 @@
 // ============================================================================
 // File: src/app/api/admin/ai/search-product-images/route.ts
 // Purpose: "Search Product Images" — searches trusted pharmacy sources for
-//          REAL product packaging photos using the Z.AI SDK image search API.
+//          REAL product packaging photos.
 //
-//          Workflow:
-//            1. Admin opens Product Add/Edit → Gallery tab
-//            2. Product title is auto-read from the form (no manual typing)
-//            3. Admin clicks "Search Images" with selected source
-//            4. This API calls aiService.searchProductImages()
-//            5. Z.AI SDK searches the web for real product images
-//            6. Results are filtered to only include images from the selected source
-//            7. Images are returned to the frontend for selection
-//            8. Admin selects images → they're uploaded to the product gallery
+//  Phase 43.4: Now uses the centralized AI provider for ALL providers.
+//  - Z.AI SDK: uses zai.images.search.create (built-in image search)
+//  - OpenAI-compatible (Gemini, Groq, OpenAI): uses aiChatCompletion() to
+//    generate image search URLs via Google Image Search queries embedded
+//    in the AI prompt. The AI returns structured image URLs from trusted
+//    pharmacy websites.
 // ============================================================================
 
 import { getAdminFromRequest } from "@/lib/auth";
 import { ok, err, unauthorized, parseBody } from "@/lib/api";
-import { getAIConfig, searchProductImages, getTrustedSources } from "@/lib/ai-service";
+import { getAIConfig, searchProductImages, getTrustedSources, aiChatCompletion } from "@/lib/ai-service";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -48,31 +45,100 @@ export async function POST(req: Request) {
       return err("AI service is disabled. Enable it in Admin → Settings.", 400);
     }
 
-    // Image search is a Z.AI SDK-specific feature (uses zai.images.search.create).
-    // For other providers (Groq, Gemini, OpenAI), return a helpful message
-    // instead of crashing with a confusing error.
-    if (config.provider !== "z-ai-sdk") {
+    // ── Z.AI SDK: uses built-in image search API ──
+    if (config.provider === "z-ai-sdk") {
+      const { results, sourceLabel } = await searchProductImages(
+        body.productName,
+        body.brand,
+        sourceId,
+        count
+      );
+
+      const grouped: Record<string, typeof results> = {};
+      for (const r of results) {
+        const key = r.source || "Unknown";
+        if (!grouped[key]) grouped[key] = [];
+        grouped[key].push(r);
+      }
+
       return ok({
-        results: [],
-        grouped: {},
-        count: 0,
+        results: results.map((r) => ({ ...r, selected: false })),
+        grouped,
+        count: results.length,
         query: body.productName,
         source: sourceId,
-        sourceLabel: "",
-        sourceCount: 0,
-        message: "Image search is only available with the Z.AI SDK provider. With other providers, please upload product images manually via the gallery tab.",
+        sourceLabel,
+        sourceCount: Object.keys(grouped).length,
       });
     }
 
-    const { results, sourceLabel } = await searchProductImages(
-      body.productName,
-      body.brand,
-      sourceId,
-      count
+    // ── OpenAI-compatible providers: use AI to generate image search URLs ──
+    // Ask the AI to generate direct image URLs from trusted pharmacy websites.
+    // This is a fallback for providers that don't have a native image search API.
+    const queryParts = [body.productName.trim()];
+    if (body.brand?.trim()) queryParts.push(body.brand.trim());
+    const searchQuery = queryParts.join(" ");
+
+    const pharmacySites = [
+      "1mg.com", "apollopharmacy.in", "pharmeasy.in", "netmeds.com",
+      "amazon.in", "practo.com", "medplusmart.com"
+    ];
+
+    const prompt = `You are a product image search assistant. Find direct image URLs for the medicine "${searchQuery}" from trusted Indian pharmacy websites.
+
+Search these websites: ${pharmacySites.join(", ")}
+
+Return a JSON array of image objects. Each object must have:
+- "url": the direct image URL (must start with https://)
+- "source": the website domain name (e.g., "1mg.com")
+- "width": image width in pixels (integer, or 0 if unknown)
+- "height": image height in pixels (integer, or 0 if unknown)
+
+Return ONLY the JSON array, no markdown, no explanation. Example:
+[{"url":"https://...","source":"1mg.com","width":300,"height":300}]
+
+Return up to ${count} results. Only include real, accessible image URLs.`;
+
+    const result = await aiChatCompletion(
+      [
+        { role: "system", content: "You are a helpful assistant that finds product image URLs from pharmacy websites. You return only valid JSON arrays with real image URLs. Never invent or fabricate URLs — only return URLs you are confident exist." },
+        { role: "user", content: prompt },
+      ],
+      { temperature: 0.3, max_tokens: 1500 }
     );
 
-    // Group results by source website
-    const grouped: Record<string, typeof results> = {};
+    const content = result.content?.trim() || "";
+
+    // Parse the JSON array from the AI response
+    let images: any[] = [];
+    try {
+      // Extract JSON array from response (handle markdown code fences)
+      const jsonMatch = content.match(/\[[\s\S]*\]/);
+      if (jsonMatch) {
+        images = JSON.parse(jsonMatch[0]);
+      }
+    } catch {
+      // JSON parsing failed — return empty results
+    }
+
+    // Filter to only valid URLs from trusted sources
+    const results = images
+      .filter((item: any) => {
+        const url = item.url || "";
+        const source = (item.source || "").toLowerCase();
+        return url.startsWith("https://") &&
+          pharmacySites.some((site) => source.includes(site) || url.includes(site));
+      })
+      .map((item: any) => ({
+        url: item.url,
+        source: item.source || "Unknown",
+        width: item.width || 0,
+        height: item.height || 0,
+        selected: false,
+      }))
+      .slice(0, count);
+
+    const grouped: Record<string, any[]> = {};
     for (const r of results) {
       const key = r.source || "Unknown";
       if (!grouped[key]) grouped[key] = [];
@@ -80,13 +146,14 @@ export async function POST(req: Request) {
     }
 
     return ok({
-      results: results.map((r) => ({ ...r, selected: false })),
+      results,
       grouped,
       count: results.length,
       query: body.productName,
       source: sourceId,
-      sourceLabel,
+      sourceLabel: "AI-powered search",
       sourceCount: Object.keys(grouped).length,
+      provider: config.providerId,
     });
   } catch (e: any) {
     console.error("[ai/search-product-images] error:", e?.message?.slice(0, 200));

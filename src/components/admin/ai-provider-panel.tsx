@@ -95,15 +95,54 @@ export function AiProviderPanel() {
     setTestResult(null);
   }
 
+  // Provider profiles — stores each provider's config separately so switching
+  // back to a previously configured provider restores its settings automatically.
+  const [profiles, setProfiles] = useState<Record<string, { apiKey: string; baseUrl: string; model: string }>>({});
+
+  // Load profiles from localStorage on mount
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("pms_ai_profiles");
+      if (stored) setProfiles(JSON.parse(stored));
+    } catch {}
+  }, []);
+
+  // Save profiles to localStorage whenever they change
+  useEffect(() => {
+    try {
+      localStorage.setItem("pms_ai_profiles", JSON.stringify(profiles));
+    } catch {}
+  }, [profiles]);
+
   function selectProvider(providerId: string) {
     const p = PROVIDERS.find((x) => x.providerId === providerId);
     if (!p) return;
+
+    // Save current provider's config to its profile before switching
+    setProfiles((prev) => {
+      const updated = { ...prev };
+      // Only save if there's meaningful data (API key or model set)
+      if (config.apiKey || config.model) {
+        updated[config.providerId] = {
+          apiKey: config.apiKey,
+          baseUrl: config.baseUrl,
+          model: config.model,
+        };
+      }
+      return updated;
+    });
+
+    // Load the newly selected provider's saved profile (if exists)
+    const savedProfile = profiles[providerId];
+
     setConfig((prev) => ({
       ...prev,
       providerId: p.providerId,
       provider: p.provider,
-      model: prev.model || p.defaultModel,
-      baseUrl: prev.baseUrl || p.defaultBaseUrl,
+      // Restore from saved profile, or use defaults
+      apiKey: savedProfile?.apiKey || "",
+      baseUrl: savedProfile?.baseUrl || p.defaultBaseUrl,
+      model: savedProfile?.model || p.defaultModel,
     }));
     setTestResult(null);
   }
@@ -116,6 +155,17 @@ export function AiProviderPanel() {
     );
     setSaving(false);
     if (r) {
+      // Also save the current provider's profile locally
+      if (config.apiKey || config.model) {
+        setProfiles((prev) => ({
+          ...prev,
+          [config.providerId]: {
+            apiKey: config.apiKey,
+            baseUrl: config.baseUrl,
+            model: config.model,
+          },
+        }));
+      }
       toast.success("AI configuration saved");
       qc.invalidateQueries({ queryKey: ["ai-config"] });
     }

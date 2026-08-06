@@ -9246,3 +9246,91 @@ Stage Summary:
 - All image rendering locations verified via agent-browser + VLM analysis.
 - 0 lint errors, 0 runtime errors, all API calls return 200.
 - The image loading system is now fully reliable across the entire application.
+
+---
+
+## Rollback to Phase 43.5
+
+### Date: 2026-08-06
+
+### Rollback Performed
+- **Target commit:** `584dfd6e` (Phase 43.5 — Image Loading Audit & AI Image Search Fix)
+- **Method:** `git reset --hard 584dfd6e` + `git push --force origin main`
+- **Result:** Project restored to the exact state of Phase 43.5
+
+### Changes Removed
+All modifications made after Phase 43.5 have been completely deleted:
+
+**Phase 44 (Admin Panel Modernization) — REMOVED:**
+- AdminLogin.tsx redesign (split-screen SaaS layout)
+- AdminLayout.tsx sidebar collapse fixes
+- AiStatusIndicator.tsx component
+- admin-theme-panel.tsx (dual-profile theme system)
+- DashboardView.tsx rebuild (time filters, KPI cards, charts)
+- ProductsView.tsx redesign (advanced filters, bulk operations)
+- ProductEditView.tsx enhancements (status selector, pricing summary)
+- AI status API endpoint
+
+**Phase 44.7 & 44.8 — REMOVED:**
+- Advanced theme management (customer + admin profiles)
+- Dashboard export system (PDF/Excel/CSV)
+- AI image search server-side validation (image-validation.ts)
+- UI interaction improvements (hover effects, transitions)
+- Brand management redesign (stats, analytics, AI description)
+- Brand analytics API, brand bulk operations enhancement
+- AI brand description generator API
+- dashboard-analytics.ts shared helper
+- xlsx package dependency
+- testing-report.md
+- screenshots/ directory
+- agent-ctx/ directory (subagent artifacts)
+
+### Health Check Results (all PASS)
+- ✅ Server starts and responds (HTTP 200)
+- ✅ Database connected (12 featured products, 8 categories)
+- ✅ Customer site APIs: settings/public, catalog/featured, catalog/categories, catalog/home-feed, deals — all HTTP 200
+- ✅ Admin authentication: login + /me — both HTTP 200
+- ✅ Admin APIs: counts, products, orders, settings, dashboard/analytics — all HTTP 200
+- ✅ AI Image Search: returns 3 real image URLs from z-cdn.chatglm.cn
+- ✅ `bun run lint` — 0 errors
+
+### Testing Results
+- ✅ Desktop (1280px): Customer site + Admin panel render correctly
+- ✅ Mobile (375px): Single-column layout, no horizontal overflow, content readable
+- ✅ Dark Mode: Customer site + Admin panel — good contrast, readable
+- ✅ Light Mode: All elements render correctly
+- ✅ Product images: 5/12 featured products have real images (R2 URLs), rest use branded gradient placeholders (correct Phase 43.5 behavior)
+- ✅ Category tiles: Real category images load from R2
+- ✅ Brand logos: Real brand logos load from R2
+
+### Code Cleanup
+- ✅ No temp files (.tmp, .bak, .DS_Store)
+- ✅ No test files
+- ✅ No dead code (console.error statements are legitimate API error logging)
+- ✅ No unused imports (lint passes with 0 errors)
+- ✅ agent-ctx/ folder removed (subagent artifacts)
+- ✅ screenshots/ folder removed
+- ✅ testing-report.md removed
+- ✅ Working tree clean (`git status` shows nothing to commit)
+
+### Optimization Verified (all from Phase 43.5)
+- ✅ Standalone output mode enabled
+- ✅ Dynamic imports (lazy loading) for all admin views + customer views
+- ✅ Image optimization (WebP format)
+- ✅ Prisma select clauses (avoid over-fetching)
+- ✅ Dashboard analytics cached (60s TTL)
+- ✅ Auth identity cache (30s TTL)
+- ✅ Settings cache (in-process)
+- ✅ Lazy loading on product images
+- ✅ React.memo on product cards
+- ✅ Connection pool tuning (connection_limit=10)
+
+### Final State
+- **Git HEAD:** `584dfd6e` (Phase 43.5)
+- **GitHub:** Force-pushed, remote matches local
+- **Working tree:** Clean
+- **Lint:** 0 errors
+- **Server:** Running on port 3000
+- **All major workflows tested and verified**
+
+The project is now restored to the clean, stable, Phase 43.5 baseline.

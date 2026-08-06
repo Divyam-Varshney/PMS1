@@ -72,7 +72,9 @@ export function ProductImage({
   // Track image load errors so we can fall back to the branded placeholder.
   // Resets when the URL changes (via the key prop on the <img>).
   const [errored, setErrored] = useState(false);
-  useEffect(() => { setErrored(false); }, [imageUrl]);
+  const [loaded, setLoaded] = useState(false);
+  const [retryKey, setRetryKey] = useState(0);
+  useEffect(() => { setErrored(false); setLoaded(false); setRetryKey((k) => k + 1); }, [imageUrl]);
 
   // If a real image URL exists AND it hasn't errored, render it inside a
   // fixed aspect-ratio container so all product images display consistently
@@ -81,13 +83,27 @@ export function ProductImage({
     return (
       <div className={cn("relative overflow-hidden bg-accent/20", className)}>
         <img
-          key={imageUrl}
+          key={`${imageUrl}-${retryKey}`}
           src={imageUrl}
           alt={name}
           className="absolute inset-0 h-full w-full object-contain"
           loading="lazy"
-          onError={() => setErrored(true)}
+          onLoad={() => setLoaded(true)}
+          // Auto-retry once after 1.2s to handle transient network errors
+          // (e.g. R2 cold start, momentary DNS hiccup). On second failure,
+          // fall back to the branded gradient placeholder.
+          onError={() => {
+            if (retryKey < 2) {
+              setTimeout(() => setRetryKey((k) => k + 1), 1200);
+            } else {
+              setErrored(true);
+            }
+          }}
         />
+        {/* Subtle loading shimmer until the image paints. */}
+        {!loaded && (
+          <div className="pointer-events-none absolute inset-0 animate-pulse bg-gradient-to-br from-muted/30 via-transparent to-muted/30" />
+        )}
       </div>
     );
   }

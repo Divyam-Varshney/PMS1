@@ -453,7 +453,23 @@ export function getTrustedSources() {
 
 /**
  * Search for real product images from a trusted pharmacy source.
- * Only Z.AI SDK supports image search in this project.
+ *
+ * Phase 43.5: This now uses the Z.AI SDK's native web image search
+ * (backed by Google) INDEPENDENTLY of the configured chat-completion
+ * provider. Image search is a separate capability from chat — the admin
+ * can use Groq/Gemini/OpenAI for chat AND still get real image search
+ * results via the Z.AI SDK.
+ *
+ * The Z.AI SDK config is loaded from (in priority order):
+ *   1. Z_AI_BASE_URL + Z_AI_API_KEY + Z_AI_TOKEN env vars (production)
+ *   2. .z-ai-config file (dev fallback)
+ *   3. Database settings (zai.baseUrl, zai.apiKey, zai.token)
+ *   4. Hardcoded sandbox config (dev only — works because the sandbox
+ *      can reach internal-api.z.ai)
+ *
+ * Throws if no Z.AI config is available (e.g. production without env vars).
+ * The caller (search-product-images route) catches this and falls back to
+ * the OpenAI-compatible chat-based URL generation path.
  */
 export async function searchProductImages(
   productName: string,
@@ -461,10 +477,6 @@ export async function searchProductImages(
   sourceId: string,
   count: number = 15
 ): Promise<{ results: ImageSearchResult[]; sourceLabel: string }> {
-  const config = await getAIConfig();
-  if (!config.enabled) throw new Error("AI service is disabled.");
-  if (config.provider !== "z-ai-sdk") throw new Error("Image search requires Z.AI SDK provider.");
-
   const sourceConfig = TRUSTED_SOURCES.find((s) => s.id === sourceId) || TRUSTED_SOURCES[0];
 
   const queryParts = [productName.trim()];

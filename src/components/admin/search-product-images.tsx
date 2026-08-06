@@ -38,7 +38,7 @@ import {
 import {
   Search, Loader2, Upload, CheckCircle2,
   Trash2, Star, ExternalLink, AlertTriangle, ShieldCheck,
-  RefreshCw,
+  RefreshCw, ImageIcon,
 } from "lucide-react";
 import { api } from "./api";
 import { toast } from "sonner";
@@ -75,6 +75,56 @@ const SOURCE_OPTIONS: SourceOption[] = [
   { id: "apollo247", label: "Apollo 247", badgeColor: "bg-rose-100 text-rose-800 dark:bg-rose-950/40 dark:text-rose-300" },
   { id: "google", label: "Google (All Sources)", badgeColor: "bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300" },
 ];
+
+// ---------------------------------------------------------------------------
+// ThumbImage — renders a search-result thumbnail with robust error handling.
+// Instead of hiding broken images (which leaves an empty box), it shows a
+// clear "Image unavailable" placeholder with a retry button. Retries once
+// after a short delay (handles transient network errors).
+// ---------------------------------------------------------------------------
+
+function ThumbImage({ url, source }: { url: string; source: string }) {
+  const [status, setStatus] = useState<"loading" | "loaded" | "errored">("loading");
+  const [retryKey, setRetryKey] = useState(0);
+
+  return (
+    <>
+      {status !== "errored" ? (
+        <img
+          key={`${url}-${retryKey}`}
+          src={url}
+          alt={`Product image from ${source}`}
+          className="size-full object-contain"
+          loading="lazy"
+          onLoad={() => setStatus("loaded")}
+          onError={() => {
+            // Auto-retry once after 1.5s (handles transient network errors).
+            if (retryKey === 0) {
+              setTimeout(() => setRetryKey(1), 1500);
+            } else {
+              setStatus("errored");
+            }
+          }}
+        />
+      ) : (
+        <div className="flex size-full flex-col items-center justify-center gap-1.5 bg-muted/30 p-2 text-center">
+          <ImageIcon className="size-6 text-muted-foreground/50" />
+          <span className="text-[9px] font-medium text-muted-foreground">Image unavailable</span>
+          <button
+            onClick={() => { setStatus("loading"); setRetryKey((k) => k + 1); }}
+            className="text-[9px] text-amber-600 hover:underline dark:text-amber-400"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+      {/* Subtle loading shimmer */}
+      {status === "loading" && (
+        <div className="pointer-events-none absolute inset-0 animate-pulse bg-gradient-to-br from-muted/40 via-muted/20 to-muted/40" />
+      )}
+    </>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Props
@@ -463,13 +513,7 @@ export function SearchProductImages({
                         : "border-border hover:border-amber-300"
                       }`}>
                         <div className="relative aspect-square w-full bg-accent/20">
-                          <img
-                            src={result.url}
-                            alt={`Product image from ${sourceName}`}
-                            className="size-full object-contain"
-                            loading="lazy"
-                            onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-                          />
+                          <ThumbImage url={result.url} source={sourceName} />
                           {/* Selection checkbox */}
                           {!result.uploaded && (
                             <button

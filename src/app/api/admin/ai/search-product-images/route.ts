@@ -3,17 +3,43 @@
 // Purpose: "Search Product Images" — searches trusted pharmacy sources for
 //          REAL product packaging photos.
 //
-//  Phase 43.4: Now uses the centralized AI provider for ALL providers.
-//  - Z.AI SDK: uses zai.images.search.create (built-in image search)
-//  - OpenAI-compatible (Gemini, Groq, OpenAI): uses aiChatCompletion() to
-//    generate image search URLs via Google Image Search queries embedded
-//    in the AI prompt. The AI returns structured image URLs from trusted
-//    pharmacy websites.
+//  Phase 43.5: COMPLETE IMAGE LOADING AUDIT & FIX
+//
+//  ROOT CAUSE FOUND:
+//  ─────────────────
+//  The previous implementation gated the Z.AI SDK native image search behind
+//  `if (config.provider === "z-ai-sdk")`. But the admin had configured Groq
+//  (an OpenAI-compatible provider) for chat completion — so the route fell
+//  into the OpenAI-compatible branch, which asks the LLM to *generate* image
+//  URLs. LLMs fabricate URLs that look valid but 404, AND the Groq API key
+//  was returning 403 Forbidden — so image search was completely broken.
+//
+//  FIX:
+//  ───
+//  The Z.AI SDK's `images.search.create()` is a TRUE web image search (backed
+//  by Google), completely independent from the chat-completion provider. It
+//  returns REAL, accessible image URLs hosted on z-cdn.chatglm.cn. It works
+//  in the sandbox via the hardcoded ZAI token (no API key needed).
+//
+//  NEW STRATEGY (provider-agnostic):
+//    1. ALWAYS try the Z.AI SDK native image search first.
+//    2. If it succeeds → return real image URLs (the common case in dev).
+//    3. If it throws (e.g. production without ZAI config, or network error)
+//       → fall back to the OpenAI-compatible chat-based URL generation path.
+//    4. If BOTH fail → return a clear error explaining the situation.
+//
+//  This decouples image search from chat completion: admins can use Groq for
+//  chat AND get real image search results via the Z.AI SDK simultaneously.
 // ============================================================================
 
 import { getAdminFromRequest } from "@/lib/auth";
 import { ok, err, unauthorized, parseBody } from "@/lib/api";
-import { getAIConfig, searchProductImages, getTrustedSources, aiChatCompletion } from "@/lib/ai-service";
+import {
+  getAIConfig,
+  searchProductImages,
+  getTrustedSources,
+  aiChatCompletion,
+} from "@/lib/ai-service";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -24,6 +50,34 @@ interface SearchRequest {
   composition?: string;
   source?: string;
   count?: number;
+}
+
+/**
+ * Build the grouped-response payload shared by both code paths.
+ */
+function buildResponse(
+  results: Array<{ url: string; source: string; width?: string; height?: string }>,
+  query: string,
+  sourceId: string,
+  sourceLabel: string,
+  provider?: string
+) {
+  const grouped: Record<string, typeof results> = {};
+  for (const r of results) {
+    const key = r.source || "Unknown";
+    if (!grouped[key]) grouped[key] = [];
+    grouped[key].push(r);
+  }
+  return ok({
+    results: results.map((r) => ({ ...r, selected: false })),
+    grouped,
+    count: results.length,
+    query,
+    source: sourceId,
+    sourceLabel,
+    sourceCount: Object.keys(grouped).length,
+    ...(provider ? { provider } : {}),
+  });
 }
 
 export async function POST(req: Request) {
@@ -45,8 +99,20 @@ export async function POST(req: Request) {
       return err("AI service is disabled. Enable it in Admin → Settings.", 400);
     }
 
-    // ── Z.AI SDK: uses built-in image search API ──
-    if (config.provider === "z-ai-sdk") {
+    // ─────────────────────────────────────────────────────────────────────
+    // PATH 1 (PREFERRED): Z.AI SDK native image search.
+    //
+    // The Z.AI SDK has a built-in web image search (backed by Google) that
+    // returns REAL, accessible image URLs. This works regardless of which
+    // chat-completion provider (Groq, Gemini, OpenAI, etc.) is configured,
+    // because image search is a separate capability from chat.
+    //
+    // We ALWAYS try this first. In the dev sandbox, the hardcoded ZAI token
+    // makes this work with zero configuration. In production, it works if
+    // Z_AI_BASE_URL + Z_AI_API_KEY + Z_AI_TOKEN env vars are set, OR if the
+    // admin has configured the Z.AI SDK provider in the DB.
+    // ─────────────────────────────────────────────────────────────────────
+    try {
       const { results, sourceLabel } = await searchProductImages(
         body.productName,
         body.brand,
@@ -54,34 +120,36 @@ export async function POST(req: Request) {
         count
       );
 
-      const grouped: Record<string, typeof results> = {};
-      for (const r of results) {
-        const key = r.source || "Unknown";
-        if (!grouped[key]) grouped[key] = [];
-        grouped[key].push(r);
+      if (results.length > 0) {
+        return buildResponse(results, body.productName, sourceId, sourceLabel, "z-ai-sdk");
       }
-
-      return ok({
-        results: results.map((r) => ({ ...r, selected: false })),
-        grouped,
-        count: results.length,
-        query: body.productName,
-        source: sourceId,
-        sourceLabel,
-        sourceCount: Object.keys(grouped).length,
-      });
+      // If results.length === 0, fall through to the OpenAI-compatible path
+      // (the Z.AI search may have returned nothing for this query/source).
+      //console.log("[ai/search-product-images] Z.AI SDK returned 0 results, falling back to chat-based search");
+    } catch (zaiError: any) {
+      // Z.AI SDK unavailable (e.g. production without ZAI config) — fall
+      // back to the OpenAI-compatible chat-based URL generation path.
+      console.warn(
+        "[ai/search-product-images] Z.AI SDK image search unavailable, falling back to chat-based search. Error:",
+        zaiError?.message?.slice(0, 150)
+      );
     }
 
-    // ── OpenAI-compatible providers: use AI to generate image search URLs ──
-    // Ask the AI to generate direct image URLs from trusted pharmacy websites.
-    // This is a fallback for providers that don't have a native image search API.
+    // ─────────────────────────────────────────────────────────────────────
+    // PATH 2 (FALLBACK): OpenAI-compatible chat-based URL generation.
+    //
+    // Asks the configured chat provider (Groq, Gemini, OpenAI, etc.) to
+    // generate direct image URLs from trusted pharmacy websites. This is
+    // less reliable than PATH 1 (LLMs sometimes fabricate URLs), but it's
+    // the only option when the Z.AI SDK is unavailable.
+    // ─────────────────────────────────────────────────────────────────────
     const queryParts = [body.productName.trim()];
     if (body.brand?.trim()) queryParts.push(body.brand.trim());
     const searchQuery = queryParts.join(" ");
 
     const pharmacySites = [
       "1mg.com", "apollopharmacy.in", "pharmeasy.in", "netmeds.com",
-      "amazon.in", "practo.com", "medplusmart.com"
+      "amazon.in", "practo.com", "medplusmart.com",
     ];
 
     const prompt = `You are a product image search assistant. Find direct image URLs for the medicine "${searchQuery}" from trusted Indian pharmacy websites.
@@ -99,35 +167,46 @@ Return ONLY the JSON array, no markdown, no explanation. Example:
 
 Return up to ${count} results. Only include real, accessible image URLs.`;
 
-    const result = await aiChatCompletion(
-      [
-        { role: "system", content: "You are a helpful assistant that finds product image URLs from pharmacy websites. You return only valid JSON arrays with real image URLs. Never invent or fabricate URLs — only return URLs you are confident exist." },
-        { role: "user", content: prompt },
-      ],
-      { temperature: 0.3, max_tokens: 1500 }
-    );
-
-    const content = result.content?.trim() || "";
+    let chatContent = "";
+    try {
+      const result = await aiChatCompletion(
+        [
+          {
+            role: "system",
+            content:
+              "You are a helpful assistant that finds product image URLs from pharmacy websites. You return only valid JSON arrays with real image URLs. Never invent or fabricate URLs — only return URLs you are confident exist.",
+          },
+          { role: "user", content: prompt },
+        ],
+        { temperature: 0.3, max_tokens: 1500 }
+      );
+      chatContent = result.content?.trim() || "";
+    } catch (chatError: any) {
+      // Both paths failed. Return a clear, actionable error.
+      return err(
+        `Image search failed. The Z.AI SDK image search was unavailable and the configured chat provider (${config.providerId}) returned an error: ${chatError?.message?.slice(0, 150) || "unknown"}. ` +
+        `To fix: (1) ensure the Z.AI SDK is configured (works by default in dev), OR (2) verify your AI provider API key in Admin → Settings → AI Integration.`,
+        500
+      );
+    }
 
     // Parse the JSON array from the AI response
     let images: any[] = [];
     try {
-      // Extract JSON array from response (handle markdown code fences)
-      const jsonMatch = content.match(/\[[\s\S]*\]/);
-      if (jsonMatch) {
-        images = JSON.parse(jsonMatch[0]);
-      }
+      const jsonMatch = chatContent.match(/\[[\s\S]*\]/);
+      if (jsonMatch) images = JSON.parse(jsonMatch[0]);
     } catch {
       // JSON parsing failed — return empty results
     }
 
-    // Filter to only valid URLs from trusted sources
     const results = images
       .filter((item: any) => {
         const url = item.url || "";
         const source = (item.source || "").toLowerCase();
-        return url.startsWith("https://") &&
-          pharmacySites.some((site) => source.includes(site) || url.includes(site));
+        return (
+          url.startsWith("https://") &&
+          pharmacySites.some((site) => source.includes(site) || url.includes(site))
+        );
       })
       .map((item: any) => ({
         url: item.url,
@@ -138,23 +217,13 @@ Return up to ${count} results. Only include real, accessible image URLs.`;
       }))
       .slice(0, count);
 
-    const grouped: Record<string, any[]> = {};
-    for (const r of results) {
-      const key = r.source || "Unknown";
-      if (!grouped[key]) grouped[key] = [];
-      grouped[key].push(r);
-    }
-
-    return ok({
+    return buildResponse(
       results,
-      grouped,
-      count: results.length,
-      query: body.productName,
-      source: sourceId,
-      sourceLabel: "AI-powered search",
-      sourceCount: Object.keys(grouped).length,
-      provider: config.providerId,
-    });
+      body.productName,
+      sourceId,
+      "AI-powered search",
+      config.providerId
+    );
   } catch (e: any) {
     console.error("[ai/search-product-images] error:", e?.message?.slice(0, 200));
     return err("Image search failed: " + (e?.message || "unknown error"), 500);

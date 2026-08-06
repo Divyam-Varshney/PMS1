@@ -7,12 +7,13 @@
 //          public settings + customer session + home page data on mount.
 // Role: SPA router for the customer site.
 //
-// PERFORMANCE: HomeView is loaded eagerly (it's the landing page — needs to
-//   be instant). All other views are loaded via next/dynamic (lazy) so that
-//   their code is only fetched when the customer navigates to them. This
-//   reduces the initial JS bundle by ~60% (the customer site has 22 views
-//   totaling ~15K lines; loading them all eagerly caused Turbopack to
-//   compile a huge module graph on every dev change).
+// PERFORMANCE (Phase 43.6): ALL views are now lazy-loaded via next/dynamic,
+//   including HomeView. The previous eager HomeView import pulled in
+//   framer-motion + 2125 lines of home-view.tsx + all its sub-dependencies
+//   on every page load, causing OOM kills in the 4GB sandbox. With lazy
+//   loading, the initial compile is much smaller, and HomeView's code is
+//   fetched on-demand after the shell renders. The shell (CustomerLayout)
+//   shows instantly with a loading skeleton.
 // ============================================================================
 
 "use client";
@@ -24,8 +25,18 @@ import { useUI } from "@/lib/store";
 import { api, qk } from "@/components/customer/api";
 import { CustomerLayout } from "@/components/customer/customer-layout";
 
-// HomeView is the landing page — load it eagerly for instant first paint.
-import { HomeView } from "@/components/customer/home-view";
+// Phase 43.6: HomeView is now lazy-loaded too. Previously it was eager,
+// which pulled framer-motion + 2125 lines into the initial compile, causing
+// OOM kills. With ssr:false, the shell renders instantly and HomeView
+// loads immediately after (it's the default view).
+const HomeView = dynamic(() => import("@/components/customer/home-view").then(m => ({ default: m.HomeView })), {
+  ssr: false,
+  loading: () => (
+    <div className="flex items-center justify-center min-h-[60vh]">
+      <div className="size-8 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+    </div>
+  ),
+});
 
 // All other views are lazy-loaded to reduce initial bundle size.
 // `ssr: false` because this is a client-side SPA (no SEO need for these

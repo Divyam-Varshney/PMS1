@@ -13,7 +13,11 @@ import { db } from "@/lib/db";
 import { getAllSettings } from "@/lib/settings";
 import { DEFAULT_TEMPLATES } from "@/lib/constants";
 import { wrapEmailHtml, htmlToPlainText } from "@/lib/email-template";
-import nodemailer from "nodemailer";
+// Phase 43.6: Lazy-load nodemailer (~10MB) to reduce memory usage.
+// Previously this was eagerly imported, which caused OOM kills when
+// compiling API routes that use sendNotification (login, checkout, etc.).
+// Now nodemailer is only loaded when an email is actually sent.
+import type nodemailer from "nodemailer";
 
 /** Render a template body by replacing {{variable}} placeholders. */
 export function renderTemplate(body: string, vars: Record<string, string | number>): string {
@@ -53,8 +57,10 @@ async function getTransport(s: Record<string, any>): Promise<nodemailer.Transpor
     try { await cachedTransport.close(); } catch (e) { console.error("[smtp] transport close error:", e); }
     cachedTransport = null;
   }
+  // Phase 43.6: Dynamic import — only loads nodemailer when SMTP is actually used
+  const { default: nodemailerMod } = await import("nodemailer");
   const port = Number(s["smtp.port"]) || 587;
-  cachedTransport = nodemailer.createTransport({
+  cachedTransport = nodemailerMod.createTransport({
     host: s["smtp.host"],
     port,
     secure: port === 465,  // SSL for 465, TLS for 587/2587

@@ -88,7 +88,8 @@ import { getInitials } from "@/lib/format";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { hasPermission } from "@/lib/permissions";
 import { AdminPermissionKey } from "@/lib/constants";
-import { motion, AnimatePresence } from "framer-motion";
+// Phase 43.6: Removed framer-motion import — was causing OOM kills.
+// The page transition now uses CSS animation (animate-page-enter class).
 
 interface AdminInfo {
   id: string;
@@ -733,18 +734,16 @@ export function AdminLayout({
             order-detail, prescription-detail, manual-request-detail,
             customer-detail. */}
         <main className="flex-1 p-4 md:p-6 w-full mx-auto min-w-0">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={view.name + ("id" in view ? (view as any).id ?? "" : "")}
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              transition={{ duration: 0.2, ease: "easeOut" }}
-              className="animate-page-enter min-w-0"
-            >
-              {children}
-            </motion.div>
-          </AnimatePresence>
+          {/* Phase 43.6: Replaced framer-motion AnimatePresence with a CSS-only
+              animation. framer-motion (~500KB) was eagerly imported and caused
+              OOM kills when compiling the admin page. The CSS animate-page-enter
+              class provides the same fade/slide effect with zero JS overhead. */}
+          <div
+            key={view.name + ("id" in view ? (view as any).id ?? "" : "")}
+            className="animate-page-enter min-w-0"
+          >
+            {children}
+          </div>
         </main>
       </SidebarInset>
 

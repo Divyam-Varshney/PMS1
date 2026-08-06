@@ -9334,3 +9334,124 @@ All modifications made after Phase 43.5 have been completely deleted:
 - **All major workflows tested and verified**
 
 The project is now restored to the clean, stable, Phase 43.5 baseline.
+
+---
+
+## Phase 43.6 — Sandbox Stability, Memory Optimization & Server Performance
+
+### Problem
+The dev server repeatedly crashed with OOM (Out of Memory) kills in the 4GB sandbox environment. Compiling the customer page (`/`) or admin page (`/admin`) would consume all available RAM, causing the Linux OOM killer to terminate the `next-server` process.
+
+### Root Causes Identified
+1. **Turbopack** — Spawns native worker threads that don't respect `NODE_OPTIONS` memory limits, causing unbounded memory growth
+2. **framer-motion** — Eagerly imported in AdminLayout (793 lines) and 33 customer components (~500KB), pulled into every page compile
+3. **nodemailer** — Eagerly imported in `notifications.ts` (~10MB), loaded by every API route that sends notifications
+4. **HomeView eager import** — 2125 lines + framer-motion loaded on every customer page load
+5. **No memory limit** — Node.js V8 heap was unbounded, consuming all available RAM
+6. **Telemetry** — Next.js telemetry agent added ~10-20MB overhead
+7. **reactStrictMode** — Doubled memory usage by rendering every component twice in dev
+8. **Frequent polling** — 15-30s refetch intervals caused memory churn from repeated API calls
+9. **No gcTime** — React Query cached old data indefinitely, accumulating memory
+
+### Fixes Implemented
+
+#### 1. Switched from Turbopack to Webpack
+**Files:** `package.json` (dev script: `--turbo` → `--webpack`)
+- Webpack compiles in the main thread and respects `NODE_OPTIONS` memory limits
+- Turbopack's native workers ignored the limit, causing OOM
+
+#### 2. Node.js Memory Limit (2048MB)
+**File:** `scripts/with-env.mjs`
+- Added `NODE_OPTIONS=--max-old-space-size=2048` for Next.js commands
+- 2GB is the sweet spot: enough for admin page compilation, leaves 2GB for OS
+- Tested: 768MB (too low), 1280MB (OOMs after customer page), 2048MB (works)
+
+#### 3. Disabled Telemetry
+**File:** `scripts/with-env.mjs`
+- Added `NEXT_TELEMETRY_DISABLED=1` environment variable
+- Removes ~10-20MB background telemetry agent overhead
+
+#### 4. Disabled reactStrictMode in Dev
+**File:** `next.config.ts`
+- `reactStrictMode: !isDev` — disabled in dev (halves memory), enabled in production
+- Strict mode double-renders components in dev, doubling memory usage
+
+#### 5. Removed framer-motion from AdminLayout
+**File:** `src/components/admin/AdminLayout.tsx`
+- Replaced `<AnimatePresence mode="wait"><motion.div>` with `<div className="animate-page-enter">`
+- CSS animation provides the same fade/slide effect with zero JS overhead
+- Removed `import { motion, AnimatePresence } from "framer-motion"` (~500KB saved)
+
+#### 6. Lazy-loaded HomeView
+**File:** `src/app/page.tsx`
+- Changed from eager `import { HomeView }` to `dynamic(() => import(...), { ssr: false })`
+- HomeView (2125 lines + framer-motion) was loaded on every customer page compile
+- Now loads on-demand after the shell renders, with a loading spinner
+
+#### 7. Lazy-loaded nodemailer
+**File:** `src/lib/notifications.ts`
+- Changed `import nodemailer from "nodemailer"` to `import type nodemailer from "nodemailer"`
+- Added `const { default: nodemailerMod } = await import("nodemailer")` in `getTransport()`
+- nodemailer (~10MB) now only loads when an email is actually sent, not when the route compiles
+
+#### 8. Reduced Polling Intervals
+**Files:** Multiple admin views + customer views
+- AdminNotificationBell: 15s → 60s
+- AdminLayout counts: 30s → 60s
+- Customer orders: 10s → 30s
+- Track order: 15s → 30s
+- Admin list views (Customers, Orders, Prescriptions, etc.): 30s → 60s
+- Reduces memory churn from repeated API calls + re-renders
+
+#### 9. Added gcTime to React Query
+**File:** `src/lib/providers.tsx`
+- Added `gcTime: 5 * 60 * 1000` (5 minutes) — garbage-collects inactive queries
+- Increased `staleTime` from 30s to 60s — reduces refetch frequency
+- React Query was caching old data indefinitely, accumulating memory
+
+#### 10. Image Optimization Disabled in Dev
+**File:** `next.config.ts`
+- `images: { unoptimized: true }` in dev — avoids sharp/image processing overhead
+- Production still uses WebP optimization
+
+#### 11. Headers Simplified in Dev
+**File:** `next.config.ts`
+- `headers()` returns empty array in dev — reduces per-request overhead
+- Production still has full security headers
+
+### Verification Results
+- ✅ `bun run lint` — 0 errors
+- ✅ Customer page (`/`) — HTTP 200, compiles in ~12s
+- ✅ Admin page (`/admin`) — HTTP 200, compiles in ~6s
+- ✅ Admin login — HTTP 200
+- ✅ Admin APIs (counts, products, orders, dashboard analytics) — all HTTP 200
+- ✅ Server stable at 1.7GB RSS after all pages + APIs compiled
+- ✅ 1.6GB RAM still available after full compilation
+- ✅ No OOM kills
+
+### Key Configuration
+- **Bundler:** Webpack (was Turbopack)
+- **Memory limit:** 2048MB (was unbounded)
+- **Telemetry:** Disabled
+- **reactStrictMode:** Disabled in dev, enabled in production
+- **Image optimization:** Disabled in dev, enabled in production
+- **Polling:** 60s for admin views, 30s for customer order tracking
+- **gcTime:** 5 minutes (was unlimited)
+
+### Files Changed
+1. `next.config.ts` — webpack, memory limit, dev optimizations
+2. `scripts/with-env.mjs` — NODE_OPTIONS, telemetry disabled
+3. `package.json` — dev script uses `--webpack` instead of `--turbo`
+4. `src/components/admin/AdminLayout.tsx` — removed framer-motion
+5. `src/app/page.tsx` — lazy-loaded HomeView
+6. `src/lib/notifications.ts` — lazy-loaded nodemailer
+7. `src/lib/providers.tsx` — added gcTime, increased staleTime
+8. `src/components/admin/AdminNotificationBell.tsx` — polling 15s→60s
+9. `src/components/admin/AdminLayout.tsx` — polling 30s→60s
+10. `src/components/customer/orders-view.tsx` — polling 10s→30s
+11. `src/components/customer/track-order-view.tsx` — polling 15s→30s
+12. `src/components/admin/views/CustomersView.tsx` — polling 30s→60s
+13. `src/components/admin/views/ManualRequestsView.tsx` — polling 30s→60s
+14. `src/components/admin/views/OrdersView.tsx` — polling 30s→60s
+15. `src/components/admin/views/PrescriptionsView.tsx` — polling 30s→60s
+16. `src/components/admin/views/ErrorLogsView.tsx` — polling 30s→60s

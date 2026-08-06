@@ -103,15 +103,17 @@ const [cmd, ...args] = process.argv.slice(2);
 //     Disables Next.js anonymous telemetry. The telemetry agent runs a
 //     background thread and adds ~10-20MB overhead.
 //
-//   NODE_OPTIONS=--max-old-space-size=1536
-//     Caps the Node.js V8 heap at 1.5GB. Without this, Node.js will use
-//     all available RAM until the OOM killer fires. 1.5GB is enough for
-//     the dev server + Prisma + a few API routes, while leaving 2.5GB
-//     for the OS + Turbopack's native workers.
+//   NODE_OPTIONS=--max-old-space-size=2048
+//     Caps the Node.js V8 heap at 2GB. Without this, Node.js will use
+//     all available RAM until the OOM killer fires. 2GB is needed because
+//     the admin page (31 dynamic imports + AdminLayout + constants.ts
+//     1181 lines) requires significant memory to compile. After compilation,
+//     memory drops to ~700MB.
 //
-//   TURBOPACK=1
-//     Ensures Turbopack is used (already set via --turbo flag, but this
-//     is a belt-and-suspenders approach).
+//   --webpack flag (in package.json dev script)
+//     Uses webpack instead of Turbopack. Turbopack spawns native worker
+//     threads that don't respect NODE_OPTIONS, causing unbounded memory
+//     growth. Webpack compiles in the main thread and respects the limit.
 // ──────────────────────────────────────────────────────────────────────
 process.env.NEXT_TELEMETRY_DISABLED = "1";
 
@@ -120,7 +122,11 @@ const isNextCommand = cmd === "next" || cmd === "node" && args[0]?.includes("nex
 if (isNextCommand) {
   // Set NODE_OPTIONS if not already set by the caller
   if (!process.env.NODE_OPTIONS) {
-    process.env.NODE_OPTIONS = "--max-old-space-size=1536";
+    // Phase 43.6: 2048MB is required for the 4GB sandbox.
+    // - 768MB → too low, admin page OOMs during compilation
+    // - 1280MB → admin page OOMs when compiled after customer page
+    // - 2048MB → both pages compile successfully, ~2GB left for OS
+    process.env.NODE_OPTIONS = "--max-old-space-size=2048";
   }
   // Log the memory limit for debugging
   console.log(`[with-env] Memory limit: ${process.env.NODE_OPTIONS}`);

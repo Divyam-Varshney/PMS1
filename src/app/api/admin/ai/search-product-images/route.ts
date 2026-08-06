@@ -48,6 +48,22 @@ export async function POST(req: Request) {
       return err("AI service is disabled. Enable it in Admin → Settings.", 400);
     }
 
+    // Image search is a Z.AI SDK-specific feature (uses zai.images.search.create).
+    // For other providers (Groq, Gemini, OpenAI), return a helpful message
+    // instead of crashing with a confusing error.
+    if (config.provider !== "z-ai-sdk") {
+      return ok({
+        results: [],
+        grouped: {},
+        count: 0,
+        query: body.productName,
+        source: sourceId,
+        sourceLabel: "",
+        sourceCount: 0,
+        message: "Image search is only available with the Z.AI SDK provider. With other providers, please upload product images manually via the gallery tab.",
+      });
+    }
+
     const { results, sourceLabel } = await searchProductImages(
       body.productName,
       body.brand,

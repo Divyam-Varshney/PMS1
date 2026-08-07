@@ -17,7 +17,11 @@ export async function GET(req: Request) {
     where: {
       status: "active",
       visibility: "public",
-      logo: { not: null },
+      // Phase 43.8: Removed `logo: { not: null }` filter — brands without logos
+      // now show on the customer site with a letter placeholder (first letter
+      // of the brand name on a branded gradient background). This ensures the
+      // "Trusted Brands" section and shop sidebar filter are populated even
+      // when logos haven't been uploaded yet.
       ...(featuredOnly ? { isFeaturedOnHomepage: true } : {}),
     },
     orderBy: [{ displayOrder: "asc" }, { name: "asc" }],

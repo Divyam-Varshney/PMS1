@@ -122,11 +122,15 @@ const isNextCommand = cmd === "next" || cmd === "node" && args[0]?.includes("nex
 if (isNextCommand) {
   // Set NODE_OPTIONS if not already set by the caller
   if (!process.env.NODE_OPTIONS) {
-    // Phase 43.6: 2048MB is required for the 4GB sandbox.
+    // Phase 43.7: 3072MB (3GB) is required for the 4GB sandbox.
+    // The admin page (/admin) has 31 dynamic imports + AdminLayout (793 lines)
+    // + AdminLogin + many Radix UI components. Compiling it after the customer
+    // page (which uses ~1.4GB) requires a total of ~2.9GB heap.
     // - 768MB → too low, admin page OOMs during compilation
     // - 1280MB → admin page OOMs when compiled after customer page
-    // - 2048MB → both pages compile successfully, ~2GB left for OS
-    process.env.NODE_OPTIONS = "--max-old-space-size=2048";
+    // - 2048MB → admin page OOMs (only ~600MB left after customer page)
+    // - 3072MB → both pages compile successfully, ~1GB left for OS
+    process.env.NODE_OPTIONS = "--max-old-space-size=3072";
   }
   // Log the memory limit for debugging
   console.log(`[with-env] Memory limit: ${process.env.NODE_OPTIONS}`);

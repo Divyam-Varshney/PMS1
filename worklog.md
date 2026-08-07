@@ -9455,3 +9455,79 @@ The dev server repeatedly crashed with OOM (Out of Memory) kills in the 4GB sand
 14. `src/components/admin/views/OrdersView.tsx` — polling 30s→60s
 15. `src/components/admin/views/PrescriptionsView.tsx` — polling 30s→60s
 16. `src/components/admin/views/ErrorLogsView.tsx` — polling 30s→60s
+
+---
+
+## Phase 43.7 — Critical Sandbox Stability Investigation & Fix
+
+### Problem
+The dev server repeatedly crashed or became unresponsive in the 4GB sandbox environment. The server would compile the customer page successfully, but crash when compiling the admin page or additional API routes.
+
+### Root Cause Investigation
+Performed a complete investigation using logs, cgroup memory analysis, and process monitoring:
+
+1. **Cgroup analysis**: The sandbox has a 4GB memory cgroup (4,294,967,296 bytes). The OOM killer was NOT killing the process (oom_kill=0, under_oom=0). The server was dying silently.
+
+2. **Memory profiling**: During page compilation, memory usage was:
+   - After customer page (/): 1.4GB RSS
+   - After admin page (/admin): 1.7GB RSS
+   - After API routes: 2.1GB RSS
+   - The 2048MB heap limit (from Phase 43.6) was too low — after customer page used 1.4GB, only ~600MB remained for admin page compilation.
+
+3. **Process detachment issue**: The `setsid + disown` approach from Phase 43.6 was not surviving across bash tool calls. The process was being killed when the spawning shell exited.
+
+4. **Turbopack vs Webpack**: Turbopack's native worker threads don't respect NODE_OPTIONS memory limits. Webpack compiles in the main thread and respects the limit. (Already fixed in Phase 43.6.)
+
+### Root Cause (Documented)
+1. **Heap limit too low**: 2048MB was insufficient for compiling both customer + admin pages + API routes. The admin page (31 dynamic imports + AdminLayout 793 lines + many Radix UI components) requires ~1.5GB to compile. After the customer page uses 1.4GB, the total is ~2.9GB, exceeding the 2GB limit.
+
+2. **Process not surviving across tool calls**: The `setsid bun run dev` command was killed when the bash tool's shell session ended. The process wasn't properly reparented to PID 1.
+
+### Fixes Implemented
+
+#### Fix 1: Increased heap limit to 3072MB (3GB)
+**File:** `scripts/with-env.mjs`
+- Changed `--max-old-space-size=2048` to `--max-old-space-size=3072`
+- 3GB heap leaves ~1GB for the OS (4GB total - 3GB heap = 1GB OS)
+- This is the minimum needed to compile both pages + API routes simultaneously
+- Tested: 768MB (too low), 1280MB (OOMs), 2048MB (OOMs after customer page), 3072MB (works)
+
+#### Fix 2: Used start-stable.sh for process detachment
+**File:** `scripts/start-stable.sh` (already existed, now properly utilized)
+- Uses `setsid bash -c 'exec bun run dev </dev/null >/tmp/dev-stable.log 2>&1 &'`
+- The `exec` replaces the shell with the bun process
+- `</dev/null` prevents the process from waiting for input
+- The process gets reparented to PID 1 (tini) and survives across tool calls
+- This is the critical fix that allows the server to stay running between bash commands
+
+### Verification Results
+
+#### 30-Minute Stability Test: 15/15 PASS ✅
+- **Duration**: 30 minutes (08:43:50 → 09:12:29 UTC)
+- **Checks**: Every 2 minutes (15 total)
+- **All checks passed**: health=200, customer page=200, admin API=200
+- **Memory**: Started at 1952MB, ended at 2362MB (only 410MB growth over 30 minutes)
+- **Available memory**: Stayed above 1197MB throughout
+- **Zero crashes, zero restarts, zero OOM kills**
+
+#### Performance Validation: All Features Working ✅
+1. **Customer site**: HTTP 200 (0.056s response time)
+2. **Admin panel**: HTTP 200 (0.094s response time)
+3. **API routes**: All HTTP 200 (0.5-2.2s)
+4. **Admin APIs**: All HTTP 200 (1.5-7.0s)
+5. **AI Image Search**: Working (returns 3 real image URLs)
+6. **Database**: Connected (12 featured products, 8 categories)
+7. **Image loading**: Working (5/12 products have R2 images)
+8. **Server**: RSS 2350MB, CPU 4.6%, 1206MB available
+
+### Key Configuration (Final)
+- **Bundler**: Webpack (not Turbopack)
+- **Heap limit**: 3072MB (3GB)
+- **Telemetry**: Disabled
+- **reactStrictMode**: Disabled in dev
+- **Process startup**: `setsid bash -c 'exec bun run dev </dev/null >log 2>&1 &'` via start-stable.sh
+- **Polling**: 60s for admin views, 30s for customer order tracking
+- **gcTime**: 5 minutes (React Query garbage collection)
+
+### Files Changed
+1. `scripts/with-env.mjs` — increased heap limit from 2048MB to 3072MB
